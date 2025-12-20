@@ -32,6 +32,8 @@ jobs:
 
       - name: Build extension
         run: npm run build
+        env:
+          API_URL: https://allch.at
 
       - name: Package extension
         run: npm run package
@@ -72,6 +74,8 @@ jobs:
 
       - name: Build and package
         run: npm run package
+        env:
+          API_URL: https://allch.at
 
       - name: Get version
         id: get_version
@@ -100,7 +104,7 @@ jobs:
 
             #### Requirements
             - Chrome 88+ or Edge 88+
-            - All-Chat API Gateway running at http://localhost:8080
+            - Extension automatically connects to https://allch.at (no setup needed!)
 
             ### What's New
             See [CHECKPOINT.md](https://github.com/caesarakalaeii/all-chat-extension/blob/main/CHECKPOINT.md) for full details.

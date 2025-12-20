@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { ChatMessage } from '../../lib/types/message';
-import { ViewerInfo } from '../../lib/types/viewer';
+import { ViewerInfo } from '../../lib/types/extension';
 import { renderMessageContent } from '../../lib/renderMessage';
 import { resolveTwitchBadgeIcons } from '../../lib/twitchBadges';
 import { sortMessageBadges } from '../../lib/badgeOrder';
@@ -17,7 +17,7 @@ import ToastContainer, { Toast } from './Toast';
 
 interface ChatContainerProps {
   overlayId: string;
-  platform: 'twitch' | 'youtube' | 'kick' | 'tiktok';
+  platform: 'twitch' | 'youtube' | 'kick';
   streamer: string;
 }
 

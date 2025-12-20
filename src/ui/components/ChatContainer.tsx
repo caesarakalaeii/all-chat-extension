@@ -6,9 +6,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { ChatMessage } from '../../lib/types/message';
+import { ViewerInfo } from '../../lib/types/viewer';
 import { renderMessageContent } from '../../lib/renderMessage';
 import { resolveTwitchBadgeIcons } from '../../lib/twitchBadges';
 import { sortMessageBadges } from '../../lib/badgeOrder';
+import { getLocalStorage, setLocalStorage, clearViewerAuth } from '../../lib/storage';
+import LoginPrompt from './LoginPrompt';
+import MessageInput from './MessageInput';
 
 interface ChatContainerProps {
   overlayId: string;
@@ -19,6 +23,28 @@ interface ChatContainerProps {
 export default function ChatContainer({ overlayId, platform, streamer }: ChatContainerProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [connected, setConnected] = useState(false);
+  const [viewerToken, setViewerToken] = useState<string | null>(null);
+  const [viewerInfo, setViewerInfo] = useState<ViewerInfo | null>(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+
+  // Load viewer authentication on mount
+  useEffect(() => {
+    const loadAuth = async () => {
+      try {
+        const storage = await getLocalStorage();
+        if (storage.viewer_jwt_token && storage.viewer_info) {
+          setViewerToken(storage.viewer_jwt_token);
+          setViewerInfo(storage.viewer_info);
+        }
+      } catch (err) {
+        console.error('[AllChat UI] Failed to load auth:', err);
+      } finally {
+        setLoadingAuth(false);
+      }
+    };
+
+    loadAuth();
+  }, []);
 
   useEffect(() => {
     console.log('[AllChat UI] Listening for WebSocket messages...');
@@ -81,6 +107,69 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
     }
   }, [messages]);
 
+  // Handle successful login
+  const handleLogin = async (token: string) => {
+    console.log('[AllChat UI] Login successful, fetching viewer info...');
+
+    try {
+      // Fetch viewer info from API
+      const response = await fetch('http://localhost:8080/api/v1/auth/viewer/me', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch viewer info');
+      }
+
+      const info: ViewerInfo = await response.json();
+
+      // Store token and info
+      await setLocalStorage({
+        viewer_jwt_token: token,
+        viewer_info: info,
+      });
+
+      setViewerToken(token);
+      setViewerInfo(info);
+      console.log('[AllChat UI] Viewer authenticated:', info.username);
+    } catch (err) {
+      console.error('[AllChat UI] Failed to complete login:', err);
+      alert('Failed to complete login. Please try again.');
+    }
+  };
+
+  // Handle logout
+  const handleLogout = async () => {
+    try {
+      if (viewerToken) {
+        // Call logout endpoint
+        await fetch('http://localhost:8080/api/v1/auth/viewer/logout', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${viewerToken}`,
+          },
+        });
+      }
+    } catch (err) {
+      console.error('[AllChat UI] Logout error:', err);
+    } finally {
+      // Clear local storage regardless
+      await clearViewerAuth();
+      setViewerToken(null);
+      setViewerInfo(null);
+    }
+  };
+
+  // Handle auth error (token expired)
+  const handleAuthError = async () => {
+    console.log('[AllChat UI] Auth error, clearing session');
+    await clearViewerAuth();
+    setViewerToken(null);
+    setViewerInfo(null);
+  };
+
   return (
     <div className="h-full flex flex-col bg-gray-900">
       {/* Header */}
@@ -89,7 +178,19 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
           <span className="text-sm font-semibold text-white">All-Chat</span>
           <span className="text-xs text-gray-400">• {platform}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {viewerInfo && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">{viewerInfo.display_name || viewerInfo.username}</span>
+              <button
+                onClick={handleLogout}
+                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                title="Logout"
+              >
+                Logout
+              </button>
+            </div>
+          )}
           {connected ? (
             <span className="text-xs text-green-400 flex items-center gap-1">
               <span className="w-2 h-2 bg-green-400 rounded-full"></span>
@@ -154,12 +255,27 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
         )}
       </div>
 
-      {/* Footer */}
-      <div className="px-3 py-2 bg-gray-800 border-t border-gray-700">
-        <p className="text-xs text-gray-500 text-center">
-          Viewing chat for <span className="text-white">{streamer}</span>
-        </p>
-      </div>
+      {/* Footer / Message Input */}
+      {loadingAuth ? (
+        <div className="px-3 py-3 bg-gray-800 border-t border-gray-700 text-center">
+          <p className="text-xs text-gray-500">Loading...</p>
+        </div>
+      ) : viewerToken ? (
+        <MessageInput
+          platform={platform}
+          streamer={streamer}
+          token={viewerToken}
+          onAuthError={handleAuthError}
+        />
+      ) : (
+        <div className="border-t border-gray-700">
+          <LoginPrompt
+            platform={platform}
+            streamer={streamer}
+            onLogin={handleLogin}
+          />
+        </div>
+      )}
     </div>
   );
 }

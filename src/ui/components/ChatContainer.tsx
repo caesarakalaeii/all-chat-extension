@@ -6,6 +6,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { ChatMessage } from '../../lib/types/message';
+import { renderMessageContent } from '../../lib/renderMessage';
+import { resolveTwitchBadgeIcons } from '../../lib/twitchBadges';
+import { sortMessageBadges } from '../../lib/badgeOrder';
 
 interface ChatContainerProps {
   overlayId: string;
@@ -21,7 +24,7 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
     console.log('[AllChat UI] Listening for WebSocket messages...');
 
     // Listen for WebSocket messages from service worker
-    const handleMessage = (event: MessageEvent) => {
+    const handleMessage = async (event: MessageEvent) => {
       // Messages come through parent window from content script
       if (event.data.type === 'WS_MESSAGE') {
         const wsMessage = event.data.data;
@@ -31,8 +34,29 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
           setConnected(true);
         } else if (wsMessage.type === 'chat_message') {
           console.log('[AllChat UI] Received chat message');
+
+          // Process the message: sort badges and resolve badge icons
+          let processedMessage = wsMessage.data as ChatMessage;
+          processedMessage = sortMessageBadges(processedMessage);
+
+          // Resolve badge icons asynchronously (non-blocking)
+          resolveTwitchBadgeIcons(processedMessage).then((enrichedMessage) => {
+            setMessages((prev) => {
+              // Replace the message if it exists, or add it
+              const existingIndex = prev.findIndex((m) => m.id === enrichedMessage.id);
+              if (existingIndex !== -1) {
+                const updated = [...prev];
+                updated[existingIndex] = enrichedMessage;
+                return updated.slice(-50);
+              } else {
+                return [...prev, enrichedMessage].slice(-50);
+              }
+            });
+          });
+
+          // Add the message immediately (badges will be updated when resolved)
           setMessages((prev) => {
-            const newMessages = [...prev, wsMessage.data];
+            const newMessages = [...prev, processedMessage];
             // Keep last 50 messages
             return newMessages.slice(-50);
           });
@@ -97,14 +121,16 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
             >
               <div className="flex items-center gap-2 mb-1">
                 {/* Badges */}
-                {message.user.badges.map((badge, idx) => (
-                  <img
-                    key={idx}
-                    src={badge.icon_url}
-                    alt={badge.name}
-                    className="w-4 h-4"
-                    title={badge.name}
-                  />
+                {message.user.badges?.map((badge, idx) => (
+                  badge.icon_url ? (
+                    <img
+                      key={idx}
+                      src={badge.icon_url}
+                      alt={badge.name}
+                      className="w-4 h-4"
+                      title={`${badge.name} (${badge.version})`}
+                    />
+                  ) : null
                 ))}
 
                 {/* Username */}
@@ -119,10 +145,10 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
                 <span className="text-xs text-gray-500">({message.platform})</span>
               </div>
 
-              {/* Message text */}
-              <div className="text-sm text-gray-200">{message.message.text}</div>
-
-              {/* TODO: Render emotes */}
+              {/* Message text with emotes */}
+              <div className="text-sm text-gray-200">
+                {renderMessageContent(message)}
+              </div>
             </div>
           ))
         )}

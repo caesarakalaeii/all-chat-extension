@@ -9,7 +9,7 @@
 
 ## Current Status
 
-### ✅ Phase 1 Complete - Core Infrastructure
+### ✅ Phase 2 (Priority 1) Complete - Enhanced Message Display
 
 **What Works:**
 - ✅ Extension loads in Chrome without errors
@@ -18,6 +18,9 @@
 - ✅ YouTube content script (basic implementation)
 - ✅ WebSocket connection to All-Chat API Gateway
 - ✅ Real-time message display in iframe UI
+- ✅ **Emote rendering** - Emotes display as images inline with text
+- ✅ **Badge icons** - Twitch badges fetch and display (sorted correctly)
+- ✅ **User colors** - Username colors match Twitch theme
 - ✅ Graceful fallback when streamer not configured
 - ✅ Extension popup shows status
 - ✅ Chrome storage for settings
@@ -87,11 +90,8 @@
 
 ### Current Limitations
 - ⚠️ **Anonymous viewing only** - No authentication implemented yet
-- ⚠️ **Emote rendering** - Shows text "[emote]" instead of images
 - ⚠️ **No message sending** - Viewer can't send messages yet
 - ⚠️ **YouTube username extraction** - May fail on some channel formats
-- ⚠️ **Badge icons** - Not displaying (data is there, rendering missing)
-- ⚠️ **User colors** - Not applied to usernames
 
 ### Technical Debt
 - ⏳ Message deduplication not implemented
@@ -106,37 +106,25 @@
 
 ---
 
-## Next Steps - Phase 2
+## Next Steps - Phase 2 (Continued)
 
-### Priority 1: Enhanced Message Display
+### ✅ Priority 1 Complete: Enhanced Message Display
 **Goal:** Make messages look like the OBS overlay
 
-1. **Copy message rendering from frontend:**
-   - Copy `/home/caesar/git/all-chat/frontend/src/lib/renderMessage.tsx`
-   - Copy `/home/caesar/git/all-chat/frontend/src/lib/twitchBadges.ts`
-   - Copy `/home/caesar/git/all-chat/frontend/src/lib/badgeOrder.ts`
-   - Integrate into `ChatContainer.tsx`
+**Completed:**
+- ✅ Copied message rendering utilities from frontend
+- ✅ Implemented emote rendering with inline images
+- ✅ Added badge icon fetching and display
+- ✅ Sorted badges correctly (role → subscriber → other)
+- ✅ Applied user colors to usernames
 
-2. **Implement emote rendering:**
-   - Parse emote positions from message
-   - Replace text with `<img>` tags
-   - Support 7TV, BTTV, FFZ, Twitch emotes
+**New Files Created:**
+- `src/lib/renderMessage.tsx` - Parses emote positions and renders inline
+- `src/lib/twitchBadges.ts` - Fetches badge icons from All-Chat API
+- `src/lib/badgeOrder.ts` - Sorts badges in correct priority order
 
-3. **Add badge icons:**
-   - Fetch Twitch badge icons
-   - Display before username
-   - Sort badges in correct order (moderator, VIP, subscriber)
-
-4. **Apply user colors:**
-   - Use `message.user.color` for username
-   - Apply Twitch color palette
-
-**Files to modify:**
-- `src/ui/components/ChatContainer.tsx`
-- `src/lib/renderMessage.tsx` (new, copy from frontend)
-- `src/lib/twitchBadges.ts` (new, copy from frontend)
-
-**Estimated Time:** 2-3 hours
+**Files Modified:**
+- `src/ui/components/ChatContainer.tsx` - Integrated rendering utilities
 
 ---
 
@@ -388,10 +376,10 @@ For now, committing directly to main is fine since it's early development.
 - [x] Messages display in real-time
 - [x] Graceful fallback implemented
 
-**Phase 2 (Next):**
-- [ ] Emotes render as images
-- [ ] Badges display correctly
-- [ ] User colors applied
+**Phase 2 (Current):**
+- [x] Emotes render as images
+- [x] Badges display correctly
+- [x] User colors applied
 - [ ] OAuth login works
 - [ ] Can send messages (authenticated)
 

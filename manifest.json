@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "description": "Replace native platform chat with unified All-Chat experience",
 
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "allchat@allch.at",
+      "strict_min_version": "109.0"
+    }
+  },
+
   "permissions": [
     "storage",
     "tabs"

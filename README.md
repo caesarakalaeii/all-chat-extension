@@ -19,6 +19,13 @@ Replace native platform chat with All-Chat's unified chat experience.
 
 ## 📦 Installation
 
+### Browser Support
+- ✅ **Chrome** 88+ (Fully supported)
+- ✅ **Edge** 88+ (Fully supported)
+- ✅ **Firefox** 109+ (Fully supported - see [Firefox guide](FIREFOX_INSTALLATION.md))
+- ⚠️ **Brave** (Should work, untested)
+- ⚠️ **Opera** (Should work, untested)
+
 ### Option 1: Download from Releases (Recommended)
 
 1. **Download the latest release:**

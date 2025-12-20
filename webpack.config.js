@@ -5,7 +5,7 @@ const webpack = require('webpack');
 
 module.exports = (env, argv) => {
   const isProduction = argv.mode === 'production';
-  const API_URL = isProduction ? 'https://allch.at' : 'http://localhost:8080';
+  const API_URL = process.env.API_URL || (isProduction ? 'https://allch.at' : 'http://localhost:8080');
 
   return {
   mode: argv.mode || 'production',

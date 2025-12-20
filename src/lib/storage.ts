@@ -52,6 +52,7 @@ export async function setLocalStorage(data: Partial<LocalStorage>): Promise<void
  */
 export async function getApiGatewayUrl(): Promise<string> {
   const settings = await getSyncStorage();
+  console.log('[AllChat Storage] API Gateway URL:', settings.apiGatewayUrl);
   return settings.apiGatewayUrl;
 }
 

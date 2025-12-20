@@ -13,6 +13,7 @@ import { sortMessageBadges } from '../../lib/badgeOrder';
 import { getLocalStorage, setLocalStorage, clearViewerAuth } from '../../lib/storage';
 import LoginPrompt from './LoginPrompt';
 import MessageInput from './MessageInput';
+import ToastContainer, { Toast } from './Toast';
 
 interface ChatContainerProps {
   overlayId: string;
@@ -38,6 +39,7 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
   const [viewerInfo, setViewerInfo] = useState<ViewerInfo | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [reconnectCountdown, setReconnectCountdown] = useState<number | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
 
   // Load viewer authentication on mount
   useEffect(() => {
@@ -144,6 +146,18 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
     }
   }, [messages]);
 
+  // Add toast notification
+  const addToast = (message: string, type: Toast['type'] = 'info', duration?: number) => {
+    const id = `${Date.now()}-${Math.random()}`;
+    const toast: Toast = { id, message, type, duration };
+    setToasts((prev) => [...prev, toast]);
+  };
+
+  // Remove toast
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
   // Handle successful login
   const handleLogin = async (token: string) => {
     console.log('[AllChat UI] Login successful, fetching viewer info...');
@@ -171,9 +185,11 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
       setViewerToken(token);
       setViewerInfo(info);
       console.log('[AllChat UI] Viewer authenticated:', info.username);
+
+      addToast(`Logged in as ${info.display_name || info.username}`, 'success');
     } catch (err) {
       console.error('[AllChat UI] Failed to complete login:', err);
-      alert('Failed to complete login. Please try again.');
+      addToast('Failed to complete login. Please try again.', 'error');
     }
   };
 
@@ -189,8 +205,10 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
           },
         });
       }
+      addToast('Logged out successfully', 'info');
     } catch (err) {
       console.error('[AllChat UI] Logout error:', err);
+      addToast('Logout error, but session cleared locally', 'warning');
     } finally {
       // Clear local storage regardless
       await clearViewerAuth();
@@ -205,6 +223,12 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
     await clearViewerAuth();
     setViewerToken(null);
     setViewerInfo(null);
+    addToast('Session expired. Please log in again.', 'warning');
+  };
+
+  // Handle message sent successfully
+  const handleMessageSent = () => {
+    addToast('Message sent', 'success', 2000);
   };
 
   return (
@@ -341,6 +365,7 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
           streamer={streamer}
           token={viewerToken}
           onAuthError={handleAuthError}
+          onSendSuccess={handleMessageSent}
         />
       ) : (
         <div className="border-t border-gray-700">
@@ -351,6 +376,9 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
           />
         </div>
       )}
+
+      {/* Toast Notifications */}
+      <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>
   );
 }

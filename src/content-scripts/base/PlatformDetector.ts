@@ -109,16 +109,26 @@ export abstract class PlatformDetector {
     if (iframe) {
       console.log(`[AllChat ${this.platform}] Reusing existing iframe`);
 
-      // Re-send initialization in case it needs updating
-      if (iframe.contentWindow) {
-        iframe.contentWindow.postMessage(
-          {
-            type: 'ALLCHAT_INIT',
-            platform: this.platform,
-            streamer: streamer,
-          },
-          '*'
-        );
+      // Re-send initialization - wait for iframe to be ready
+      const sendInit = () => {
+        if (iframe.contentWindow) {
+          iframe.contentWindow.postMessage(
+            {
+              type: 'ALLCHAT_INIT',
+              platform: this.platform,
+              streamer: streamer,
+            },
+            '*'
+          );
+          console.log(`[AllChat ${this.platform}] Sent ALLCHAT_INIT to existing iframe`);
+        }
+      };
+
+      // If iframe is already loaded, send immediately, otherwise wait for load
+      if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+        sendInit();
+      } else {
+        iframe.addEventListener('load', sendInit, { once: true });
       }
       return;
     }

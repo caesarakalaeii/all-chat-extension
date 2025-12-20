@@ -41,9 +41,15 @@ Replace native platform chat with All-Chat's unified chat experience.
    - Click **"Load unpacked"**
    - Select the unzipped folder
 
-3. **Requirements:**
-   - Chrome 88+ or Edge 88+ (Chromium-based)
-   - All-Chat API Gateway running at `http://localhost:8080`
+3. **Install in Firefox:**
+   - See detailed [Firefox Installation Guide](FIREFOX_INSTALLATION.md)
+   - Quick: Navigate to `about:debugging#/runtime/this-firefox`
+   - Click "Load Temporary Add-on"
+   - Select `manifest.json` from unzipped folder
+
+4. **Requirements:**
+   - Chrome 88+ / Edge 88+ / Firefox 109+
+   - Extension automatically connects to `https://allch.at` (no setup needed!)
 
 ### Option 2: Build from Source
 

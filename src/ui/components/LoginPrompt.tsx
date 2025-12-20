@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_BASE_URL } from '../../config';
 
 interface LoginPromptProps {
   platform: 'twitch' | 'youtube' | 'kick';
@@ -6,7 +7,7 @@ interface LoginPromptProps {
   onLogin: (token: string) => void;
 }
 
-const API_BASE = 'http://localhost:8080';
+const API_BASE = API_BASE_URL;
 
 export default function LoginPrompt({ platform, streamer, onLogin }: LoginPromptProps) {
   const [loading, setLoading] = useState(false);

@@ -2,6 +2,8 @@
  * Extension-specific types for communication between components
  */
 
+import { API_BASE_URL } from '../../config';
+
 export interface StreamerInfo {
   username: string;
   display_name: string;
@@ -58,7 +60,7 @@ export interface SyncStorage {
 }
 
 export const DEFAULT_SETTINGS: SyncStorage = {
-  apiGatewayUrl: 'http://localhost:8080',
+  apiGatewayUrl: API_BASE_URL,
   preferences: {
     autoDetectEnabled: true,
     replaceNativeChat: true,

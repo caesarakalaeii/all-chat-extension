@@ -11,6 +11,7 @@ import { renderMessageContent } from '../../lib/renderMessage';
 import { resolveTwitchBadgeIcons } from '../../lib/twitchBadges';
 import { sortMessageBadges } from '../../lib/badgeOrder';
 import { getLocalStorage, setLocalStorage, clearViewerAuth } from '../../lib/storage';
+import { API_BASE_URL } from '../../config';
 import LoginPrompt from './LoginPrompt';
 import MessageInput from './MessageInput';
 import ToastContainer, { Toast } from './Toast';
@@ -164,7 +165,7 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
 
     try {
       // Fetch viewer info from API
-      const response = await fetch('http://localhost:8080/api/v1/auth/viewer/me', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/auth/viewer/me`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -198,7 +199,7 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
     try {
       if (viewerToken) {
         // Call logout endpoint
-        await fetch('http://localhost:8080/api/v1/auth/viewer/logout', {
+        await fetch(`${API_BASE_URL}/api/v1/auth/viewer/logout`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${viewerToken}`,

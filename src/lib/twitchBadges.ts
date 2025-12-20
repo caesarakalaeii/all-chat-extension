@@ -1,4 +1,5 @@
 import type { ChatMessage, Badge } from './types/message';
+import { API_BASE_URL } from '../config';
 
 type TwitchBadgeVersion = {
   id: string;
@@ -21,7 +22,7 @@ const badgeCache: BadgeCache = {};
 const inflightRequests: Record<string, Promise<Record<string, TwitchBadgeSet> | null>> = {};
 
 // In the extension, we need to proxy through the All-Chat API
-const API_BASE = 'http://localhost:8080';
+const API_BASE = API_BASE_URL;
 
 async function fetchBadgeSets(cacheKey: string, url: string): Promise<Record<string, TwitchBadgeSet> | null> {
   if (badgeCache[cacheKey]) {

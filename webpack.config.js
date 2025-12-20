@@ -1,9 +1,14 @@
 const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const webpack = require('webpack');
 
-module.exports = {
-  mode: 'production',
+module.exports = (env, argv) => {
+  const isProduction = argv.mode === 'production';
+  const API_URL = isProduction ? 'https://allch.at' : 'http://localhost:8080';
+
+  return {
+  mode: argv.mode || 'production',
   entry: {
     'background': './src/background/service-worker.ts',
     'content-scripts/twitch': './src/content-scripts/twitch.ts',
@@ -41,6 +46,9 @@ module.exports = {
     }
   },
   plugins: [
+    new webpack.DefinePlugin({
+      'process.env.API_URL': JSON.stringify(API_URL)
+    }),
     new CopyPlugin({
       patterns: [
         { from: 'manifest.json', to: 'manifest.json' },
@@ -59,4 +67,5 @@ module.exports = {
       chunks: ['popup/popup']
     })
   ]
+};
 };

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { SendMessageRequest, SendMessageResponse } from '../../lib/types/viewer';
+import { API_BASE_URL } from '../../config';
 
 interface MessageInputProps {
   platform: 'twitch' | 'youtube' | 'kick' | 'tiktok';
@@ -9,7 +10,7 @@ interface MessageInputProps {
   onAuthError?: () => void;
 }
 
-const API_BASE = 'http://localhost:8080';
+const API_BASE = API_BASE_URL;
 const MAX_MESSAGE_LENGTH = 500;
 
 export default function MessageInput({

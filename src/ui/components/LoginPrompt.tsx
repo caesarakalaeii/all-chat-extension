@@ -46,8 +46,9 @@ export default function LoginPrompt({ platform, streamer, onLogin }: LoginPrompt
 
       // Listen for message from OAuth callback
       const handleMessage = (event: MessageEvent) => {
-        // Check origin is from our frontend
-        if (!event.origin.startsWith('http://localhost')) {
+        // Check origin is from our API (localhost or production)
+        const apiOrigin = new URL(API_BASE).origin;
+        if (event.origin !== apiOrigin) {
           return;
         }
 

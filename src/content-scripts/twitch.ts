@@ -40,61 +40,135 @@ class TwitchDetector extends PlatformDetector {
   }
 
   hideNativeChat(): void {
-    const chatContainer = this.findChatContainer();
-    if (chatContainer) {
-      // Hide the parent container that holds the entire chat
-      const chatParent = chatContainer.closest('.right-column') || chatContainer.parentElement;
-      if (chatParent) {
-        (chatParent as HTMLElement).style.display = 'none';
-        (chatParent as HTMLElement).setAttribute('data-allchat-hidden', 'true');
+    // Use CSS to hide native chat elements without removing them from DOM
+    // This is more stable than display:none which can break Twitch's layout
+
+    const style = document.getElementById('allchat-hide-native-style') as HTMLStyleElement;
+    if (style) return; // Already injected
+
+    const hideStyle = document.createElement('style');
+    hideStyle.id = 'allchat-hide-native-style';
+    hideStyle.textContent = `
+      /* Hide native Twitch chat components */
+      [data-a-target="chat-input"],
+      [data-a-target="chat-welcome-message"],
+      div[role="log"][class*="chat"],
+      .chat-input,
+      .chat-input__textarea,
+      .stream-chat-header,
+      .chat-scrollable-area__message-container,
+      .chat-wysiwyg-input {
+        visibility: hidden !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
       }
-    }
+    `;
+    document.head.appendChild(hideStyle);
+    console.log('[AllChat Twitch] Injected CSS to hide native chat');
   }
 
   createInjectionPoint(): HTMLElement | null {
-    const nativeChat = this.findChatContainer();
-    if (!nativeChat) return null;
+    // Find the right column chat container
+    const rightColumn = document.querySelector('[class*="right-column"]') ||
+                        document.querySelector('[data-a-target="right-column-chat-bar"]');
 
-    const parent = nativeChat.closest('.right-column')?.parentElement || nativeChat.parentElement;
-    if (!parent) return null;
+    if (!rightColumn) {
+      console.error('[AllChat] Could not find right column');
+      return null;
+    }
 
-    // Create replacement container
+    // Create overlay container that sits on top
     const container = document.createElement('div');
     container.id = 'allchat-container';
-    container.className = 'right-column';  // Mimic Twitch's class for layout
     container.style.cssText = `
+      position: fixed;
+      top: 50px;
+      right: 0;
       width: 340px;
-      height: 100%;
+      height: calc(100vh - 50px);
       background-color: #18181b;
       display: flex;
       flex-direction: column;
+      z-index: 1000;
     `;
 
-    parent.appendChild(container);
+    document.body.appendChild(container);
     return container;
   }
 }
+
+// Store detector instance globally so message relay can access it
+let globalDetector: TwitchDetector | null = null;
 
 // Initialize detector
 function initialize() {
   console.log('[AllChat Twitch] Content script loaded');
 
-  const detector = new TwitchDetector();
+  globalDetector = new TwitchDetector();
+
+  // Set up message relay IMMEDIATELY (before any async operations)
+  setupGlobalMessageRelay();
 
   // Wait for chat to load
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-      setTimeout(() => detector.init(), 1000);  // Give Twitch time to render
+      setTimeout(() => globalDetector!.init(), 1000);  // Give Twitch time to render
     });
   } else {
-    setTimeout(() => detector.init(), 1000);
+    setTimeout(() => globalDetector!.init(), 1000);
   }
 
   // Watch for React re-renders
-  setupMutationObserver(detector);
+  setupMutationObserver(globalDetector);
 
   // Watch for URL changes (Twitch is an SPA)
-  setupUrlWatcher(detector);
+  setupUrlWatcher(globalDetector);
+}
+
+/**
+ * Set up global message relay from service worker to iframe
+ * This is called immediately when content script loads to avoid missing messages
+ */
+function setupGlobalMessageRelay() {
+  // Listen for messages FROM service worker TO iframes
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log('[AllChat Twitch] Received from service worker:', message.type);
+
+    // Relay CONNECTION_STATE and WS_MESSAGE to all AllChat iframes
+    if (message.type === 'CONNECTION_STATE' || message.type === 'WS_MESSAGE') {
+      const iframes = document.querySelectorAll('#allchat-iframe');
+      console.log(`[AllChat Twitch] Relaying to ${iframes.length} iframe(s)`);
+
+      iframes.forEach((iframe) => {
+        const iframeElement = iframe as HTMLIFrameElement;
+        if (iframeElement.contentWindow) {
+          iframeElement.contentWindow.postMessage(message, '*');
+          console.log('[AllChat Twitch] Relayed message to iframe:', message.type);
+        }
+      });
+    }
+    return false;
+  });
+
+  // Listen for messages FROM iframes requesting current state
+  window.addEventListener('message', async (event) => {
+    if (event.data.type === 'GET_CONNECTION_STATE') {
+      console.log('[AllChat Twitch] iframe requested connection state');
+      // Request from service worker
+      const response = await chrome.runtime.sendMessage({ type: 'GET_CONNECTION_STATE' });
+      if (response.success && event.source) {
+        // Send back to the iframe that requested it
+        (event.source as Window).postMessage({
+          type: 'CONNECTION_STATE',
+          data: response.data
+        }, '*');
+        console.log('[AllChat Twitch] Sent current connection state to iframe:', response.data);
+      }
+    }
+  });
+
+  console.log('[AllChat Twitch] Global message relay set up');
 }
 
 /**
@@ -116,6 +190,14 @@ function setupMutationObserver(detector: TwitchDetector) {
       reinitTimeout = setTimeout(() => {
         detector.init();
       }, 500);
+    }
+
+    // If AllChat exists but native chat is visible, hide it again
+    if (allchatExists && nativeExists) {
+      const nativeColumn = document.querySelector('.right-column:not(#allchat-container)') as HTMLElement;
+      if (nativeColumn && nativeColumn.style.display !== 'none') {
+        detector.hideNativeChat();
+      }
     }
   });
 

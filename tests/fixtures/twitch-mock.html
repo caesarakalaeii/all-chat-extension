@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mock Twitch Stream</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      background: #0e0e10;
+      color: #efeff1;
+    }
+    .twitch-layout {
+      display: flex;
+      height: 100vh;
+    }
+    .stream-container {
+      flex: 1;
+      background: #18181b;
+      padding: 20px;
+    }
+    .right-column {
+      width: 340px;
+      background: #1f1f23;
+    }
+    .stream-chat {
+      height: 100%;
+      padding: 10px;
+    }
+    .chat-room {
+      border: 1px solid #2c2c34;
+      border-radius: 4px;
+      padding: 10px;
+    }
+    .video-player {
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="twitch-layout">
+    <div class="stream-container">
+      <div class="video-player">
+        <h1>Mock Twitch Stream - teststreamer</h1>
+      </div>
+      <div class="stream-info">
+        <h2>Test Stream Title</h2>
+        <p>teststreamer</p>
+      </div>
+    </div>
+    <div class="right-column">
+      <div class="stream-chat">
+        <div class="chat-room">
+          <h3>Stream Chat</h3>
+          <div id="chat-messages">
+            <p>Welcome to the chat!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Set Twitch-like window properties for detection
+    window.location.pathname = '/teststreamer';
+  </script>
+</body>
+</html>

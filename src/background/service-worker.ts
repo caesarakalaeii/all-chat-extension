@@ -26,7 +26,7 @@ import {
 
 // WebSocket connection
 let wsConnection: WebSocket | null = null;
-let wsOverlayId: string | null = null;
+let wsStreamerUsername: string | null = null;
 let wsReconnectAttempts = 0;
 const WS_MAX_RECONNECT_ATTEMPTS = 10;
 const WS_RECONNECT_DELAY_MS = 1000; // Base delay, will be multiplied by attempt number
@@ -65,7 +65,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           break;
 
         case 'CONNECT_WEBSOCKET':
-          await connectWebSocket(message.overlayId);
+          await connectWebSocket(message.streamerUsername);
           sendResponse({ success: true });
           break;
 
@@ -100,6 +100,17 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           sendResponse({ success: true });
           break;
 
+        case 'GET_CONNECTION_STATE':
+          sendResponse({
+            success: true,
+            data: {
+              state: currentConnectionState,
+              attempts: wsReconnectAttempts,
+              maxAttempts: WS_MAX_RECONNECT_ATTEMPTS
+            }
+          });
+          break;
+
         default:
           sendResponse({ success: false, error: 'Unknown message type' });
       }
@@ -117,8 +128,10 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
  */
 async function fetchStreamerInfo(username: string): Promise<StreamerInfo> {
   const apiUrl = await getApiGatewayUrl();
+  const fetchUrl = `${apiUrl}/api/v1/auth/streamers/${encodeURIComponent(username)}`;
+  console.log('[AllChat] Fetching streamer info from:', fetchUrl);
 
-  const response = await fetch(`${apiUrl}/api/v1/auth/streamers/${encodeURIComponent(username)}`, {
+  const response = await fetch(fetchUrl, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
@@ -137,35 +150,41 @@ async function fetchStreamerInfo(username: string): Promise<StreamerInfo> {
 }
 
 /**
- * Connect to WebSocket for real-time messages
+ * Connect to viewer WebSocket for real-time messages
+ * Uses /ws/chat/{streamer} endpoint which does NOT trigger YouTube polling
+ * and does not expose the secret overlay ID
  */
-async function connectWebSocket(overlayId: string): Promise<void> {
-  // If already connected to this overlay, do nothing
-  if (wsConnection && wsConnection.readyState === WebSocket.OPEN && wsOverlayId === overlayId) {
-    console.log('[AllChat] Already connected to overlay:', overlayId);
+async function connectWebSocket(streamerUsername: string): Promise<void> {
+  // If already connected to this streamer, do nothing
+  if (wsConnection && wsConnection.readyState === WebSocket.OPEN && wsStreamerUsername === streamerUsername) {
+    console.log('[AllChat] Already connected to streamer:', streamerUsername);
     return;
   }
 
-  // Disconnect from previous overlay if any
+  // Disconnect from previous connection if any
   if (wsConnection) {
     wsConnection.close();
   }
 
   const apiUrl = await getApiGatewayUrl();
   const wsUrl = apiUrl.replace(/^http/, 'ws');
-  const url = `${wsUrl}/ws/overlay/${overlayId}`;
 
-  console.log('[AllChat] Connecting to WebSocket:', url);
+  // Use viewer-specific endpoint (does NOT trigger polling or expose overlay ID)
+  const token = await getViewerToken();
+  const tokenParam = token ? `?token=${token}` : '';
+  const url = `${wsUrl}/ws/chat/${streamerUsername}${tokenParam}`;
+
+  console.log('[AllChat] Connecting to viewer WebSocket:', url);
 
   // Broadcast connecting state
   const state = wsReconnectAttempts > 0 ? 'reconnecting' : 'connecting';
   broadcastConnectionState(state);
 
   wsConnection = new WebSocket(url);
-  wsOverlayId = overlayId;
+  wsStreamerUsername = streamerUsername;
 
   wsConnection.onopen = () => {
-    console.log('[AllChat] WebSocket connected');
+    console.log('[AllChat] WebSocket connected successfully!');
     wsReconnectAttempts = 0;
     startWebSocketHeartbeat();
 
@@ -188,12 +207,14 @@ async function connectWebSocket(overlayId: string): Promise<void> {
 
   wsConnection.onerror = (error) => {
     console.error('[AllChat] WebSocket error:', error);
+    console.error('[AllChat] WebSocket URL was:', url);
+    console.error('[AllChat] WebSocket readyState:', wsConnection?.readyState);
     chrome.action.setBadgeBackgroundColor({ color: '#ff0000' });
     chrome.action.setBadgeText({ text: '✗' });
   };
 
-  wsConnection.onclose = () => {
-    console.log('[AllChat] WebSocket closed');
+  wsConnection.onclose = (event) => {
+    console.log('[AllChat] WebSocket closed - Code:', event.code, 'Reason:', event.reason, 'Clean:', event.wasClean);
     stopWebSocketHeartbeat();
     chrome.action.setBadgeBackgroundColor({ color: '#888888' });
     chrome.action.setBadgeText({ text: '' });
@@ -216,8 +237,8 @@ async function connectWebSocket(overlayId: string): Promise<void> {
       });
 
       reconnectTimeoutId = setTimeout(() => {
-        if (wsOverlayId) {
-          connectWebSocket(wsOverlayId);
+        if (wsStreamerUsername) {
+          connectWebSocket(wsStreamerUsername);
         }
       }, delay);
     } else {
@@ -238,7 +259,7 @@ function disconnectWebSocket(): void {
   if (wsConnection) {
     wsConnection.close();
     wsConnection = null;
-    wsOverlayId = null;
+    wsStreamerUsername = null;
   }
   stopWebSocketHeartbeat();
 
@@ -285,7 +306,10 @@ function stopWebSocketHeartbeat(): void {
 function broadcastConnectionState(state: ConnectionState, details?: any): void {
   currentConnectionState = state;
 
+  console.log('[AllChat] Broadcasting connection state:', state);
+
   chrome.tabs.query({}, (tabs) => {
+    console.log(`[AllChat] Found ${tabs.length} tabs to broadcast to`);
     tabs.forEach((tab) => {
       if (tab.id) {
         chrome.tabs.sendMessage(tab.id, {
@@ -296,8 +320,10 @@ function broadcastConnectionState(state: ConnectionState, details?: any): void {
             maxAttempts: WS_MAX_RECONNECT_ATTEMPTS,
             ...details,
           },
-        }).catch(() => {
-          // Tab may not have content script, ignore error
+        }).then(() => {
+          console.log(`[AllChat] Sent CONNECTION_STATE to tab ${tab.id}`);
+        }).catch((err) => {
+          console.log(`[AllChat] Failed to send to tab ${tab.id}:`, err.message);
         });
       }
     });
@@ -312,13 +338,16 @@ function handleWebSocketMessage(message: any): void {
 
   // Broadcast to all active tabs
   chrome.tabs.query({}, (tabs) => {
+    console.log(`[AllChat] Broadcasting WS_MESSAGE to ${tabs.length} tabs`);
     tabs.forEach((tab) => {
       if (tab.id) {
         chrome.tabs.sendMessage(tab.id, {
           type: 'WS_MESSAGE',
           data: message,
-        }).catch(() => {
-          // Tab may not have content script, ignore error
+        }).then(() => {
+          console.log(`[AllChat] Sent WS_MESSAGE to tab ${tab.id}`);
+        }).catch((err) => {
+          console.log(`[AllChat] Failed to send WS_MESSAGE to tab ${tab.id}:`, err.message);
         });
       }
     });

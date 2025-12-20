@@ -76,8 +76,18 @@ export default function MessageInput({
         body: JSON.stringify(requestBody),
       });
 
-      const data: SendMessageResponse = await response.json();
+      // Try to parse JSON response first (for all status codes)
+      let data: any = null;
+      const contentType = response.headers.get('content-type');
+      if (contentType?.includes('application/json')) {
+        try {
+          data = await response.json();
+        } catch (e) {
+          console.warn('[AllChat MessageInput] Failed to parse response JSON');
+        }
+      }
 
+      // Handle error responses
       if (response.status === 401) {
         // Token expired or invalid
         console.error('[AllChat MessageInput] Authentication error');
@@ -86,16 +96,24 @@ export default function MessageInput({
         return;
       }
 
+      if (response.status === 403) {
+        console.error('[AllChat MessageInput] Forbidden:', data);
+        const errorMsg = data?.error || 'You do not have permission to send messages in this chat.';
+        const reason = data?.reason ? ` Reason: ${data.reason}` : '';
+        setError(errorMsg + reason);
+        return;
+      }
+
       if (response.status === 429) {
         // Rate limited
-        const resetTime = data.reset_time ? new Date(data.reset_time * 1000) : new Date(Date.now() + 60000);
+        const resetTime = data?.reset_time ? new Date(data.reset_time * 1000) : new Date(Date.now() + 60000);
         setRateLimitReset(resetTime);
         setError('Rate limit exceeded. Please wait before sending another message.');
         return;
       }
 
       if (!response.ok) {
-        const errorMsg = data.details || data.error || 'Failed to send message';
+        const errorMsg = data?.details || data?.error || `Failed to send message (${response.status})`;
         throw new Error(errorMsg);
       }
 

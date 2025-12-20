@@ -17,7 +17,6 @@ import MessageInput from './MessageInput';
 import ToastContainer, { Toast } from './Toast';
 
 interface ChatContainerProps {
-  overlayId: string;
   platform: 'twitch' | 'youtube' | 'kick';
   streamer: string;
 }
@@ -31,7 +30,7 @@ interface ConnectionStatus {
   reconnectIn?: number;
 }
 
-export default function ChatContainer({ overlayId, platform, streamer }: ChatContainerProps) {
+export default function ChatContainer({ platform, streamer }: ChatContainerProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
     state: 'connecting',
@@ -41,6 +40,11 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [reconnectCountdown, setReconnectCountdown] = useState<number | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
+
+  // Debug: Log connection status changes
+  useEffect(() => {
+    console.log('[AllChat UI] connectionStatus changed to:', connectionStatus);
+  }, [connectionStatus]);
 
   // Load viewer authentication on mount
   useEffect(() => {
@@ -64,13 +68,20 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
   useEffect(() => {
     console.log('[AllChat UI] Listening for WebSocket messages...');
 
+    // Request current connection state from parent window (content script will relay to service worker)
+    window.parent.postMessage({ type: 'GET_CONNECTION_STATE' }, '*');
+    console.log('[AllChat UI] Requested current connection state');
+
     // Listen for WebSocket messages from service worker
     const handleMessage = async (event: MessageEvent) => {
+      console.log('[AllChat UI] Received message:', event.data.type, event.data);
+
       // Handle connection state updates
       if (event.data.type === 'CONNECTION_STATE') {
         const status: ConnectionStatus = event.data.data;
-        console.log('[AllChat UI] Connection state:', status.state);
+        console.log('[AllChat UI] Connection state:', status.state, 'Full status:', status);
         setConnectionStatus(status);
+        console.log('[AllChat UI] setConnectionStatus called with:', status);
 
         // Start countdown if reconnecting
         if (status.state === 'reconnecting' && status.reconnectIn) {

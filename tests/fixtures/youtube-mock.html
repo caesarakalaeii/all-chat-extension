@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mock YouTube Video</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Roboto, Arial, sans-serif;
+      background: #0f0f0f;
+      color: #fff;
+    }
+    #page-manager {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    #content {
+      display: flex;
+      flex: 1;
+    }
+    #primary {
+      flex: 1;
+      padding: 20px;
+    }
+    #secondary {
+      width: 400px;
+      padding: 20px;
+    }
+    #player-container {
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #chat {
+      border: 1px solid #303030;
+      border-radius: 12px;
+      padding: 10px;
+      height: 500px;
+    }
+    ytd-live-chat-frame {
+      display: block;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div id="page-manager">
+    <div id="content">
+      <div id="primary">
+        <div id="player-container">
+          <h1>Mock YouTube Video - dQw4w9WgXcQ</h1>
+        </div>
+        <div id="info">
+          <h2>Test Video Title</h2>
+          <p>Test Channel</p>
+        </div>
+      </div>
+      <div id="secondary">
+        <div id="chat">
+          <ytd-live-chat-frame>
+            <iframe id="chatframe"></iframe>
+          </ytd-live-chat-frame>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Set YouTube-like window properties
+    window.location.pathname = '/watch';
+    window.location.search = '?v=dQw4w9WgXcQ';
+  </script>
+</body>
+</html>

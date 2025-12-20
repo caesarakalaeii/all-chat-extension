@@ -12,14 +12,14 @@ import './styles.css';
 // Wait for initialization message from parent window
 window.addEventListener('message', (event) => {
   if (event.data.type === 'ALLCHAT_INIT') {
-    const { overlayId, platform, streamer } = event.data;
+    const { platform, streamer } = event.data;
 
-    console.log('[AllChat UI] Initializing with:', { overlayId, platform, streamer });
+    console.log('[AllChat UI] Initializing with:', { platform, streamer });
 
     const root = ReactDOM.createRoot(document.getElementById('root')!);
     root.render(
       <React.StrictMode>
-        <ChatContainer overlayId={overlayId} platform={platform} streamer={streamer} />
+        <ChatContainer platform={platform} streamer={streamer} />
       </React.StrictMode>
     );
   }

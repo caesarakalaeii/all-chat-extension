@@ -8,7 +8,6 @@ export interface StreamerInfo {
   username: string;
   display_name: string;
   platforms: PlatformInfo[];
-  overlay_id: string;
 }
 
 export interface PlatformInfo {
@@ -30,11 +29,12 @@ export interface ViewerInfo {
  */
 export type ExtensionMessage =
   | { type: 'GET_STREAMER_INFO'; username: string }
-  | { type: 'CONNECT_WEBSOCKET'; overlayId: string }
+  | { type: 'CONNECT_WEBSOCKET'; streamerUsername: string }
   | { type: 'DISCONNECT_WEBSOCKET' }
   | { type: 'SEND_CHAT_MESSAGE'; streamerUsername: string; message: string }
   | { type: 'START_AUTH'; platform: 'twitch' | 'youtube'; streamerUsername?: string }
   | { type: 'GET_AUTH_STATUS' }
+  | { type: 'GET_CONNECTION_STATE' }
   | { type: 'LOGOUT' }
   | { type: 'STORE_VIEWER_TOKEN'; token: string };
 

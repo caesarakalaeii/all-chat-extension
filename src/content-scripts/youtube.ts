@@ -78,6 +78,9 @@ function initialize() {
 
   const detector = new YouTubeDetector();
 
+  // Set up message relay IMMEDIATELY (before any async operations)
+  setupGlobalMessageRelay();
+
   // Wait for page to load
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
@@ -89,6 +92,50 @@ function initialize() {
 
   // Watch for URL changes (YouTube is an SPA)
   setupUrlWatcher(detector);
+}
+
+/**
+ * Set up global message relay from service worker to iframe
+ */
+function setupGlobalMessageRelay() {
+  // Listen for messages FROM service worker TO iframes
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log('[AllChat YouTube] Received from service worker:', message.type);
+
+    // Relay CONNECTION_STATE and WS_MESSAGE to all AllChat iframes
+    if (message.type === 'CONNECTION_STATE' || message.type === 'WS_MESSAGE') {
+      const iframes = document.querySelectorAll('#allchat-iframe');
+      console.log(`[AllChat YouTube] Relaying to ${iframes.length} iframe(s)`);
+
+      iframes.forEach((iframe) => {
+        const iframeElement = iframe as HTMLIFrameElement;
+        if (iframeElement.contentWindow) {
+          iframeElement.contentWindow.postMessage(message, '*');
+          console.log('[AllChat YouTube] Relayed message to iframe:', message.type);
+        }
+      });
+    }
+    return false;
+  });
+
+  // Listen for messages FROM iframes requesting current state
+  window.addEventListener('message', async (event) => {
+    if (event.data.type === 'GET_CONNECTION_STATE') {
+      console.log('[AllChat YouTube] iframe requested connection state');
+      // Request from service worker
+      const response = await chrome.runtime.sendMessage({ type: 'GET_CONNECTION_STATE' });
+      if (response.success && event.source) {
+        // Send back to the iframe that requested it
+        (event.source as Window).postMessage({
+          type: 'CONNECTION_STATE',
+          data: response.data
+        }, '*');
+        console.log('[AllChat YouTube] Sent current connection state to iframe:', response.data);
+      }
+    }
+  });
+
+  console.log('[AllChat YouTube] Global message relay set up');
 }
 
 /**

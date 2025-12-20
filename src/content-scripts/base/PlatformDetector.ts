@@ -56,7 +56,7 @@ export abstract class PlatformDetector {
         return;
       }
 
-      console.log(`[AllChat ${this.platform}] Streamer found! Overlay ID: ${streamerInfo.overlay_id}`);
+      console.log(`[AllChat ${this.platform}] Streamer found! Has ${streamerInfo.platforms.length} active platform(s)`);
 
       // Hide native chat and inject All-Chat
       this.hideNativeChat();
@@ -66,10 +66,10 @@ export abstract class PlatformDetector {
         return;
       }
 
-      this.injectAllChatUI(container, streamerInfo.overlay_id, username);
+      this.injectAllChatUI(container, username);
 
-      // Connect WebSocket
-      await this.connectWebSocket(streamerInfo.overlay_id);
+      // Connect to viewer WebSocket (uses streamer username, not overlay ID)
+      await this.connectWebSocket(username);
     } catch (error) {
       console.error(`[AllChat ${this.platform}] Initialization failed:`, error);
     }
@@ -102,13 +102,32 @@ export abstract class PlatformDetector {
   /**
    * Inject All-Chat UI into the page
    */
-  private injectAllChatUI(container: HTMLElement, overlayId: string, streamer: string): void {
+  private injectAllChatUI(container: HTMLElement, streamer: string): void {
+    // Check if iframe already exists - reuse it instead of creating duplicates
+    let iframe = document.getElementById('allchat-iframe') as HTMLIFrameElement;
+
+    if (iframe) {
+      console.log(`[AllChat ${this.platform}] Reusing existing iframe`);
+
+      // Re-send initialization in case it needs updating
+      if (iframe.contentWindow) {
+        iframe.contentWindow.postMessage(
+          {
+            type: 'ALLCHAT_INIT',
+            platform: this.platform,
+            streamer: streamer,
+          },
+          '*'
+        );
+      }
+      return;
+    }
+
     // Create iframe for complete isolation
-    const iframe = document.createElement('iframe');
+    iframe = document.createElement('iframe');
     iframe.id = 'allchat-iframe';
     iframe.src = chrome.runtime.getURL('ui/chat-container.html');
     iframe.style.cssText = 'width: 100%; height: 100%; border: none; background: transparent;';
-    iframe.setAttribute('data-overlay-id', overlayId);
     iframe.setAttribute('data-streamer', streamer);
     iframe.setAttribute('data-platform', this.platform);
 
@@ -119,7 +138,6 @@ export abstract class PlatformDetector {
       iframe.contentWindow?.postMessage(
         {
           type: 'ALLCHAT_INIT',
-          overlayId: overlayId,
           platform: this.platform,
           streamer: streamer,
         },
@@ -127,16 +145,16 @@ export abstract class PlatformDetector {
       );
     });
 
-    console.log(`[AllChat ${this.platform}] UI injected`);
+    console.log(`[AllChat ${this.platform}] UI injected (new iframe created)`);
   }
 
   /**
-   * Connect to WebSocket for real-time messages
+   * Connect to viewer WebSocket for real-time messages
    */
-  private async connectWebSocket(overlayId: string): Promise<void> {
+  private async connectWebSocket(streamerUsername: string): Promise<void> {
     const response: ExtensionResponse = await chrome.runtime.sendMessage({
       type: 'CONNECT_WEBSOCKET',
-      overlayId,
+      streamerUsername,
     } as ExtensionMessage);
 
     if (!response.success) {

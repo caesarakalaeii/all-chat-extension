@@ -94,15 +94,18 @@ export default function MessageInput({
       }
 
       if (!response.ok) {
-        throw new Error(data.details || data.error || 'Failed to send message');
+        const errorMsg = data.details || data.error || 'Failed to send message';
+        throw new Error(errorMsg);
       }
 
       // Success!
       setMessage('');
+      setError(null);
       onSendSuccess?.();
     } catch (err) {
       console.error('[AllChat MessageInput] Error sending message:', err);
-      setError(err instanceof Error ? err.message : 'Failed to send message');
+      const errorMsg = err instanceof Error ? err.message : 'Failed to send message';
+      setError(errorMsg);
     } finally {
       setSending(false);
     }

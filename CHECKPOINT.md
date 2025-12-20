@@ -9,6 +9,8 @@
 
 ## Current Status
 
+### 🚧 Phase 3 In Progress - Polish & Reliability
+
 ### ✅ Phase 2 Complete - Authentication & Message Sending
 
 **What Works:**
@@ -97,11 +99,17 @@
 - ⚠️ **YouTube username extraction** - May fail on some channel formats
 - ⚠️ **YouTube/Kick OAuth** - Only Twitch login implemented (YouTube/Kick need testing)
 
+### Recent Improvements (Phase 3)
+- ✅ **Reconnection UI** - Visual countdown timer and attempt counter
+- ✅ **Connection states** - Connecting, reconnecting, failed states with color coding
+- ✅ **Failed connection banner** - Reload button when max attempts reached
+- ✅ **Auto-reconnection** - Exponential backoff with 10 max attempts
+
 ### Technical Debt
 - ⏳ Message deduplication not implemented
-- ⏳ Reconnection UI missing (works but no visual feedback)
+- ⏳ Error boundary not implemented
 - ⏳ Error telemetry not implemented
-- ⏳ Rate limiting UI not implemented
+- ⏳ Loading states for async operations
 
 ### Browser Compatibility
 - ✅ Chrome 88+ (Manifest V3)
@@ -162,6 +170,36 @@
 5. Frontend posts message back to extension popup
 6. Extension stores JWT and fetches viewer info
 7. Message input becomes available
+
+---
+
+---
+
+## Phase 3: Polish & Testing (In Progress)
+
+### ✅ Completed: Connection Management
+**Goal:** Robust WebSocket reconnection with visual feedback
+
+**Completed:**
+- ✅ Connection state broadcasting from service worker
+- ✅ Real-time status updates (connecting, reconnecting, failed)
+- ✅ Reconnection countdown timer with seconds remaining
+- ✅ Attempt counter showing progress (e.g., [3/10])
+- ✅ Failed connection banner with reload button
+- ✅ Auto-reconnection with exponential backoff (1s, 2s, ..., 10s)
+- ✅ Color-coded indicators (green=connected, yellow=reconnecting, red=failed)
+- ✅ Animated pulse for connecting/reconnecting states
+
+**Connection States:**
+- `connecting`: Initial connection (yellow, pulsing)
+- `connected`: Successfully connected (green)
+- `reconnecting`: Attempting to reconnect (yellow, countdown timer)
+- `disconnected`: Cleanly disconnected (gray)
+- `failed`: All attempts exhausted (red, reload banner)
+
+**Files Modified:**
+- `src/background/service-worker.ts` - Connection state broadcasting
+- `src/ui/components/ChatContainer.tsx` - Reconnection UI
 
 ---
 

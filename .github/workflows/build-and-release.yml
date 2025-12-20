@@ -1,0 +1,143 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Package extension
+        run: npm run package
+
+      - name: Get version from manifest
+        id: get_version
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: allchat-extension-${{ steps.get_version.outputs.version }}
+          path: allchat-extension.zip
+          retention-days: 30
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and package
+        run: npm run package
+
+      - name: Get version
+        id: get_version
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: allchat-extension.zip
+          body: |
+            ## All-Chat Browser Extension ${{ steps.get_version.outputs.version }}
+
+            ### Installation
+
+            #### Chrome/Edge (Manual Installation)
+            1. Download `allchat-extension.zip` below
+            2. Unzip the file
+            3. Open Chrome/Edge and go to `chrome://extensions/` or `edge://extensions/`
+            4. Enable "Developer mode" (toggle in top-right)
+            5. Click "Load unpacked"
+            6. Select the unzipped folder
+
+            #### Requirements
+            - Chrome 88+ or Edge 88+
+            - All-Chat API Gateway running at http://localhost:8080
+
+            ### What's New
+            See [CHECKPOINT.md](https://github.com/caesarakalaeii/all-chat-extension/blob/main/CHECKPOINT.md) for full details.
+
+            ---
+
+            **Note:** This is a development release. For automatic updates, we recommend waiting for the Chrome Web Store release.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Optional: Publish to Chrome Web Store
+  # Uncomment and configure secrets to enable
+  # publish-chrome:
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   if: startsWith(github.ref, 'refs/tags/v')
+  #
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: '20'
+  #         cache: 'npm'
+  #
+  #     - name: Install dependencies
+  #       run: npm ci
+  #
+  #     - name: Build and package
+  #       run: npm run package
+  #
+  #     - name: Publish to Chrome Web Store
+  #       uses: PlasmoHQ/bpp@v3
+  #       with:
+  #         keys: ${{ secrets.SUBMIT_KEYS }}
+  #         artifact: allchat-extension.zip

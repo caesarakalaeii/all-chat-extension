@@ -3,7 +3,7 @@
 Replace native platform chat with All-Chat's unified chat experience.
 
 [![Build Status](https://github.com/caesarakalaeii/all-chat-extension/workflows/Build%20and%20Release/badge.svg)](https://github.com/caesarakalaeii/all-chat-extension/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
 ## ✨ Features
 

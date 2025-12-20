@@ -47,6 +47,8 @@ chrome.runtime.onInstalled.addListener((details) => {
     setSyncStorage(DEFAULT_SETTINGS);
   } else if (details.reason === 'update') {
     console.log('[AllChat] Extension updated to', chrome.runtime.getManifest().version);
+    // Always update API URL on updates to ensure it's correct
+    setSyncStorage({ apiGatewayUrl: DEFAULT_SETTINGS.apiGatewayUrl });
   }
 });
 

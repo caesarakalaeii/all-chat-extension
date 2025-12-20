@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "All-Chat Extension",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Replace native platform chat with unified All-Chat experience",
 
   "browser_specific_settings": {
@@ -20,7 +20,7 @@
     "https://www.twitch.tv/*",
     "https://www.youtube.com/*",
     "http://localhost:8080/*",
-    "https://api.all-chat.io/*"
+    "https://allch.at/*"
   ],
 
   "background": {

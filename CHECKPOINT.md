@@ -9,7 +9,7 @@
 
 ## Current Status
 
-### ✅ Phase 2 (Priority 1) Complete - Enhanced Message Display
+### ✅ Phase 2 Complete - Authentication & Message Sending
 
 **What Works:**
 - ✅ Extension loads in Chrome without errors
@@ -21,6 +21,11 @@
 - ✅ **Emote rendering** - Emotes display as images inline with text
 - ✅ **Badge icons** - Twitch badges fetch and display (sorted correctly)
 - ✅ **User colors** - Username colors match Twitch theme
+- ✅ **OAuth authentication** - Twitch login via popup OAuth flow
+- ✅ **Message sending** - Authenticated viewers can send messages
+- ✅ **Rate limiting** - Visual feedback for rate limits (20/min, 100/hour)
+- ✅ **Token management** - JWT stored in chrome.storage, auto-restore sessions
+- ✅ **Logout functionality** - Clear session and tokens
 - ✅ Graceful fallback when streamer not configured
 - ✅ Extension popup shows status
 - ✅ Chrome storage for settings
@@ -89,9 +94,8 @@
 ## Known Issues & Limitations
 
 ### Current Limitations
-- ⚠️ **Anonymous viewing only** - No authentication implemented yet
-- ⚠️ **No message sending** - Viewer can't send messages yet
 - ⚠️ **YouTube username extraction** - May fail on some channel formats
+- ⚠️ **YouTube/Kick OAuth** - Only Twitch login implemented (YouTube/Kick need testing)
 
 ### Technical Debt
 - ⏳ Message deduplication not implemented
@@ -128,8 +132,41 @@
 
 ---
 
-### Priority 2: OAuth Authentication
+### ✅ Priority 2 Complete: OAuth Authentication
 **Goal:** Allow viewers to log in and send messages
+
+**Completed:**
+- ✅ Implemented Twitch OAuth login flow with popup
+- ✅ JWT token storage in chrome.storage.local
+- ✅ Viewer authentication state management
+- ✅ Message sending with rate limiting feedback
+- ✅ Token expiration handling and auto-logout
+- ✅ Logout functionality
+
+**New Components:**
+- `src/ui/components/LoginPrompt.tsx` - OAuth login UI
+- `src/ui/components/MessageInput.tsx` - Message input with rate limiting
+
+**New Types:**
+- `src/lib/types/viewer.ts` - ViewerInfo, ViewerSession, SendMessage types
+
+**Files Modified:**
+- `src/ui/components/ChatContainer.tsx` - Authentication state + login/logout
+- `frontend/src/app/chat/auth-success/page.tsx` - Extension popup support
+
+**OAuth Flow:**
+1. User clicks "Login with Twitch" in extension
+2. Popup opens to `/api/v1/auth/viewer/twitch/login`
+3. User authenticates on Twitch
+4. Backend redirects to frontend `/chat/auth-success?token=...`
+5. Frontend posts message back to extension popup
+6. Extension stores JWT and fetches viewer info
+7. Message input becomes available
+
+---
+
+### Priority 3: YouTube Improvements (Remaining)
+**Goal:** Reliable username extraction and chat detection
 
 1. **Implement OAuth flow:**
    - Add "Login with Twitch" button in UI
@@ -376,12 +413,12 @@ For now, committing directly to main is fine since it's early development.
 - [x] Messages display in real-time
 - [x] Graceful fallback implemented
 
-**Phase 2 (Current):**
+**Phase 2 (Complete):**
 - [x] Emotes render as images
 - [x] Badges display correctly
 - [x] User colors applied
-- [ ] OAuth login works
-- [ ] Can send messages (authenticated)
+- [x] OAuth login works
+- [x] Can send messages (authenticated)
 
 **Phase 3 (Polish):**
 - [ ] Error handling comprehensive

@@ -9,6 +9,10 @@ import ReactDOM from 'react-dom/client';
 import ChatContainer from './components/ChatContainer';
 import './styles.css';
 
+// Create root once and reuse it
+let root: ReactDOM.Root | null = null;
+let initialized = false;
+
 // Wait for initialization message from parent window
 window.addEventListener('message', (event) => {
   if (event.data.type === 'ALLCHAT_INIT') {
@@ -16,12 +20,20 @@ window.addEventListener('message', (event) => {
 
     console.log('[AllChat UI] Initializing with:', { platform, streamer });
 
-    const root = ReactDOM.createRoot(document.getElementById('root')!);
+    // Only create root once
+    if (!root) {
+      console.log('[AllChat UI] Creating React root');
+      root = ReactDOM.createRoot(document.getElementById('root')!);
+    } else {
+      console.log('[AllChat UI] Reusing existing React root');
+    }
+
+    // Render (or re-render with new props)
     root.render(
-      <React.StrictMode>
-        <ChatContainer platform={platform} streamer={streamer} />
-      </React.StrictMode>
+      <ChatContainer platform={platform} streamer={streamer} />
     );
+
+    initialized = true;
   }
 });
 

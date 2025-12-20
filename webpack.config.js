@@ -59,7 +59,8 @@ module.exports = (env, argv) => {
     new HtmlWebpackPlugin({
       template: './src/ui/chat-container.html',
       filename: 'ui/chat-container.html',
-      chunks: ['ui/chat-bundle']
+      chunks: ['ui/chat-bundle'],
+      inject: false  // Don't inject scripts - template already has them
     }),
     new HtmlWebpackPlugin({
       template: './src/popup/popup.html',

@@ -20,12 +20,24 @@ interface ChatContainerProps {
   streamer: string;
 }
 
+type ConnectionState = 'connected' | 'connecting' | 'reconnecting' | 'disconnected' | 'failed';
+
+interface ConnectionStatus {
+  state: ConnectionState;
+  attempts?: number;
+  maxAttempts?: number;
+  reconnectIn?: number;
+}
+
 export default function ChatContainer({ overlayId, platform, streamer }: ChatContainerProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [connected, setConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
+    state: 'connecting',
+  });
   const [viewerToken, setViewerToken] = useState<string | null>(null);
   const [viewerInfo, setViewerInfo] = useState<ViewerInfo | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
+  const [reconnectCountdown, setReconnectCountdown] = useState<number | null>(null);
 
   // Load viewer authentication on mount
   useEffect(() => {
@@ -51,13 +63,27 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
 
     // Listen for WebSocket messages from service worker
     const handleMessage = async (event: MessageEvent) => {
+      // Handle connection state updates
+      if (event.data.type === 'CONNECTION_STATE') {
+        const status: ConnectionStatus = event.data.data;
+        console.log('[AllChat UI] Connection state:', status.state);
+        setConnectionStatus(status);
+
+        // Start countdown if reconnecting
+        if (status.state === 'reconnecting' && status.reconnectIn) {
+          setReconnectCountdown(Math.ceil(status.reconnectIn / 1000));
+        } else {
+          setReconnectCountdown(null);
+        }
+        return;
+      }
+
       // Messages come through parent window from content script
       if (event.data.type === 'WS_MESSAGE') {
         const wsMessage = event.data.data;
 
         if (wsMessage.type === 'connected') {
           console.log('[AllChat UI] Connected to overlay:', wsMessage.data.overlay_id);
-          setConnected(true);
         } else if (wsMessage.type === 'chat_message') {
           console.log('[AllChat UI] Received chat message');
 
@@ -98,6 +124,17 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
       window.removeEventListener('message', handleMessage);
     };
   }, []);
+
+  // Countdown timer for reconnection
+  useEffect(() => {
+    if (reconnectCountdown === null || reconnectCountdown <= 0) return;
+
+    const timer = setTimeout(() => {
+      setReconnectCountdown((prev) => (prev && prev > 0 ? prev - 1 : null));
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [reconnectCountdown]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -191,19 +228,57 @@ export default function ChatContainer({ overlayId, platform, streamer }: ChatCon
               </button>
             </div>
           )}
-          {connected ? (
+          {connectionStatus.state === 'connected' ? (
             <span className="text-xs text-green-400 flex items-center gap-1">
               <span className="w-2 h-2 bg-green-400 rounded-full"></span>
               Connected
             </span>
-          ) : (
+          ) : connectionStatus.state === 'connecting' ? (
+            <span className="text-xs text-yellow-400 flex items-center gap-1">
+              <span className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></span>
+              Connecting
+            </span>
+          ) : connectionStatus.state === 'reconnecting' ? (
+            <span className="text-xs text-yellow-400 flex items-center gap-1">
+              <span className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></span>
+              Reconnecting
+              {reconnectCountdown !== null && reconnectCountdown > 0 && (
+                <span className="text-gray-500">({reconnectCountdown}s)</span>
+              )}
+              {connectionStatus.attempts && connectionStatus.maxAttempts && (
+                <span className="text-gray-500">
+                  [{connectionStatus.attempts}/{connectionStatus.maxAttempts}]
+                </span>
+              )}
+            </span>
+          ) : connectionStatus.state === 'failed' ? (
             <span className="text-xs text-red-400 flex items-center gap-1">
               <span className="w-2 h-2 bg-red-400 rounded-full"></span>
+              Failed
+            </span>
+          ) : (
+            <span className="text-xs text-gray-400 flex items-center gap-1">
+              <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
               Disconnected
             </span>
           )}
         </div>
       </div>
+
+      {/* Connection Failed Banner */}
+      {connectionStatus.state === 'failed' && (
+        <div className="px-3 py-2 bg-red-900/50 border-b border-red-700 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-red-200">Connection failed after {connectionStatus.maxAttempts} attempts</span>
+          </div>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-3 py-1 bg-red-700 hover:bg-red-600 text-white text-xs rounded transition-colors"
+          >
+            Reload Page
+          </button>
+        </div>
+      )}
 
       {/* Messages */}
       <div id="messages-container" className="flex-1 overflow-y-auto p-3 space-y-2">

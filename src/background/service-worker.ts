@@ -31,6 +31,11 @@ let wsReconnectAttempts = 0;
 const WS_MAX_RECONNECT_ATTEMPTS = 10;
 const WS_RECONNECT_DELAY_MS = 1000; // Base delay, will be multiplied by attempt number
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+let reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+// Connection states
+type ConnectionState = 'connected' | 'connecting' | 'reconnecting' | 'disconnected' | 'failed';
+let currentConnectionState: ConnectionState = 'disconnected';
 
 /**
  * Extension installation handler
@@ -150,6 +155,10 @@ async function connectWebSocket(overlayId: string): Promise<void> {
 
   console.log('[AllChat] Connecting to WebSocket:', url);
 
+  // Broadcast connecting state
+  const state = wsReconnectAttempts > 0 ? 'reconnecting' : 'connecting';
+  broadcastConnectionState(state);
+
   wsConnection = new WebSocket(url);
   wsOverlayId = overlayId;
 
@@ -161,6 +170,9 @@ async function connectWebSocket(overlayId: string): Promise<void> {
     // Update extension badge
     chrome.action.setBadgeBackgroundColor({ color: '#00ff00' });
     chrome.action.setBadgeText({ text: '✓' });
+
+    // Broadcast connected state
+    broadcastConnectionState('connected');
   };
 
   wsConnection.onmessage = (event) => {
@@ -184,13 +196,24 @@ async function connectWebSocket(overlayId: string): Promise<void> {
     chrome.action.setBadgeBackgroundColor({ color: '#888888' });
     chrome.action.setBadgeText({ text: '' });
 
+    // Clear any pending reconnect timeout
+    if (reconnectTimeoutId) {
+      clearTimeout(reconnectTimeoutId);
+      reconnectTimeoutId = null;
+    }
+
     // Attempt reconnection
     if (wsReconnectAttempts < WS_MAX_RECONNECT_ATTEMPTS) {
       wsReconnectAttempts++;
       const delay = WS_RECONNECT_DELAY_MS * wsReconnectAttempts;
       console.log(`[AllChat] Reconnecting in ${delay}ms (attempt ${wsReconnectAttempts}/${WS_MAX_RECONNECT_ATTEMPTS})`);
 
-      setTimeout(() => {
+      // Broadcast reconnecting state with countdown
+      broadcastConnectionState('reconnecting', {
+        reconnectIn: delay,
+      });
+
+      reconnectTimeoutId = setTimeout(() => {
         if (wsOverlayId) {
           connectWebSocket(wsOverlayId);
         }
@@ -199,6 +222,9 @@ async function connectWebSocket(overlayId: string): Promise<void> {
       console.error('[AllChat] Max reconnection attempts reached');
       chrome.action.setBadgeBackgroundColor({ color: '#ff0000' });
       chrome.action.setBadgeText({ text: '✗' });
+
+      // Broadcast failed state
+      broadcastConnectionState('failed');
     }
   };
 }
@@ -213,6 +239,16 @@ function disconnectWebSocket(): void {
     wsOverlayId = null;
   }
   stopWebSocketHeartbeat();
+
+  // Clear reconnect timeout
+  if (reconnectTimeoutId) {
+    clearTimeout(reconnectTimeoutId);
+    reconnectTimeoutId = null;
+  }
+
+  // Reset state
+  wsReconnectAttempts = 0;
+  broadcastConnectionState('disconnected');
 }
 
 /**
@@ -239,6 +275,31 @@ function stopWebSocketHeartbeat(): void {
     clearInterval(heartbeatInterval);
     heartbeatInterval = null;
   }
+}
+
+/**
+ * Broadcast connection state to all tabs
+ */
+function broadcastConnectionState(state: ConnectionState, details?: any): void {
+  currentConnectionState = state;
+
+  chrome.tabs.query({}, (tabs) => {
+    tabs.forEach((tab) => {
+      if (tab.id) {
+        chrome.tabs.sendMessage(tab.id, {
+          type: 'CONNECTION_STATE',
+          data: {
+            state,
+            attempts: wsReconnectAttempts,
+            maxAttempts: WS_MAX_RECONNECT_ATTEMPTS,
+            ...details,
+          },
+        }).catch(() => {
+          // Tab may not have content script, ignore error
+        });
+      }
+    });
+  });
 }
 
 /**

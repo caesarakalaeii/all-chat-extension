@@ -225,6 +225,23 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
       reconnectTimeoutId = null;
     }
 
+    // Check if this is likely a "not public for viewers" error
+    // WebSocket closes immediately (code 1006) when streamer not found or not public
+    const isNotPublicError = event.code === 1006 && wsReconnectAttempts === 0;
+
+    if (isNotPublicError) {
+      console.error('[AllChat] Overlay may not be public for viewers or streamer not found');
+      chrome.action.setBadgeBackgroundColor({ color: '#ff9900' });
+      chrome.action.setBadgeText({ text: '!' });
+
+      // Broadcast failed state with specific error
+      broadcastConnectionState('failed', {
+        error: 'OVERLAY_NOT_PUBLIC',
+        message: `${wsStreamerUsername} has not enabled "Public for Viewers" on their overlay. They need to enable this setting at allch.at`
+      });
+      return;
+    }
+
     // Attempt reconnection
     if (wsReconnectAttempts < WS_MAX_RECONNECT_ATTEMPTS) {
       wsReconnectAttempts++;

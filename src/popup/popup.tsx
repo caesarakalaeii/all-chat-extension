@@ -33,7 +33,7 @@ function Popup() {
       </div>
 
       <div className="footer">
-        <a href="https://github.com/yourusername/all-chat" target="_blank" className="link">
+        <a href="https://github.com/caesarakalaeii/all-chat" target="_blank" className="link">
           Learn more about All-Chat
         </a>
         <div style={{ marginTop: '8px' }}>

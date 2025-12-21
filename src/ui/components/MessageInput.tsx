@@ -98,6 +98,8 @@ export default function MessageInput({
 
       if (response.status === 403) {
         console.error('[AllChat MessageInput] Forbidden:', data);
+        // Clear session on 403 - likely invalid/expired token
+        onAuthError?.();
         const errorMsg = data?.error || 'You do not have permission to send messages in this chat.';
         const reason = data?.reason ? ` Reason: ${data.reason}` : '';
         setError(errorMsg + reason);

@@ -48,6 +48,7 @@ export type ExtensionResponse =
 export interface LocalStorage {
   viewer_jwt_token?: string;
   viewer_info?: ViewerInfo;
+  ui_collapsed?: boolean;
 }
 
 export interface SyncStorage {

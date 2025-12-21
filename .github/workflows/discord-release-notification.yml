@@ -15,7 +15,8 @@ jobs:
           color: "9146ff"
           username: "All-Chat Release Bot"
           avatar_url: "https://allch.at/assets/icon-128.png"
-          content: "**New All-Chat Extension Release!** 🎉"
+          content: "**New All-Chat Extension Release!** 🎉\n\n${{ github.event.release.name }}"
           footer_title: "All-Chat Extension"
           footer_icon_url: "https://allch.at/assets/icon-32.png"
           footer_timestamp: true
+          max_description: 2000

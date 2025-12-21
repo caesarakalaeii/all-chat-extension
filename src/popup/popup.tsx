@@ -40,13 +40,15 @@ function Popup() {
       const affectedTabs = await chrome.tabs.query({
         url: ['https://www.twitch.tv/*', 'https://www.youtube.com/*']
       });
-      affectedTabs.forEach(tab => {
-        if (tab.id) {
-          chrome.tabs.reload(tab.id).catch((err) => {
-            console.error('Failed to reload tab:', err);
-          });
-        }
-      });
+      
+      // Reload all tabs in parallel with proper error handling
+      const reloadPromises = affectedTabs
+        .filter(tab => tab.id)
+        .map(tab => chrome.tabs.reload(tab.id!).catch(err => {
+          console.error('Failed to reload tab:', err);
+        }));
+      
+      await Promise.allSettled(reloadPromises);
     } catch (err) {
       console.error('Failed to save settings:', err);
       // Revert on error

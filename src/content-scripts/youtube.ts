@@ -8,6 +8,9 @@
 import { PlatformDetector } from './base/PlatformDetector';
 import { getSyncStorage } from '../lib/storage';
 
+// Delay for YouTube initialization (ms) - YouTube needs more time to load
+const YOUTUBE_INIT_DELAY = 2000;
+
 class YouTubeDetector extends PlatformDetector {
   platform = 'youtube' as const;
 
@@ -130,10 +133,10 @@ async function initialize() {
   // Wait for page to load
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-      setTimeout(() => globalDetector?.init(), 2000);  // YouTube needs more time
+      setTimeout(() => globalDetector?.init(), YOUTUBE_INIT_DELAY);
     });
   } else {
-    setTimeout(() => globalDetector?.init(), 2000);
+    setTimeout(() => globalDetector?.init(), YOUTUBE_INIT_DELAY);
   }
 
   // Watch for URL changes (YouTube is an SPA)
@@ -203,7 +206,7 @@ function setupUrlWatcher() {
       console.log('[AllChat YouTube] URL changed, re-initializing...');
       // Check if detector still exists (extension might have been disabled)
       if (globalDetector) {
-        setTimeout(() => globalDetector?.init(), 2000);
+        setTimeout(() => globalDetector?.init(), YOUTUBE_INIT_DELAY);
       }
     }
   }).observe(document, { subtree: true, childList: true });

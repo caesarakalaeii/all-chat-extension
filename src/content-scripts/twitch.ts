@@ -8,6 +8,9 @@
 import { PlatformDetector } from './base/PlatformDetector';
 import { getSyncStorage } from '../lib/storage';
 
+// Delay for Twitch initialization (ms) - Give Twitch time to render
+const TWITCH_INIT_DELAY = 1000;
+
 class TwitchDetector extends PlatformDetector {
   platform = 'twitch' as const;
 
@@ -141,10 +144,10 @@ async function initialize() {
   // Wait for chat to load
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-      setTimeout(() => globalDetector?.init(), 1000);  // Give Twitch time to render
+      setTimeout(() => globalDetector?.init(), TWITCH_INIT_DELAY);
     });
   } else {
-    setTimeout(() => globalDetector?.init(), 1000);
+    setTimeout(() => globalDetector?.init(), TWITCH_INIT_DELAY);
   }
 
   // Watch for React re-renders
@@ -298,7 +301,7 @@ function setupUrlWatcher() {
       console.log('[AllChat Twitch] URL changed, re-initializing...');
       // Check if detector still exists (extension might have been disabled)
       if (globalDetector) {
-        setTimeout(() => globalDetector?.init(), 1000);
+        setTimeout(() => globalDetector?.init(), TWITCH_INIT_DELAY);
       }
     }
   }).observe(document, { subtree: true, childList: true });

@@ -6,6 +6,7 @@
  */
 
 import { PlatformDetector } from './base/PlatformDetector';
+import { getSyncStorage } from '../lib/storage';
 
 class TwitchDetector extends PlatformDetector {
   platform = 'twitch' as const;
@@ -68,6 +69,24 @@ class TwitchDetector extends PlatformDetector {
     console.log('[AllChat Twitch] Injected CSS to hide native chat');
   }
 
+  showNativeChat(): void {
+    // Remove the hiding style to restore native chat
+    const style = document.getElementById('allchat-hide-native-style');
+    if (style) {
+      style.remove();
+      console.log('[AllChat Twitch] Removed CSS to show native chat');
+    }
+  }
+
+  removeAllChatUI(): void {
+    // Remove All-Chat container
+    const container = document.getElementById('allchat-container');
+    if (container) {
+      container.remove();
+      console.log('[AllChat Twitch] Removed All-Chat UI');
+    }
+  }
+
   createInjectionPoint(): HTMLElement | null {
     // Find the right column chat container
     const rightColumn = document.querySelector('[class*="right-column"]') ||
@@ -103,9 +122,16 @@ class TwitchDetector extends PlatformDetector {
 let globalDetector: TwitchDetector | null = null;
 
 // Initialize detector
-function initialize() {
+async function initialize() {
   const manifest = chrome.runtime.getManifest();
   console.log(`[AllChat Twitch] Content script loaded - v${manifest.version}`);
+
+  // Check if extension is enabled
+  const settings = await getSyncStorage();
+  if (!settings.extensionEnabled) {
+    console.log('[AllChat Twitch] Extension is disabled, not injecting');
+    return;
+  }
 
   globalDetector = new TwitchDetector();
 
@@ -129,6 +155,29 @@ function initialize() {
 }
 
 /**
+ * Handle extension enable/disable state changes
+ */
+function handleExtensionStateChange(enabled: boolean) {
+  console.log(`[AllChat Twitch] Extension state changed: ${enabled ? 'enabled' : 'disabled'}`);
+
+  if (enabled) {
+    // Re-initialize if currently disabled
+    if (!globalDetector) {
+      console.log('[AllChat Twitch] Re-initializing extension');
+      window.location.reload();
+    }
+  } else {
+    // Disable extension: remove UI and restore native chat
+    if (globalDetector) {
+      console.log('[AllChat Twitch] Disabling extension');
+      globalDetector.removeAllChatUI();
+      globalDetector.showNativeChat();
+      globalDetector = null;
+    }
+  }
+}
+
+/**
  * Set up global message relay from service worker to iframe
  * This is called immediately when content script loads to avoid missing messages
  */
@@ -136,6 +185,12 @@ function setupGlobalMessageRelay() {
   // Listen for messages FROM service worker TO iframes
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log('[AllChat Twitch] Received from service worker:', message.type);
+
+    // Handle extension state changes
+    if (message.type === 'EXTENSION_STATE_CHANGED') {
+      handleExtensionStateChange(message.enabled);
+      return false;
+    }
 
     // Relay CONNECTION_STATE and WS_MESSAGE to all AllChat iframes
     if (message.type === 'CONNECTION_STATE' || message.type === 'WS_MESSAGE') {

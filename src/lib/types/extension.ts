@@ -53,6 +53,7 @@ export interface LocalStorage {
 
 export interface SyncStorage {
   apiGatewayUrl: string;
+  extensionEnabled: boolean;
   preferences: {
     autoDetectEnabled: boolean;
     replaceNativeChat: boolean;
@@ -62,6 +63,7 @@ export interface SyncStorage {
 
 export const DEFAULT_SETTINGS: SyncStorage = {
   apiGatewayUrl: API_BASE_URL,
+  extensionEnabled: true,
   preferences: {
     autoDetectEnabled: true,
     replaceNativeChat: true,

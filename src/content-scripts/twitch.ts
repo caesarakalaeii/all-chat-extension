@@ -148,10 +148,10 @@ async function initialize() {
   }
 
   // Watch for React re-renders
-  setupMutationObserver(globalDetector);
+  setupMutationObserver();
 
   // Watch for URL changes (Twitch is an SPA)
-  setupUrlWatcher(globalDetector);
+  setupUrlWatcher();
 }
 
 /**
@@ -242,7 +242,7 @@ function setupGlobalMessageRelay() {
 /**
  * Set up MutationObserver to detect when Twitch re-renders and removes our UI
  */
-function setupMutationObserver(detector: TwitchDetector) {
+function setupMutationObserver() {
   let reinitTimeout: ReturnType<typeof setTimeout> | null = null;
 
   const observer = new MutationObserver(() => {
@@ -288,7 +288,7 @@ function setupMutationObserver(detector: TwitchDetector) {
 /**
  * Watch for URL changes (Twitch uses client-side routing)
  */
-function setupUrlWatcher(detector: TwitchDetector) {
+function setupUrlWatcher() {
   let lastUrl = location.href;
 
   new MutationObserver(() => {

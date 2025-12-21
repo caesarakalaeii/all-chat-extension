@@ -42,7 +42,9 @@ function Popup() {
       });
       affectedTabs.forEach(tab => {
         if (tab.id) {
-          chrome.tabs.reload(tab.id);
+          chrome.tabs.reload(tab.id).catch((err) => {
+            console.error('Failed to reload tab:', err);
+          });
         }
       });
     } catch (err) {

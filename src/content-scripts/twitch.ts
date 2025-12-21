@@ -141,10 +141,10 @@ async function initialize() {
   // Wait for chat to load
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-      setTimeout(() => globalDetector!.init(), 1000);  // Give Twitch time to render
+      setTimeout(() => globalDetector?.init(), 1000);  // Give Twitch time to render
     });
   } else {
-    setTimeout(() => globalDetector!.init(), 1000);
+    setTimeout(() => globalDetector?.init(), 1000);
   }
 
   // Watch for React re-renders
@@ -271,9 +271,7 @@ function setupMutationObserver(detector: TwitchDetector) {
       // Debounce re-initialization
       if (reinitTimeout) clearTimeout(reinitTimeout);
       reinitTimeout = setTimeout(() => {
-        if (globalDetector) {
-          globalDetector.init();
-        }
+        globalDetector?.init();
       }, 500);
     }
 
@@ -305,7 +303,7 @@ function setupUrlWatcher(detector: TwitchDetector) {
       console.log('[AllChat Twitch] URL changed, re-initializing...');
       // Check if detector still exists (extension might have been disabled)
       if (globalDetector) {
-        setTimeout(() => globalDetector!.init(), 1000);
+        setTimeout(() => globalDetector?.init(), 1000);
       }
     }
   }).observe(document, { subtree: true, childList: true });

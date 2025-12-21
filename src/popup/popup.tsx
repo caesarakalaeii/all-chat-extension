@@ -36,22 +36,10 @@ function Popup() {
     try {
       await setSyncStorage({ extensionEnabled: newState });
       
-      // Notify only affected tabs to update their state
+      // Reload affected tabs to apply changes
       const affectedTabs = await chrome.tabs.query({
         url: ['https://www.twitch.tv/*', 'https://www.youtube.com/*']
       });
-      affectedTabs.forEach(tab => {
-        if (tab.id) {
-          chrome.tabs.sendMessage(tab.id, {
-            type: 'EXTENSION_STATE_CHANGED',
-            enabled: newState
-          }).catch(() => {
-            // Ignore errors for tabs without content script
-          });
-        }
-      });
-
-      // Reload affected tabs to apply changes
       affectedTabs.forEach(tab => {
         if (tab.id) {
           chrome.tabs.reload(tab.id);

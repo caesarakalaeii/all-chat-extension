@@ -103,7 +103,8 @@ let globalDetector: TwitchDetector | null = null;
 
 // Initialize detector
 function initialize() {
-  console.log('[AllChat Twitch] Content script loaded');
+  const manifest = chrome.runtime.getManifest();
+  console.log(`[AllChat Twitch] Content script loaded - v${manifest.version}`);
 
   globalDetector = new TwitchDetector();
 

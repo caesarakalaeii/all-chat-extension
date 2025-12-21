@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "All-Chat Extension",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Replace native platform chat with unified All-Chat experience",
 
   "browser_specific_settings": {

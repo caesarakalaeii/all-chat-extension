@@ -6,6 +6,7 @@
  */
 
 import { PlatformDetector } from './base/PlatformDetector';
+import { getSyncStorage } from '../lib/storage';
 
 class YouTubeDetector extends PlatformDetector {
   platform = 'youtube' as const;
@@ -49,6 +50,23 @@ class YouTubeDetector extends PlatformDetector {
     }
   }
 
+  showNativeChat(): void {
+    const chatFrame = document.querySelector('[data-allchat-hidden="true"]');
+    if (chatFrame) {
+      (chatFrame as HTMLElement).style.display = '';
+      (chatFrame as HTMLElement).removeAttribute('data-allchat-hidden');
+      console.log('[AllChat YouTube] Removed hiding to show native chat');
+    }
+  }
+
+  removeAllChatUI(): void {
+    const container = document.getElementById('allchat-container');
+    if (container) {
+      container.remove();
+      console.log('[AllChat YouTube] Removed All-Chat UI');
+    }
+  }
+
   createInjectionPoint(): HTMLElement | null {
     const nativeChat = this.findChatContainer();
     if (!nativeChat) return null;
@@ -72,11 +90,44 @@ class YouTubeDetector extends PlatformDetector {
   }
 }
 
+// Store detector instance globally
+let globalDetector: YouTubeDetector | null = null;
+
+/**
+ * Handle extension enable/disable state changes
+ */
+function handleExtensionStateChange(enabled: boolean) {
+  console.log(`[AllChat YouTube] Extension state changed: ${enabled ? 'enabled' : 'disabled'}`);
+
+  if (enabled) {
+    // Re-initialize if currently disabled
+    if (!globalDetector) {
+      console.log('[AllChat YouTube] Re-initializing extension');
+      window.location.reload();
+    }
+  } else {
+    // Disable extension: remove UI and restore native chat
+    if (globalDetector) {
+      console.log('[AllChat YouTube] Disabling extension');
+      globalDetector.removeAllChatUI();
+      globalDetector.showNativeChat();
+      globalDetector = null;
+    }
+  }
+}
+
 // Initialize detector
-function initialize() {
+async function initialize() {
   console.log('[AllChat YouTube] Content script loaded');
 
-  const detector = new YouTubeDetector();
+  // Check if extension is enabled
+  const settings = await getSyncStorage();
+  if (!settings.extensionEnabled) {
+    console.log('[AllChat YouTube] Extension is disabled, not injecting');
+    return;
+  }
+
+  globalDetector = new YouTubeDetector();
 
   // Set up message relay IMMEDIATELY (before any async operations)
   setupGlobalMessageRelay();
@@ -84,14 +135,14 @@ function initialize() {
   // Wait for page to load
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-      setTimeout(() => detector.init(), 2000);  // YouTube needs more time
+      setTimeout(() => globalDetector!.init(), 2000);  // YouTube needs more time
     });
   } else {
-    setTimeout(() => detector.init(), 2000);
+    setTimeout(() => globalDetector!.init(), 2000);
   }
 
   // Watch for URL changes (YouTube is an SPA)
-  setupUrlWatcher(detector);
+  setupUrlWatcher(globalDetector);
 }
 
 /**
@@ -101,6 +152,12 @@ function setupGlobalMessageRelay() {
   // Listen for messages FROM service worker TO iframes
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log('[AllChat YouTube] Received from service worker:', message.type);
+
+    // Handle extension state changes
+    if (message.type === 'EXTENSION_STATE_CHANGED') {
+      handleExtensionStateChange(message.enabled);
+      return false;
+    }
 
     // Relay CONNECTION_STATE and WS_MESSAGE to all AllChat iframes
     if (message.type === 'CONNECTION_STATE' || message.type === 'WS_MESSAGE') {

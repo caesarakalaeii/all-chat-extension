@@ -4,17 +4,92 @@
  * Simple popup showing extension status and settings
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
+import { getSyncStorage, setSyncStorage } from '../lib/storage';
 
 function Popup() {
+  const [isEnabled, setIsEnabled] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load extension enabled state on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const settings = await getSyncStorage();
+        setIsEnabled(settings.extensionEnabled);
+      } catch (err) {
+        console.error('Failed to load settings:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadSettings();
+  }, []);
+
+  // Handle toggle change
+  const handleToggle = async () => {
+    const newState = !isEnabled;
+    setIsEnabled(newState);
+
+    try {
+      await setSyncStorage({ extensionEnabled: newState });
+      
+      // Notify all tabs to update their state
+      const tabs = await chrome.tabs.query({});
+      tabs.forEach(tab => {
+        if (tab.id) {
+          chrome.tabs.sendMessage(tab.id, {
+            type: 'EXTENSION_STATE_CHANGED',
+            enabled: newState
+          }).catch(() => {
+            // Ignore errors for tabs without content script
+          });
+        }
+      });
+
+      // Reload affected tabs to apply changes
+      const affectedTabs = await chrome.tabs.query({
+        url: ['https://www.twitch.tv/*', 'https://www.youtube.com/*']
+      });
+      affectedTabs.forEach(tab => {
+        if (tab.id) {
+          chrome.tabs.reload(tab.id);
+        }
+      });
+    } catch (err) {
+      console.error('Failed to save settings:', err);
+      // Revert on error
+      setIsEnabled(!newState);
+    }
+  };
+
   return (
     <div>
       <h1>All-Chat Extension</h1>
 
       <div className="status">
-        <div className="status-label">Status</div>
-        <div className="status-value">✓ Extension Active</div>
+        <div className="status-label">Extension Status</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="status-value">
+            {isLoading ? '⏳ Loading...' : isEnabled ? '✓ Enabled' : '✕ Disabled'}
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={isEnabled}
+              onChange={handleToggle}
+              disabled={isLoading}
+            />
+            <span className="toggle-slider"></span>
+          </label>
+        </div>
+        {!isEnabled && (
+          <p style={{ fontSize: '11px', color: '#adadb8', marginTop: '8px' }}>
+            Native chat will be shown. Re-enable to use All-Chat.
+          </p>
+        )}
       </div>
 
       <div className="status">

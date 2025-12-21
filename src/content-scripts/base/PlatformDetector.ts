@@ -103,39 +103,8 @@ export abstract class PlatformDetector {
    * Inject All-Chat UI into the page
    */
   private injectAllChatUI(container: HTMLElement, streamer: string): void {
-    // Check if iframe already exists - reuse it instead of creating duplicates
-    let iframe = document.getElementById('allchat-iframe') as HTMLIFrameElement;
-
-    if (iframe) {
-      console.log(`[AllChat ${this.platform}] Reusing existing iframe`);
-
-      // Re-send initialization - wait for iframe to be ready
-      const sendInit = () => {
-        if (iframe.contentWindow) {
-          iframe.contentWindow.postMessage(
-            {
-              type: 'ALLCHAT_INIT',
-              platform: this.platform,
-              streamer: streamer,
-            },
-            '*'
-          );
-          console.log(`[AllChat ${this.platform}] Sent ALLCHAT_INIT to existing iframe`);
-        }
-      };
-
-      // If iframe is already loaded, send immediately, otherwise wait for load
-      if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
-        sendInit();
-      } else {
-        iframe.addEventListener('load', sendInit, { once: true });
-      }
-      return;
-    }
-
     // Create iframe for complete isolation
-    iframe = document.createElement('iframe');
-    iframe.id = 'allchat-iframe';
+    const iframe = document.createElement('iframe');
     iframe.src = chrome.runtime.getURL('ui/chat-container.html');
     iframe.style.cssText = 'width: 100%; height: 100%; border: none; background: transparent;';
     iframe.setAttribute('data-streamer', streamer);
@@ -155,7 +124,7 @@ export abstract class PlatformDetector {
       );
     });
 
-    console.log(`[AllChat ${this.platform}] UI injected (new iframe created)`);
+    console.log(`[AllChat ${this.platform}] UI injected`);
   }
 
   /**

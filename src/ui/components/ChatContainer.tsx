@@ -28,6 +28,8 @@ interface ConnectionStatus {
   attempts?: number;
   maxAttempts?: number;
   reconnectIn?: number;
+  error?: string;
+  message?: string;
 }
 
 export default function ChatContainer({ platform, streamer }: ChatContainerProps) {
@@ -303,16 +305,38 @@ export default function ChatContainer({ platform, streamer }: ChatContainerProps
 
       {/* Connection Failed Banner */}
       {connectionStatus.state === 'failed' && (
-        <div className="px-3 py-2 bg-red-900/50 border-b border-red-700 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-red-200">Connection failed after {connectionStatus.maxAttempts} attempts</span>
+        <div className={`px-3 py-2 border-b flex flex-col gap-2 ${
+          connectionStatus.error === 'OVERLAY_NOT_PUBLIC'
+            ? 'bg-orange-900/50 border-orange-700'
+            : 'bg-red-900/50 border-red-700'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              {connectionStatus.error === 'OVERLAY_NOT_PUBLIC' ? (
+                <>
+                  <div className="text-sm font-medium text-orange-200">Overlay Not Public</div>
+                  <div className="text-xs text-orange-300 mt-1">
+                    {connectionStatus.message || `${streamer} needs to enable "Public for Viewers" in their overlay settings`}
+                  </div>
+                  <div className="text-xs text-orange-400 mt-1">
+                    They can do this at <a href="https://allch.at" target="_blank" rel="noopener noreferrer" className="underline">allch.at</a>
+                  </div>
+                </>
+              ) : (
+                <span className="text-sm text-red-200">Connection failed after {connectionStatus.maxAttempts} attempts</span>
+              )}
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className={`px-3 py-1 text-white text-xs rounded transition-colors ${
+                connectionStatus.error === 'OVERLAY_NOT_PUBLIC'
+                  ? 'bg-orange-700 hover:bg-orange-600'
+                  : 'bg-red-700 hover:bg-red-600'
+              }`}
+            >
+              Retry
+            </button>
           </div>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-3 py-1 bg-red-700 hover:bg-red-600 text-white text-xs rounded transition-colors"
-          >
-            Reload Page
-          </button>
         </div>
       )}
 

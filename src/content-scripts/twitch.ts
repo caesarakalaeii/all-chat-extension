@@ -160,13 +160,7 @@ async function initialize() {
 function handleExtensionStateChange(enabled: boolean) {
   console.log(`[AllChat Twitch] Extension state changed: ${enabled ? 'enabled' : 'disabled'}`);
 
-  if (enabled) {
-    // Re-initialize if currently disabled
-    if (!globalDetector) {
-      console.log('[AllChat Twitch] Re-initializing extension');
-      window.location.reload();
-    }
-  } else {
+  if (!enabled) {
     // Disable extension: remove UI and restore native chat
     if (globalDetector) {
       console.log('[AllChat Twitch] Disabling extension');
@@ -175,6 +169,7 @@ function handleExtensionStateChange(enabled: boolean) {
       globalDetector = null;
     }
   }
+  // Note: Re-enabling is handled by page reload from popup
 }
 
 /**

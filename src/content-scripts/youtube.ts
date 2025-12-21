@@ -135,10 +135,10 @@ async function initialize() {
   // Wait for page to load
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-      setTimeout(() => globalDetector!.init(), 2000);  // YouTube needs more time
+      setTimeout(() => globalDetector?.init(), 2000);  // YouTube needs more time
     });
   } else {
-    setTimeout(() => globalDetector!.init(), 2000);
+    setTimeout(() => globalDetector?.init(), 2000);
   }
 
   // Watch for URL changes (YouTube is an SPA)
@@ -208,7 +208,7 @@ function setupUrlWatcher(detector: YouTubeDetector) {
       console.log('[AllChat YouTube] URL changed, re-initializing...');
       // Check if detector still exists (extension might have been disabled)
       if (globalDetector) {
-        setTimeout(() => globalDetector!.init(), 2000);
+        setTimeout(() => globalDetector?.init(), 2000);
       }
     }
   }).observe(document, { subtree: true, childList: true });

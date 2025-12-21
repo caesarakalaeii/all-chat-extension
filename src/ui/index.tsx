@@ -37,4 +37,5 @@ window.addEventListener('message', (event) => {
   }
 });
 
-console.log('[AllChat UI] Waiting for initialization...');
+const manifest = chrome.runtime.getManifest();
+console.log(`[AllChat UI] Waiting for initialization... v${manifest.version}`);

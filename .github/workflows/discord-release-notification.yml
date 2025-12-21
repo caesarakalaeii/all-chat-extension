@@ -1,0 +1,21 @@
+name: Discord Release Notification
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  notify-discord:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Discord Notification
+        uses: SethCohen/github-releases-to-discord@v1.15.1
+        with:
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          color: "9146ff"
+          username: "All-Chat Release Bot"
+          avatar_url: "https://allch.at/assets/icon-128.png"
+          content: "**New All-Chat Extension Release!** 🎉"
+          footer_title: "All-Chat Extension"
+          footer_icon_url: "https://allch.at/assets/icon-32.png"
+          footer_timestamp: true

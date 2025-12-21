@@ -206,7 +206,10 @@ function setupUrlWatcher(detector: YouTubeDetector) {
     if (url !== lastUrl) {
       lastUrl = url;
       console.log('[AllChat YouTube] URL changed, re-initializing...');
-      setTimeout(() => detector.init(), 2000);
+      // Check if detector still exists (extension might have been disabled)
+      if (globalDetector) {
+        setTimeout(() => globalDetector!.init(), 2000);
+      }
     }
   }).observe(document, { subtree: true, childList: true });
 }

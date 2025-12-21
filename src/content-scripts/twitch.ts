@@ -265,21 +265,23 @@ function setupMutationObserver(detector: TwitchDetector) {
     const nativeExists = document.querySelector('.chat-scrollable-area__message-container');
 
     // If our container was removed but native chat exists, re-inject
-    if (!allchatExists && nativeExists) {
+    if (!allchatExists && nativeExists && globalDetector) {
       console.log('[AllChat Twitch] Detected re-render, re-injecting...');
 
       // Debounce re-initialization
       if (reinitTimeout) clearTimeout(reinitTimeout);
       reinitTimeout = setTimeout(() => {
-        detector.init();
+        if (globalDetector) {
+          globalDetector.init();
+        }
       }, 500);
     }
 
     // If AllChat exists but native chat is visible, hide it again
-    if (allchatExists && nativeExists) {
+    if (allchatExists && nativeExists && globalDetector) {
       const nativeColumn = document.querySelector('.right-column:not(#allchat-container)') as HTMLElement;
       if (nativeColumn && nativeColumn.style.display !== 'none') {
-        detector.hideNativeChat();
+        globalDetector.hideNativeChat();
       }
     }
   });
@@ -301,7 +303,10 @@ function setupUrlWatcher(detector: TwitchDetector) {
     if (url !== lastUrl) {
       lastUrl = url;
       console.log('[AllChat Twitch] URL changed, re-initializing...');
-      setTimeout(() => detector.init(), 1000);
+      // Check if detector still exists (extension might have been disabled)
+      if (globalDetector) {
+        setTimeout(() => globalDetector!.init(), 1000);
+      }
     }
   }).observe(document, { subtree: true, childList: true });
 }

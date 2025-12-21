@@ -137,7 +137,7 @@ async function initialize() {
   }
 
   // Watch for URL changes (YouTube is an SPA)
-  setupUrlWatcher(globalDetector);
+  setupUrlWatcher();
 }
 
 /**
@@ -193,7 +193,7 @@ function setupGlobalMessageRelay() {
 /**
  * Watch for URL changes
  */
-function setupUrlWatcher(detector: YouTubeDetector) {
+function setupUrlWatcher() {
   let lastUrl = location.href;
 
   new MutationObserver(() => {

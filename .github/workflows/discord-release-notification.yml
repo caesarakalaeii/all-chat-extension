@@ -9,14 +9,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Send Discord Notification
-        uses: SethCohen/github-releases-to-discord@v1.15.1
-        with:
-          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          color: "9146ff"
-          username: "All-Chat Release Bot"
-          avatar_url: "https://allch.at/assets/icon-128.png"
-          content: "**New All-Chat Extension Release!** 🎉\n\n${{ github.event.release.name }}"
-          footer_title: "All-Chat Extension"
-          footer_icon_url: "https://allch.at/assets/icon-32.png"
-          footer_timestamp: true
-          max_description: 2000
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+        run: |
+          # Truncate release body to 1900 characters (Discord limit is 2000)
+          BODY_TRUNCATED="${RELEASE_BODY:0:1900}"
+
+          curl -H "Content-Type: application/json" \
+               -d "{
+                 \"username\": \"All-Chat Release Bot\",
+                 \"avatar_url\": \"https://allch.at/assets/icon-128.png\",
+                 \"content\": \"**🎉 New All-Chat Extension Release!**\",
+                 \"embeds\": [{
+                   \"title\": \"${RELEASE_NAME}\",
+                   \"description\": \"${BODY_TRUNCATED}\",
+                   \"url\": \"${RELEASE_URL}\",
+                   \"color\": 9522943,
+                   \"footer\": {
+                     \"text\": \"All-Chat Extension • ${RELEASE_TAG}\",
+                     \"icon_url\": \"https://allch.at/assets/icon-32.png\"
+                   },
+                   \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+                 }]
+               }" \
+               "${WEBHOOK_URL}"

@@ -99,7 +99,7 @@ export default function ChatContainer({ platform, streamer }: ChatContainerProps
         const wsMessage = event.data.data;
 
         if (wsMessage.type === 'connected') {
-          console.log('[AllChat UI] Connected to overlay:', wsMessage.data.overlay_id);
+          console.log('[AllChat UI] Connected to chat stream');
         } else if (wsMessage.type === 'chat_message') {
           console.log('[AllChat UI] Received chat message');
 

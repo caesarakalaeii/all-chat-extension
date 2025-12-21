@@ -42,13 +42,14 @@ export default function ChatContainer({ platform, streamer }: ChatContainerProps
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [reconnectCountdown, setReconnectCountdown] = useState<number | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Debug: Log connection status changes
   useEffect(() => {
     console.log('[AllChat UI] connectionStatus changed to:', connectionStatus);
   }, [connectionStatus]);
 
-  // Load viewer authentication on mount
+  // Load viewer authentication and collapse state on mount
   useEffect(() => {
     const loadAuth = async () => {
       try {
@@ -56,6 +57,15 @@ export default function ChatContainer({ platform, streamer }: ChatContainerProps
         if (storage.viewer_jwt_token && storage.viewer_info) {
           setViewerToken(storage.viewer_jwt_token);
           setViewerInfo(storage.viewer_info);
+        }
+        // Load collapse state from localStorage
+        if (storage.ui_collapsed !== undefined) {
+          setIsCollapsed(storage.ui_collapsed);
+          // Notify parent window of initial collapsed state
+          window.parent.postMessage({
+            type: 'UI_COLLAPSED',
+            collapsed: storage.ui_collapsed
+          }, '*');
         }
       } catch (err) {
         console.error('[AllChat UI] Failed to load auth:', err);
@@ -245,172 +255,216 @@ export default function ChatContainer({ platform, streamer }: ChatContainerProps
     addToast('Message sent', 'success', 2000);
   };
 
+  // Toggle collapse state and persist it
+  const toggleCollapse = async () => {
+    const newCollapsedState = !isCollapsed;
+    setIsCollapsed(newCollapsedState);
+
+    // Notify parent window to resize container
+    window.parent.postMessage({
+      type: 'UI_COLLAPSED',
+      collapsed: newCollapsedState
+    }, '*');
+
+    try {
+      await setLocalStorage({ ui_collapsed: newCollapsedState });
+    } catch (err) {
+      console.error('[AllChat UI] Failed to save collapse state:', err);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col bg-gray-900">
       {/* Header */}
       <div className="px-3 py-2 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-white">All-Chat</span>
-          <span className="text-xs text-gray-400">• {platform}</span>
-        </div>
-        <div className="flex items-center gap-3">
-          {viewerInfo && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400">{viewerInfo.display_name || viewerInfo.username}</span>
-              <button
-                onClick={handleLogout}
-                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                title="Logout"
-              >
-                Logout
-              </button>
-            </div>
-          )}
-          {connectionStatus.state === 'connected' ? (
-            <span className="text-xs text-green-400 flex items-center gap-1">
-              <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-              Connected
-            </span>
-          ) : connectionStatus.state === 'connecting' ? (
-            <span className="text-xs text-yellow-400 flex items-center gap-1">
-              <span className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></span>
-              Connecting
-            </span>
-          ) : connectionStatus.state === 'reconnecting' ? (
-            <span className="text-xs text-yellow-400 flex items-center gap-1">
-              <span className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></span>
-              Reconnecting
-              {reconnectCountdown !== null && reconnectCountdown > 0 && (
-                <span className="text-gray-500">({reconnectCountdown}s)</span>
-              )}
-              {connectionStatus.attempts && connectionStatus.maxAttempts && (
-                <span className="text-gray-500">
-                  [{connectionStatus.attempts}/{connectionStatus.maxAttempts}]
-                </span>
-              )}
-            </span>
-          ) : connectionStatus.state === 'failed' ? (
-            <span className="text-xs text-red-400 flex items-center gap-1">
-              <span className="w-2 h-2 bg-red-400 rounded-full"></span>
-              Failed
-            </span>
-          ) : (
-            <span className="text-xs text-gray-400 flex items-center gap-1">
-              <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
-              Disconnected
-            </span>
+          <button
+            onClick={toggleCollapse}
+            className="text-gray-400 hover:text-gray-200 transition-colors"
+            title={isCollapsed ? "Expand" : "Collapse"}
+            aria-label={isCollapsed ? "Expand" : "Collapse"}
+          >
+            <svg
+              className="w-4 h-4 transition-transform"
+              style={{ transform: isCollapsed ? 'rotate(90deg)' : 'rotate(0deg)' }}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+          {!isCollapsed && (
+            <>
+              <span className="text-sm font-semibold text-white">All-Chat</span>
+              <span className="text-xs text-gray-400">• {platform}</span>
+            </>
           )}
         </div>
-      </div>
-
-      {/* Connection Failed Banner */}
-      {connectionStatus.state === 'failed' && (
-        <div className={`px-3 py-2 border-b flex flex-col gap-2 ${
-          connectionStatus.error === 'OVERLAY_NOT_PUBLIC'
-            ? 'bg-orange-900/50 border-orange-700'
-            : 'bg-red-900/50 border-red-700'
-        }`}>
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              {connectionStatus.error === 'OVERLAY_NOT_PUBLIC' ? (
-                <>
-                  <div className="text-sm font-medium text-orange-200">Overlay Not Public</div>
-                  <div className="text-xs text-orange-300 mt-1">
-                    {connectionStatus.message || `${streamer} needs to enable "Public for Viewers" in their overlay settings`}
-                  </div>
-                  <div className="text-xs text-orange-400 mt-1">
-                    They can do this at <a href="https://allch.at" target="_blank" rel="noopener noreferrer" className="underline">allch.at</a>
-                  </div>
-                </>
-              ) : (
-                <span className="text-sm text-red-200">Connection failed after {connectionStatus.maxAttempts} attempts</span>
-              )}
-            </div>
-            <button
-              onClick={() => window.location.reload()}
-              className={`px-3 py-1 text-white text-xs rounded transition-colors ${
-                connectionStatus.error === 'OVERLAY_NOT_PUBLIC'
-                  ? 'bg-orange-700 hover:bg-orange-600'
-                  : 'bg-red-700 hover:bg-red-600'
-              }`}
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Messages */}
-      <div id="messages-container" className="flex-1 overflow-y-auto p-3 space-y-2">
-        {messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center text-gray-500">
-              <p className="text-sm">Waiting for messages...</p>
-              <p className="text-xs mt-1">Messages from {streamer} will appear here</p>
-            </div>
-          </div>
-        ) : (
-          messages.map((message) => (
-            <div
-              key={message.id}
-              className={`message-enter p-2 rounded bg-gray-800/50 platform-${message.platform}`}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                {/* Badges */}
-                {message.user.badges?.map((badge, idx) => (
-                  badge.icon_url ? (
-                    <img
-                      key={idx}
-                      src={badge.icon_url}
-                      alt={badge.name}
-                      className="w-4 h-4"
-                      title={`${badge.name} (${badge.version})`}
-                    />
-                  ) : null
-                ))}
-
-                {/* Username */}
-                <span
-                  className="font-semibold text-sm"
-                  style={{ color: message.user.color || '#fff' }}
+        {!isCollapsed && (
+          <div className="flex items-center gap-3">
+            {viewerInfo && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">{viewerInfo.display_name || viewerInfo.username}</span>
+                <button
+                  onClick={handleLogout}
+                  className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                  title="Logout"
                 >
-                  {message.user.display_name || message.user.username}
-                </span>
-
-                {/* Platform indicator */}
-                <span className="text-xs text-gray-500">({message.platform})</span>
+                  Logout
+                </button>
               </div>
-
-              {/* Message text with emotes */}
-              <div className="text-sm text-gray-200">
-                {renderMessageContent(message)}
-              </div>
-            </div>
-          ))
+            )}
+            {connectionStatus.state === 'connected' ? (
+              <span className="text-xs text-green-400 flex items-center gap-1">
+                <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+                Connected
+              </span>
+            ) : connectionStatus.state === 'connecting' ? (
+              <span className="text-xs text-yellow-400 flex items-center gap-1">
+                <span className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></span>
+                Connecting
+              </span>
+            ) : connectionStatus.state === 'reconnecting' ? (
+              <span className="text-xs text-yellow-400 flex items-center gap-1">
+                <span className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></span>
+                Reconnecting
+                {reconnectCountdown !== null && reconnectCountdown > 0 && (
+                  <span className="text-gray-500">({reconnectCountdown}s)</span>
+                )}
+                {connectionStatus.attempts && connectionStatus.maxAttempts && (
+                  <span className="text-gray-500">
+                    [{connectionStatus.attempts}/{connectionStatus.maxAttempts}]
+                  </span>
+                )}
+              </span>
+            ) : connectionStatus.state === 'failed' ? (
+              <span className="text-xs text-red-400 flex items-center gap-1">
+                <span className="w-2 h-2 bg-red-400 rounded-full"></span>
+                Failed
+              </span>
+            ) : (
+              <span className="text-xs text-gray-400 flex items-center gap-1">
+                <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
+                Disconnected
+              </span>
+            )}
+          </div>
         )}
       </div>
 
-      {/* Footer / Message Input */}
-      {loadingAuth ? (
-        <div className="px-3 py-3 bg-gray-800 border-t border-gray-700 text-center">
-          <p className="text-xs text-gray-500">Loading...</p>
-        </div>
-      ) : viewerToken ? (
-        <MessageInput
-          platform={platform}
-          streamer={streamer}
-          token={viewerToken}
-          onAuthError={handleAuthError}
-          onSendSuccess={handleMessageSent}
-        />
-      ) : (
-        <div className="border-t border-gray-700">
-          <LoginPrompt
-            platform={platform}
-            streamer={streamer}
-            onLogin={handleLogin}
-          />
-        </div>
+      {!isCollapsed && (
+        <>
+          {/* Connection Failed Banner */}
+          {connectionStatus.state === 'failed' && (
+            <div className={`px-3 py-2 border-b flex flex-col gap-2 ${
+              connectionStatus.error === 'OVERLAY_NOT_PUBLIC'
+                ? 'bg-orange-900/50 border-orange-700'
+                : 'bg-red-900/50 border-red-700'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  {connectionStatus.error === 'OVERLAY_NOT_PUBLIC' ? (
+                    <>
+                      <div className="text-sm font-medium text-orange-200">Overlay Not Public</div>
+                      <div className="text-xs text-orange-300 mt-1">
+                        {connectionStatus.message || `${streamer} needs to enable "Public for Viewers" in their overlay settings`}
+                      </div>
+                      <div className="text-xs text-orange-400 mt-1">
+                        They can do this at <a href="https://allch.at" target="_blank" rel="noopener noreferrer" className="underline">allch.at</a>
+                      </div>
+                    </>
+                  ) : (
+                    <span className="text-sm text-red-200">Connection failed after {connectionStatus.maxAttempts} attempts</span>
+                  )}
+                </div>
+                <button
+                  onClick={() => window.location.reload()}
+                  className={`px-3 py-1 text-white text-xs rounded transition-colors ${
+                    connectionStatus.error === 'OVERLAY_NOT_PUBLIC'
+                      ? 'bg-orange-700 hover:bg-orange-600'
+                      : 'bg-red-700 hover:bg-red-600'
+                  }`}
+                >
+                  Retry
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Messages */}
+          <div id="messages-container" className="flex-1 overflow-y-auto p-3 space-y-2">
+            {messages.length === 0 ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center text-gray-500">
+                  <p className="text-sm">Waiting for messages...</p>
+                  <p className="text-xs mt-1">Messages from {streamer} will appear here</p>
+                </div>
+              </div>
+            ) : (
+              messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`message-enter p-2 rounded bg-gray-800/50 platform-${message.platform}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    {/* Badges */}
+                    {message.user.badges?.map((badge, idx) => (
+                      badge.icon_url ? (
+                        <img
+                          key={idx}
+                          src={badge.icon_url}
+                          alt={badge.name}
+                          className="w-4 h-4"
+                          title={`${badge.name} (${badge.version})`}
+                        />
+                      ) : null
+                    ))}
+
+                    {/* Username */}
+                    <span
+                      className="font-semibold text-sm"
+                      style={{ color: message.user.color || '#fff' }}
+                    >
+                      {message.user.display_name || message.user.username}
+                    </span>
+
+                    {/* Platform indicator */}
+                    <span className="text-xs text-gray-500">({message.platform})</span>
+                  </div>
+
+                  {/* Message text with emotes */}
+                  <div className="text-sm text-gray-200">
+                    {renderMessageContent(message)}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Footer / Message Input */}
+          {loadingAuth ? (
+            <div className="px-3 py-3 bg-gray-800 border-t border-gray-700 text-center">
+              <p className="text-xs text-gray-500">Loading...</p>
+            </div>
+          ) : viewerToken ? (
+            <MessageInput
+              platform={platform}
+              streamer={streamer}
+              token={viewerToken}
+              onAuthError={handleAuthError}
+              onSendSuccess={handleMessageSent}
+            />
+          ) : (
+            <div className="border-t border-gray-700">
+              <LoginPrompt
+                platform={platform}
+                streamer={streamer}
+                onLogin={handleLogin}
+              />
+            </div>
+          )}
+        </>
       )}
 
       {/* Toast Notifications */}

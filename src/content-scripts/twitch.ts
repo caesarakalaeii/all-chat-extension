@@ -91,6 +91,7 @@ class TwitchDetector extends PlatformDetector {
       display: flex;
       flex-direction: column;
       z-index: 1000;
+      transition: width 0.3s ease, height 0.3s ease, top 0.3s ease;
     `;
 
     document.body.appendChild(container);
@@ -152,7 +153,7 @@ function setupGlobalMessageRelay() {
     return false;
   });
 
-  // Listen for messages FROM iframes requesting current state
+  // Listen for messages FROM iframes requesting current state or UI changes
   window.addEventListener('message', async (event) => {
     if (event.data.type === 'GET_CONNECTION_STATE') {
       console.log('[AllChat Twitch] iframe requested connection state');
@@ -165,6 +166,22 @@ function setupGlobalMessageRelay() {
           data: response.data
         }, '*');
         console.log('[AllChat Twitch] Sent current connection state to iframe:', response.data);
+      }
+    } else if (event.data.type === 'UI_COLLAPSED') {
+      // Handle collapse/expand UI change
+      const container = document.getElementById('allchat-container');
+      if (container) {
+        const collapsed = event.data.collapsed;
+        if (collapsed) {
+          container.style.width = '48px';
+          container.style.height = '48px';
+          container.style.top = '60px';
+        } else {
+          container.style.width = '340px';
+          container.style.height = 'calc(100vh - 50px)';
+          container.style.top = '50px';
+        }
+        console.log(`[AllChat Twitch] Container ${collapsed ? 'collapsed' : 'expanded'}`);
       }
     }
   });
@@ -179,6 +196,16 @@ function setupMutationObserver(detector: TwitchDetector) {
   let reinitTimeout: ReturnType<typeof setTimeout> | null = null;
 
   const observer = new MutationObserver(() => {
+    // Remove duplicate containers if they exist
+    const allchatContainers = document.querySelectorAll('#allchat-container');
+    if (allchatContainers.length > 1) {
+      console.log(`[AllChat Twitch] Found ${allchatContainers.length} containers, removing duplicates...`);
+      // Keep only the first one, remove the rest
+      for (let i = 1; i < allchatContainers.length; i++) {
+        allchatContainers[i].remove();
+      }
+    }
+
     const allchatExists = document.getElementById('allchat-container');
     const nativeExists = document.querySelector('.chat-scrollable-area__message-container');
 

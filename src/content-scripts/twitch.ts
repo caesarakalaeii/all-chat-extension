@@ -137,7 +137,7 @@ function setupGlobalMessageRelay() {
 
     // Relay CONNECTION_STATE and WS_MESSAGE to all AllChat iframes
     if (message.type === 'CONNECTION_STATE' || message.type === 'WS_MESSAGE') {
-      const iframes = document.querySelectorAll('#allchat-iframe');
+      const iframes = document.querySelectorAll('iframe[data-platform="twitch"][data-streamer]');
       console.log(`[AllChat Twitch] Relaying to ${iframes.length} iframe(s)`);
 
       iframes.forEach((iframe) => {

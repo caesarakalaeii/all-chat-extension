@@ -6,6 +6,10 @@
  */
 
 import { PlatformDetector } from './base/PlatformDetector';
+import { getSyncStorage } from '../lib/storage';
+
+// Delay for Twitch initialization (ms) - Give Twitch time to render
+const TWITCH_INIT_DELAY = 1000;
 
 class TwitchDetector extends PlatformDetector {
   platform = 'twitch' as const;
@@ -68,6 +72,24 @@ class TwitchDetector extends PlatformDetector {
     console.log('[AllChat Twitch] Injected CSS to hide native chat');
   }
 
+  showNativeChat(): void {
+    // Remove the hiding style to restore native chat
+    const style = document.getElementById('allchat-hide-native-style');
+    if (style) {
+      style.remove();
+      console.log('[AllChat Twitch] Removed CSS to show native chat');
+    }
+  }
+
+  removeAllChatUI(): void {
+    // Remove All-Chat container
+    const container = document.getElementById('allchat-container');
+    if (container) {
+      container.remove();
+      console.log('[AllChat Twitch] Removed All-Chat UI');
+    }
+  }
+
   createInjectionPoint(): HTMLElement | null {
     // Find the right column chat container
     const rightColumn = document.querySelector('[class*="right-column"]') ||
@@ -103,9 +125,16 @@ class TwitchDetector extends PlatformDetector {
 let globalDetector: TwitchDetector | null = null;
 
 // Initialize detector
-function initialize() {
+async function initialize() {
   const manifest = chrome.runtime.getManifest();
   console.log(`[AllChat Twitch] Content script loaded - v${manifest.version}`);
+
+  // Check if extension is enabled
+  const settings = await getSyncStorage();
+  if (!settings.extensionEnabled) {
+    console.log('[AllChat Twitch] Extension is disabled, not injecting');
+    return;
+  }
 
   globalDetector = new TwitchDetector();
 
@@ -115,17 +144,35 @@ function initialize() {
   // Wait for chat to load
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-      setTimeout(() => globalDetector!.init(), 1000);  // Give Twitch time to render
+      setTimeout(() => globalDetector?.init(), TWITCH_INIT_DELAY);
     });
   } else {
-    setTimeout(() => globalDetector!.init(), 1000);
+    setTimeout(() => globalDetector?.init(), TWITCH_INIT_DELAY);
   }
 
   // Watch for React re-renders
-  setupMutationObserver(globalDetector);
+  setupMutationObserver();
 
   // Watch for URL changes (Twitch is an SPA)
-  setupUrlWatcher(globalDetector);
+  setupUrlWatcher();
+}
+
+/**
+ * Handle extension enable/disable state changes
+ */
+function handleExtensionStateChange(enabled: boolean) {
+  console.log(`[AllChat Twitch] Extension state changed: ${enabled ? 'enabled' : 'disabled'}`);
+
+  if (!enabled) {
+    // Disable extension: remove UI and restore native chat
+    if (globalDetector) {
+      console.log('[AllChat Twitch] Disabling extension');
+      globalDetector.removeAllChatUI();
+      globalDetector.showNativeChat();
+      globalDetector = null;
+    }
+  }
+  // Note: Re-enabling is handled by page reload from popup
 }
 
 /**
@@ -136,6 +183,12 @@ function setupGlobalMessageRelay() {
   // Listen for messages FROM service worker TO iframes
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log('[AllChat Twitch] Received from service worker:', message.type);
+
+    // Handle extension state changes
+    if (message.type === 'EXTENSION_STATE_CHANGED') {
+      handleExtensionStateChange(message.enabled);
+      return false;
+    }
 
     // Relay CONNECTION_STATE and WS_MESSAGE to all AllChat iframes
     if (message.type === 'CONNECTION_STATE' || message.type === 'WS_MESSAGE') {
@@ -192,7 +245,7 @@ function setupGlobalMessageRelay() {
 /**
  * Set up MutationObserver to detect when Twitch re-renders and removes our UI
  */
-function setupMutationObserver(detector: TwitchDetector) {
+function setupMutationObserver() {
   let reinitTimeout: ReturnType<typeof setTimeout> | null = null;
 
   const observer = new MutationObserver(() => {
@@ -210,21 +263,21 @@ function setupMutationObserver(detector: TwitchDetector) {
     const nativeExists = document.querySelector('.chat-scrollable-area__message-container');
 
     // If our container was removed but native chat exists, re-inject
-    if (!allchatExists && nativeExists) {
+    if (!allchatExists && nativeExists && globalDetector) {
       console.log('[AllChat Twitch] Detected re-render, re-injecting...');
 
       // Debounce re-initialization
       if (reinitTimeout) clearTimeout(reinitTimeout);
       reinitTimeout = setTimeout(() => {
-        detector.init();
+        globalDetector?.init();
       }, 500);
     }
 
     // If AllChat exists but native chat is visible, hide it again
-    if (allchatExists && nativeExists) {
+    if (allchatExists && nativeExists && globalDetector) {
       const nativeColumn = document.querySelector('.right-column:not(#allchat-container)') as HTMLElement;
       if (nativeColumn && nativeColumn.style.display !== 'none') {
-        detector.hideNativeChat();
+        globalDetector.hideNativeChat();
       }
     }
   });
@@ -238,7 +291,7 @@ function setupMutationObserver(detector: TwitchDetector) {
 /**
  * Watch for URL changes (Twitch uses client-side routing)
  */
-function setupUrlWatcher(detector: TwitchDetector) {
+function setupUrlWatcher() {
   let lastUrl = location.href;
 
   new MutationObserver(() => {
@@ -246,7 +299,10 @@ function setupUrlWatcher(detector: TwitchDetector) {
     if (url !== lastUrl) {
       lastUrl = url;
       console.log('[AllChat Twitch] URL changed, re-initializing...');
-      setTimeout(() => detector.init(), 1000);
+      // Check if detector still exists (extension might have been disabled)
+      if (globalDetector) {
+        setTimeout(() => globalDetector?.init(), TWITCH_INIT_DELAY);
+      }
     }
   }).observe(document, { subtree: true, childList: true });
 }

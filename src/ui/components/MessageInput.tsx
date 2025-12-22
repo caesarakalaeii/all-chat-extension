@@ -77,9 +77,10 @@ export default function MessageInput({
     const lastSpaceIndex = textBeforeCursor.lastIndexOf(' ');
     const currentWord = textBeforeCursor.slice(lastSpaceIndex + 1);
 
-    // Only show autocomplete if word starts with a letter and has at least 2 chars
-    if (currentWord.length >= 2 && /^[a-zA-Z]/.test(currentWord)) {
-      const suggestions = filterEmotes(emotes, currentWord, 10);
+    // Only show autocomplete if word starts with : and has at least 1 char after it
+    if (currentWord.startsWith(':') && currentWord.length >= 2) {
+      const searchQuery = currentWord.slice(1); // Remove the leading ':'
+      const suggestions = filterEmotes(emotes, searchQuery, 10);
       setAutocompleteSuggestions(suggestions);
       setShowAutocomplete(suggestions.length > 0);
       setSelectedSuggestionIndex(0);

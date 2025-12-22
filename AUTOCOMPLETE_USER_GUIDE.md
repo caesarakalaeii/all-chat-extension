@@ -8,12 +8,12 @@ The All-Chat extension now supports **7TV emote autocomplete**! This feature hel
 
 ### Basic Usage
 
-1. **Start typing** an emote name in the chat input box
+1. **Type a colon (`:`)** followed by the emote name in the chat input box
    ```
-   Type: "pog"
+   Type: ":pog"
    ```
 
-2. **Autocomplete appears** after 2+ characters
+2. **Autocomplete appears** after typing `:` and at least 1 character
    - A dropdown shows below the input
    - Up to 10 matching emotes are displayed
    - Each emote shows:
@@ -30,7 +30,7 @@ The All-Chat extension now supports **7TV emote autocomplete**! This feature hel
      * Click any suggestion to select it
 
 4. **Emote is inserted** into your message
-   - Full emote name replaces what you typed
+   - Full emote name replaces `:text` that you typed
    - Space is added after the emote
    - Cursor moves to the right position
    - You can continue typing
@@ -38,8 +38,8 @@ The All-Chat extension now supports **7TV emote autocomplete**! This feature hel
 ### Example Flow
 
 ```
-User types: "Hello pog"
-             ^cursor here, dropdown shows: Pog, Poggers, PogChamp, etc.
+User types: "Hello :pog"
+                    ^cursor here, dropdown shows: Pog, Poggers, PogChamp, etc.
 
 User presses ↓ then Enter
 
@@ -51,8 +51,8 @@ Result: "Hello Poggers "
 
 ### Smart Detection
 - Autocomplete only triggers when:
-  * You've typed 2+ letters
-  * The word starts with a letter (a-z, A-Z)
+  * You type a colon (`:`) character
+  * Followed by at least 1 letter
   * There are matching emotes
 
 ### Keyboard Shortcuts
@@ -88,8 +88,7 @@ Currently supports **7TV only**. BTTV and FFZ emotes may be added in future upda
 ## Troubleshooting
 
 ### Autocomplete not showing?
-- Make sure you've typed at least 2 letters
-- Check that you started with a letter (not a number or symbol)
+- Make sure you've typed a colon (`:`) followed by at least 1 letter
 - Verify emote exists on 7TV
 - Wait a moment for emotes to load (first time only)
 

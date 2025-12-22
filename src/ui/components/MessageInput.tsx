@@ -105,7 +105,7 @@ export default function MessageInput({
         setSelectedSuggestionIndex((prev) => (prev > 0 ? prev - 1 : 0));
         break;
       case 'Enter':
-        if (showAutocomplete) {
+        if (showAutocomplete && selectedSuggestionIndex < autocompleteSuggestions.length) {
           e.preventDefault();
           selectEmote(autocompleteSuggestions[selectedSuggestionIndex]);
         }

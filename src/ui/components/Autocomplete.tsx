@@ -79,9 +79,6 @@ export default function Autocomplete({
               : 'text-gray-200 hover:bg-gray-700'
           }`}
           onClick={() => onSelect(emote)}
-          onMouseEnter={() => {
-            // Visual feedback on hover (but don't change selectedIndex to avoid conflicts with keyboard nav)
-          }}
         >
           <img
             src={emote.url}

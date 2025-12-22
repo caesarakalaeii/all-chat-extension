@@ -1,7 +1,7 @@
 /**
  * Multi-Provider Emote Autocomplete Service
  * 
- * Fetches and manages emotes from 7TV, BTTV, FFZ, and Twitch for autocomplete functionality
+ * Fetches and manages emotes from 7TV, BTTV, and FFZ for autocomplete functionality
  */
 
 // API constants
@@ -415,8 +415,14 @@ function parseFFZEmotes(emotes: FFZEmote[]): EmoteData[] {
   return emotes.map(emote => {
     // FFZ provides multiple resolutions, use 1x for consistency
     const url = emote.urls['1'] || emote.urls['2'] || emote.urls['4'] || '';
-    // FFZ URLs are protocol-relative, add https:
-    const fullUrl = url.startsWith('//') ? `https:${url}` : url;
+    // FFZ URLs are protocol-relative, add https: and validate domain
+    let fullUrl = url.startsWith('//') ? `https:${url}` : url;
+    
+    // Validate that the URL is from a trusted FFZ domain
+    if (fullUrl && !fullUrl.startsWith('https://cdn.frankerfacez.com/')) {
+      console.warn(`[FFZ] Skipping emote with unexpected URL: ${fullUrl}`);
+      fullUrl = ''; // Use empty string for invalid URLs
+    }
     
     return {
       id: emote.id.toString(),

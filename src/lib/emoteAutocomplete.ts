@@ -4,6 +4,10 @@
  * Fetches and manages 7TV emotes for autocomplete functionality
  */
 
+// 7TV API constants
+const SEVEN_TV_API_BASE = 'https://7tv.io/v3';
+const SEVEN_TV_CDN_BASE = 'https://cdn.7tv.app/emote';
+
 export interface EmoteData {
   id: string;
   name: string;
@@ -55,7 +59,9 @@ export async function fetch7TVEmotes(channelName: string): Promise<EmoteData[]> 
     // Then try to fetch channel-specific emotes
     let channelEmotes: EmoteData[] = [];
     try {
-      const response = await fetch(`https://7tv.io/v3/users/twitch/${channelName}`);
+      // Sanitize channel name for URL
+      const encodedChannelName = encodeURIComponent(channelName);
+      const response = await fetch(`${SEVEN_TV_API_BASE}/users/twitch/${encodedChannelName}`);
       if (response.ok) {
         const data: SevenTVUser = await response.json();
         channelEmotes = parse7TVEmotes(data.emote_set?.emotes || []);
@@ -94,7 +100,7 @@ async function fetchGlobal7TVEmotes(): Promise<EmoteData[]> {
   }
 
   try {
-    const response = await fetch('https://7tv.io/v3/emote-sets/global');
+    const response = await fetch(`${SEVEN_TV_API_BASE}/emote-sets/global`);
     if (!response.ok) {
       return [];
     }
@@ -119,7 +125,7 @@ async function fetchGlobal7TVEmotes(): Promise<EmoteData[]> {
 function parse7TVEmotes(emotes: SevenTVEmote[]): EmoteData[] {
   return emotes.map(emote => {
     // Construct emote URL
-    const baseUrl = emote.data?.host?.url || 'https://cdn.7tv.app/emote';
+    const baseUrl = emote.data?.host?.url || SEVEN_TV_CDN_BASE;
     const fileName = emote.data?.host?.files?.[0]?.name || '1x.webp';
     const url = `${baseUrl}/${emote.id}/${fileName}`;
     

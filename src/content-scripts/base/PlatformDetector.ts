@@ -29,6 +29,16 @@ export abstract class PlatformDetector {
   abstract hideNativeChat(): void;
 
   /**
+   * Show native chat element (restore visibility)
+   */
+  abstract showNativeChat(): void;
+
+  /**
+   * Remove All-Chat UI from the page
+   */
+  abstract removeAllChatUI(): void;
+
+  /**
    * Create injection point for All-Chat UI
    */
   abstract createInjectionPoint(): HTMLElement | null;

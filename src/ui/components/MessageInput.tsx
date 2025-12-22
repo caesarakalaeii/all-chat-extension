@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { SendMessageRequest, SendMessageResponse } from '../../lib/types/viewer';
 import { API_BASE_URL } from '../../config';
+import { fetch7TVEmotes, filterEmotes, type EmoteData } from '../../lib/emoteAutocomplete';
+import Autocomplete from './Autocomplete';
 
 interface MessageInputProps {
   platform: 'twitch' | 'youtube' | 'kick' | 'tiktok';
@@ -25,11 +27,32 @@ export default function MessageInput({
   const [error, setError] = useState<string | null>(null);
   const [rateLimitReset, setRateLimitReset] = useState<Date | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  // Autocomplete state
+  const [emotes, setEmotes] = useState<EmoteData[]>([]);
+  const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<EmoteData[]>([]);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
 
   // Auto-focus input
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Fetch 7TV emotes on mount
+  useEffect(() => {
+    const loadEmotes = async () => {
+      try {
+        const fetchedEmotes = await fetch7TVEmotes(streamer);
+        setEmotes(fetchedEmotes);
+        console.log(`[AllChat Autocomplete] Loaded ${fetchedEmotes.length} 7TV emotes for ${streamer}`);
+      } catch (err) {
+        console.error('[AllChat Autocomplete] Failed to load emotes:', err);
+      }
+    };
+
+    loadEmotes();
+  }, [streamer]);
 
   // Update rate limit countdown
   useEffect(() => {
@@ -45,6 +68,78 @@ export default function MessageInput({
 
     return () => clearInterval(interval);
   }, [rateLimitReset]);
+
+  // Handle autocomplete
+  useEffect(() => {
+    // Find the word being typed (after last space or at beginning)
+    const cursorPosition = inputRef.current?.selectionStart || message.length;
+    const textBeforeCursor = message.slice(0, cursorPosition);
+    const lastSpaceIndex = textBeforeCursor.lastIndexOf(' ');
+    const currentWord = textBeforeCursor.slice(lastSpaceIndex + 1);
+
+    // Only show autocomplete if word starts with a letter and has at least 2 chars
+    if (currentWord.length >= 2 && /^[a-zA-Z]/.test(currentWord)) {
+      const suggestions = filterEmotes(emotes, currentWord, 10);
+      setAutocompleteSuggestions(suggestions);
+      setShowAutocomplete(suggestions.length > 0);
+      setSelectedSuggestionIndex(0);
+    } else {
+      setShowAutocomplete(false);
+      setAutocompleteSuggestions([]);
+    }
+  }, [message, emotes]);
+
+  // Handle keyboard navigation for autocomplete
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showAutocomplete || autocompleteSuggestions.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedSuggestionIndex((prev) =>
+          prev < autocompleteSuggestions.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedSuggestionIndex((prev) => (prev > 0 ? prev - 1 : 0));
+        break;
+      case 'Enter':
+        if (showAutocomplete) {
+          e.preventDefault();
+          selectEmote(autocompleteSuggestions[selectedSuggestionIndex]);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setShowAutocomplete(false);
+        break;
+    }
+  };
+
+  // Insert selected emote into message
+  const selectEmote = (emote: EmoteData) => {
+    const cursorPosition = inputRef.current?.selectionStart || message.length;
+    const textBeforeCursor = message.slice(0, cursorPosition);
+    const textAfterCursor = message.slice(cursorPosition);
+    const lastSpaceIndex = textBeforeCursor.lastIndexOf(' ');
+    
+    // Replace the partial word with the full emote name
+    const newTextBefore = textBeforeCursor.slice(0, lastSpaceIndex + 1) + emote.name;
+    const newMessage = newTextBefore + ' ' + textAfterCursor;
+    
+    setMessage(newMessage);
+    setShowAutocomplete(false);
+    
+    // Set cursor position after the inserted emote
+    setTimeout(() => {
+      if (inputRef.current) {
+        const newCursorPos = newTextBefore.length + 1;
+        inputRef.current.setSelectionRange(newCursorPos, newCursorPos);
+        inputRef.current.focus();
+      }
+    }, 0);
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -144,7 +239,7 @@ export default function MessageInput({
   const isRateLimited = !!countdown;
 
   return (
-    <div className="border-t border-gray-700 bg-gray-800 p-3">
+    <div className="border-t border-gray-700 bg-gray-800 p-3 relative">
       {error && (
         <div className="mb-2 p-2 bg-red-900/50 border border-red-700 rounded text-xs text-red-200">
           {error}
@@ -153,16 +248,28 @@ export default function MessageInput({
       )}
 
       <form onSubmit={handleSend} className="flex gap-2">
-        <input
-          ref={inputRef}
-          type="text"
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder={isRateLimited ? `Rate limited (${countdown})` : 'Send a message...'}
-          disabled={sending || isRateLimited}
-          maxLength={MAX_MESSAGE_LENGTH}
-          className="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
-        />
+        <div className="flex-1 relative">
+          <input
+            ref={inputRef}
+            type="text"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={isRateLimited ? `Rate limited (${countdown})` : 'Send a message...'}
+            disabled={sending || isRateLimited}
+            maxLength={MAX_MESSAGE_LENGTH}
+            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+          {showAutocomplete && (
+            <Autocomplete
+              suggestions={autocompleteSuggestions}
+              selectedIndex={selectedSuggestionIndex}
+              onSelect={selectEmote}
+              onClose={() => setShowAutocomplete(false)}
+              inputElement={inputRef.current}
+            />
+          )}
+        </div>
         <button
           type="submit"
           disabled={!message.trim() || sending || isRateLimited}

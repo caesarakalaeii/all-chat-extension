@@ -6,8 +6,8 @@ This PR implements 7TV emote autocomplete functionality in the All-Chat extensio
 ## How It Works
 
 ### User Experience
-1. User starts typing an emote name in the chat input (e.g., "pog")
-2. After typing 2+ characters, an autocomplete dropdown appears below the input
+1. User types a colon (`:`) followed by an emote name in the chat input (e.g., ":pog")
+2. After typing `:` and at least 1 character, an autocomplete dropdown appears below the input
 3. Dropdown shows up to 10 matching emote suggestions with:
    - Emote preview image
    - Emote name
@@ -57,7 +57,7 @@ This PR implements 7TV emote autocomplete functionality in the All-Chat extensio
 - Smart word detection:
   * Tracks cursor position
   * Extracts current word being typed
-  * Shows autocomplete for words starting with letters (2+ chars)
+  * Shows autocomplete for words starting with `:` (colon + 1+ chars)
 ```
 
 ## API Integration
@@ -110,7 +110,7 @@ This PR implements 7TV emote autocomplete functionality in the All-Chat extensio
 - [ ] Load extension in browser
 - [ ] Navigate to Twitch channel
 - [ ] Login to All-Chat
-- [ ] Type partial emote name (e.g., "pog")
+- [ ] Type colon and partial emote name (e.g., ":pog")
 - [ ] Verify autocomplete dropdown appears
 - [ ] Test keyboard navigation (arrows, Enter, Escape)
 - [ ] Test mouse selection

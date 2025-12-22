@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { SendMessageRequest, SendMessageResponse } from '../../lib/types/viewer';
 import { API_BASE_URL } from '../../config';
-import { fetch7TVEmotes, filterEmotes, type EmoteData } from '../../lib/emoteAutocomplete';
+import { fetchAllEmotes, filterEmotes, type EmoteData } from '../../lib/emoteAutocomplete';
 import Autocomplete from './Autocomplete';
 
 interface MessageInputProps {
@@ -39,13 +39,13 @@ export default function MessageInput({
     inputRef.current?.focus();
   }, []);
 
-  // Fetch 7TV emotes on mount
+  // Fetch emotes from all providers on mount
   useEffect(() => {
     const loadEmotes = async () => {
       try {
-        const fetchedEmotes = await fetch7TVEmotes(streamer);
+        const fetchedEmotes = await fetchAllEmotes(streamer);
         setEmotes(fetchedEmotes);
-        console.log(`[AllChat Autocomplete] Loaded ${fetchedEmotes.length} 7TV emotes for ${streamer}`);
+        console.log(`[AllChat Autocomplete] Loaded ${fetchedEmotes.length} emotes for ${streamer}`);
       } catch (err) {
         console.error('[AllChat Autocomplete] Failed to load emotes:', err);
       }

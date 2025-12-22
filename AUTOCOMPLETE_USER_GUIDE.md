@@ -1,8 +1,8 @@
-# 7TV Autocomplete - User Guide
+# Multi-Provider Emote Autocomplete - User Guide
 
 ## What's New?
 
-The All-Chat extension now supports **7TV emote autocomplete**! This feature helps you quickly insert emotes without typing the full name.
+The All-Chat extension now supports **emote autocomplete for 7TV, BTTV, and FFZ**! This feature helps you quickly insert emotes from all major third-party providers without typing the full name.
 
 ## How to Use
 
@@ -74,15 +74,20 @@ Result: "Hello Poggers "
 The autocomplete shows:
 - **Global 7TV emotes** (available everywhere)
 - **Channel-specific 7TV emotes** (specific to the streamer)
+- **Global BTTV emotes** (BetterTTV global emotes)
+- **Channel-specific BTTV emotes** (including shared emotes)
+- **Global FFZ emotes** (FrankerFaceZ global emotes)
+- **Channel-specific FFZ emotes** (specific to the streamer)
 
-Currently supports **7TV only**. BTTV and FFZ emotes may be added in future updates.
+Now supports **7TV, BTTV, and FFZ**! Twitch native emotes may be added in future updates.
 
 ## Privacy & Security
 
 - ✅ No data is collected or stored permanently
 - ✅ Emotes are cached locally for 5 minutes
-- ✅ Only connects to official 7TV API
+- ✅ Only connects to official 7TV, BTTV, and FFZ APIs
 - ✅ Channel names are sanitized before API calls
+- ✅ Emote URLs are validated to prevent injection attacks
 - ✅ No tracking or analytics
 
 ## Troubleshooting
@@ -104,26 +109,34 @@ Currently supports **7TV only**. BTTV and FFZ emotes may be added in future upda
 
 ## Developer Info
 
-### API Used
-- 7TV v3 API: `https://7tv.io/v3`
+### APIs Used
+**7TV v3 API**: `https://7tv.io/v3`
 - Global emotes: `/emote-sets/global`
 - Channel emotes: `/users/twitch/{channel}`
 
+**BTTV API**: `https://api.betterttv.net/3/cached`
+- Global emotes: `/emotes/global`
+- Channel emotes: `/users/twitch/{channel}`
+
+**FFZ API**: `https://api.frankerfacez.com/v1`
+- Global emotes: `/set/global`
+- Channel emotes: `/room/{channel}`
+
 ### Cache Duration
-- 5 minutes per channel
+- 5 minutes per provider per channel
 - Cleared on page reload
-- Independent per streamer
+- Independent caching for each provider and streamer
 
 ### Bundle Impact
-- Added ~4KB to bundle size
+- Added ~6KB to bundle size
 - Minimal performance impact
 - Lazy-loaded emote images
+- Parallel API fetching from all providers
 
 ## Future Enhancements
 
 Possible future improvements (not yet implemented):
-- [ ] BTTV emote support
-- [ ] FFZ emote support  
+- [ ] Twitch native emote support (requires OAuth)
 - [ ] Fuzzy search (not just prefix)
 - [ ] Recent/favorite emotes
 - [ ] Tab completion

@@ -16,6 +16,7 @@ Replace native platform chat with All-Chat's unified chat experience.
 - ⚡ **Rate limiting**: 20 messages/min, 100/hour with visual feedback
 - 🛡️ **Badge display**: Moderator, VIP, subscriber badges in correct order
 - 🎨 **User colors**: Username colors match platform themes
+- 🎯 **Emote autocomplete**: Type `:` to autocomplete 7TV, BTTV, and FFZ emotes
 
 ## 📦 Installation
 
@@ -110,6 +111,14 @@ Then follow step 2 above, but select the `dist/` folder.
 - Rate limits: 20 messages/minute, 100/hour
 - Toast notification on success
 - Error messages for failures
+- **Emote autocomplete**: Type `:` followed by emote name to see suggestions (↑/↓ to navigate, Enter to select)
+
+**Autocomplete Features:**
+- Supports 7TV, BTTV, and FFZ emotes
+- Shows both global and channel-specific emotes
+- Keyboard navigation with arrow keys
+- Mouse selection by clicking
+- See [AUTOCOMPLETE_USER_GUIDE.md](AUTOCOMPLETE_USER_GUIDE.md) for details
 
 **Reconnection:**
 - Automatic reconnection on disconnect
@@ -182,6 +191,7 @@ all-chat-extension/
 │   │   │   ├── ChatContainer.tsx   # Main chat UI
 │   │   │   ├── LoginPrompt.tsx     # OAuth login
 │   │   │   ├── MessageInput.tsx    # Message sending
+│   │   │   ├── Autocomplete.tsx    # Emote autocomplete dropdown
 │   │   │   └── Toast.tsx           # Notifications
 │   │   ├── index.tsx
 │   │   └── styles.css              # Tailwind + animations
@@ -190,6 +200,7 @@ all-chat-extension/
 │   │   │   ├── message.ts          # ChatMessage types
 │   │   │   ├── extension.ts        # Extension types
 │   │   │   └── viewer.ts           # Viewer auth types
+│   │   ├── emoteAutocomplete.ts    # Multi-provider emote fetching
 │   │   ├── renderMessage.tsx       # Emote rendering
 │   │   ├── twitchBadges.ts         # Badge fetching
 │   │   ├── badgeOrder.ts           # Badge sorting
@@ -236,6 +247,7 @@ Contributions welcome! Please:
 
 ## 📚 Documentation
 
+- **[AUTOCOMPLETE_USER_GUIDE.md](AUTOCOMPLETE_USER_GUIDE.md)** - Guide to using emote autocomplete
 - **[CHECKPOINT.md](CHECKPOINT.md)** - Development progress and current status
 - **[TESTING.md](TESTING.md)** - Testing instructions and scenarios
 - **[Implementation Plan](https://github.com/caesarakalaeii/all-chat-extension/blob/main/.claude/plans/unified-launching-aho.md)** - Original 6-week roadmap

@@ -105,6 +105,7 @@ export default function MessageInput({
         e.preventDefault();
         setSelectedSuggestionIndex((prev) => (prev > 0 ? prev - 1 : 0));
         break;
+      case 'Tab':
       case 'Enter':
         if (showAutocomplete && selectedSuggestionIndex < autocompleteSuggestions.length) {
           e.preventDefault();
@@ -219,6 +220,11 @@ export default function MessageInput({
       setMessage('');
       setError(null);
       onSendSuccess?.();
+      
+      // Restore focus to input field after sending
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 0);
     } catch (err) {
       console.error('[AllChat MessageInput] Error sending message:', err);
       const errorMsg = err instanceof Error ? err.message : 'Failed to send message';

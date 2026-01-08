@@ -5,6 +5,7 @@ import { fetchAllEmotes, filterEmotes, type EmoteData } from '../../lib/emoteAut
 import Autocomplete from './Autocomplete';
 import { parseApiError, parseFetchError } from '../../lib/errorParser';
 import type { ChatError } from '../../lib/types/errors';
+import { ChatErrorType } from '../../lib/types/errors';
 import ErrorDisplay from './ErrorDisplay';
 
 interface MessageInputProps {
@@ -138,10 +139,12 @@ export default function MessageInput({
 
     if (trimmed.length > MAX_MESSAGE_LENGTH) {
       setError({
-        type: 'VALIDATION_ERROR',
+        type: ChatErrorType.VALIDATION_ERROR,
         message: `Message too long (max ${MAX_MESSAGE_LENGTH} characters)`,
         userMessage: `Your message is too long. Please keep it under ${MAX_MESSAGE_LENGTH} characters.`,
-        canRetry: false,
+        actionableSteps: [`Shorten your message to ${MAX_MESSAGE_LENGTH} characters or less`],
+        field: 'message',
+        constraint: `max_length_${MAX_MESSAGE_LENGTH}`,
       });
       return;
     }

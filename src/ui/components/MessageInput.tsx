@@ -3,6 +3,9 @@ import type { SendMessageRequest, SendMessageResponse } from '../../lib/types/vi
 import { API_BASE_URL } from '../../config';
 import { fetchAllEmotes, filterEmotes, type EmoteData } from '../../lib/emoteAutocomplete';
 import Autocomplete from './Autocomplete';
+import { parseApiError, parseFetchError } from '../../lib/errorParser';
+import type { ChatError } from '../../lib/types/errors';
+import ErrorDisplay from './ErrorDisplay';
 
 interface MessageInputProps {
   platform: 'twitch' | 'youtube' | 'kick' | 'tiktok';
@@ -24,8 +27,7 @@ export default function MessageInput({
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [rateLimitReset, setRateLimitReset] = useState<Date | null>(null);
+  const [error, setError] = useState<ChatError | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
   // Autocomplete state
@@ -53,21 +55,6 @@ export default function MessageInput({
 
     loadEmotes();
   }, [streamer]);
-
-  // Update rate limit countdown
-  useEffect(() => {
-    if (!rateLimitReset) return;
-
-    const interval = setInterval(() => {
-      const now = new Date();
-      if (now >= rateLimitReset) {
-        setRateLimitReset(null);
-        setError(null);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [rateLimitReset]);
 
   // Handle autocomplete
   useEffect(() => {
@@ -184,36 +171,17 @@ export default function MessageInput({
         }
       }
 
-      // Handle error responses
-      if (response.status === 401) {
-        // Token expired or invalid
-        console.error('[AllChat MessageInput] Authentication error');
-        onAuthError?.();
-        setError('Session expired. Please log in again.');
-        return;
-      }
-
-      if (response.status === 403) {
-        console.error('[AllChat MessageInput] Forbidden:', data);
-        // Clear session on 403 - likely invalid/expired token
-        onAuthError?.();
-        const errorMsg = data?.error || 'You do not have permission to send messages in this chat.';
-        const reason = data?.reason ? ` Reason: ${data.reason}` : '';
-        setError(errorMsg + reason);
-        return;
-      }
-
-      if (response.status === 429) {
-        // Rate limited
-        const resetTime = data?.reset_time ? new Date(data.reset_time * 1000) : new Date(Date.now() + 60000);
-        setRateLimitReset(resetTime);
-        setError('Rate limit exceeded. Please wait before sending another message.');
-        return;
-      }
-
+      // Handle error responses using smart error parser
       if (!response.ok) {
-        const errorMsg = data?.details || data?.error || `Failed to send message (${response.status})`;
-        throw new Error(errorMsg);
+        const parsedError = parseApiError(response, data);
+
+        // Trigger auth error callback for authentication errors
+        if (parsedError.type === 'UNAUTHORIZED' || parsedError.type === 'TOKEN_EXPIRED') {
+          onAuthError?.();
+        }
+
+        setError(parsedError);
+        return;
       }
 
       // Success!
@@ -227,31 +195,28 @@ export default function MessageInput({
       }, 0);
     } catch (err) {
       console.error('[AllChat MessageInput] Error sending message:', err);
-      const errorMsg = err instanceof Error ? err.message : 'Failed to send message';
-      setError(errorMsg);
+      const parsedError = parseFetchError(err);
+      setError(parsedError);
     } finally {
       setSending(false);
     }
   };
 
-  const getRateLimitCountdown = () => {
-    if (!rateLimitReset) return null;
-    const now = new Date();
-    const diff = Math.max(0, rateLimitReset.getTime() - now.getTime());
-    const seconds = Math.ceil(diff / 1000);
-    return seconds > 0 ? `${seconds}s` : null;
-  };
-
-  const countdown = getRateLimitCountdown();
-  const isRateLimited = !!countdown;
+  // Check if currently rate limited based on error
+  const isRateLimited = error?.type === 'RATE_LIMITED';
 
   return (
     <div className="border-t border-gray-700 bg-gray-800 p-3 relative">
       {error && (
-        <div className="mb-2 p-2 bg-red-900/50 border border-red-700 rounded text-xs text-red-200">
-          {error}
-          {countdown && <span className="ml-2 font-semibold">({countdown})</span>}
-        </div>
+        <ErrorDisplay
+          error={error}
+          onRetry={() => {
+            // Clear error and allow retry
+            setError(null);
+          }}
+          onDismiss={() => setError(null)}
+          className="mb-2"
+        />
       )}
 
       <form onSubmit={handleSend} className="flex gap-2">
@@ -262,7 +227,7 @@ export default function MessageInput({
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isRateLimited ? `Rate limited (${countdown})` : 'Send a message...'}
+            placeholder={isRateLimited ? 'Rate limited - see error above' : 'Send a message...'}
             disabled={sending || isRateLimited}
             maxLength={MAX_MESSAGE_LENGTH}
             className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"

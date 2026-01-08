@@ -137,7 +137,12 @@ export default function MessageInput({
     if (!trimmed || sending) return;
 
     if (trimmed.length > MAX_MESSAGE_LENGTH) {
-      setError(`Message too long (max ${MAX_MESSAGE_LENGTH} characters)`);
+      setError({
+        type: 'VALIDATION_ERROR',
+        message: `Message too long (max ${MAX_MESSAGE_LENGTH} characters)`,
+        userMessage: `Your message is too long. Please keep it under ${MAX_MESSAGE_LENGTH} characters.`,
+        canRetry: false,
+      });
       return;
     }
 

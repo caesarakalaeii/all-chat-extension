@@ -14,6 +14,50 @@ const YOUTUBE_INIT_DELAY = 2000;
 class YouTubeDetector extends PlatformDetector {
   platform = 'youtube' as const;
 
+  /**
+   * Check if the current page is a live stream
+   * Returns true only for active live streams, not VODs
+   */
+  isLiveStream(): boolean {
+    // Method 1: Check for live chat frame (only present on live streams)
+    const liveChatFrame = document.querySelector('ytd-live-chat-frame');
+    if (liveChatFrame) {
+      console.log('[AllChat YouTube] Live chat frame detected');
+      return true;
+    }
+
+    // Method 2: Check URL patterns for live streams
+    if (window.location.pathname.includes('/live/')) {
+      console.log('[AllChat YouTube] /live/ URL detected');
+      return true;
+    }
+
+    // Method 3: Check for "LIVE" badge in player
+    const liveBadge = document.querySelector('.ytp-live-badge, .badge-style-type-live-now');
+    if (liveBadge) {
+      console.log('[AllChat YouTube] Live badge detected');
+      return true;
+    }
+
+    // Method 4: Check ytInitialPlayerResponse for isLiveContent
+    try {
+      const scripts = Array.from(document.querySelectorAll('script'));
+      const playerScript = scripts.find(s => s.textContent?.includes('ytInitialPlayerResponse'));
+      if (playerScript && playerScript.textContent) {
+        const match = playerScript.textContent.match(/["']isLiveContent["']\s*:\s*true/);
+        if (match) {
+          console.log('[AllChat YouTube] isLiveContent=true detected');
+          return true;
+        }
+      }
+    } catch (error) {
+      console.log('[AllChat YouTube] Could not parse player response');
+    }
+
+    console.log('[AllChat YouTube] Not a live stream');
+    return false;
+  }
+
   extractStreamerUsername(): string | null {
     // Method 1: From URL (@username format)
     const urlMatch = window.location.pathname.match(/@([^\/]+)/);
@@ -32,6 +76,22 @@ class YouTubeDetector extends PlatformDetector {
     if (channelName) return channelName;
 
     return null;
+  }
+
+  /**
+   * Override init to check for live streams first
+   */
+  async init(): Promise<void> {
+    console.log(`[AllChat ${this.platform}] Initializing...`);
+
+    // YouTube-specific: Only activate on live streams, not VODs
+    if (!this.isLiveStream()) {
+      console.log(`[AllChat ${this.platform}] Not a live stream, skipping`);
+      return;
+    }
+
+    // Continue with normal initialization
+    return super.init();
   }
 
   getChatContainerSelector(): string[] {

@@ -124,6 +124,9 @@ class TwitchDetector extends PlatformDetector {
 // Store detector instance globally so message relay can access it
 let globalDetector: TwitchDetector | null = null;
 
+// Track last checked streamer to avoid redundant re-injections
+let lastCheckedStreamer: string | null = null;
+
 // Initialize detector
 async function initialize() {
   const manifest = chrome.runtime.getManifest();
@@ -261,15 +264,23 @@ function setupMutationObserver() {
 
     const allchatExists = document.getElementById('allchat-container');
     const nativeExists = document.querySelector('.chat-scrollable-area__message-container');
+    const currentStreamer = globalDetector?.extractStreamerUsername();
 
     // If our container was removed but native chat exists, re-inject
-    if (!allchatExists && nativeExists && globalDetector) {
-      console.log('[AllChat Twitch] Detected re-render, re-injecting...');
-
+    // BUT: only if we haven't already checked this streamer recently
+    if (!allchatExists && nativeExists && globalDetector && currentStreamer !== lastCheckedStreamer) {
       // Debounce re-initialization
-      if (reinitTimeout) clearTimeout(reinitTimeout);
+      if (reinitTimeout) {
+        clearTimeout(reinitTimeout);
+      } else {
+        // Only log once per debounce cycle
+        console.log('[AllChat Twitch] Detected re-render, re-injecting...');
+      }
+
       reinitTimeout = setTimeout(() => {
+        lastCheckedStreamer = currentStreamer;
         globalDetector?.init();
+        reinitTimeout = null;
       }, 500);
     }
 
@@ -298,6 +309,7 @@ function setupUrlWatcher() {
     const url = location.href;
     if (url !== lastUrl) {
       lastUrl = url;
+      lastCheckedStreamer = null; // Reset on URL change
       console.log('[AllChat Twitch] URL changed, re-initializing...');
       // Check if detector still exists (extension might have been disabled)
       if (globalDetector) {

@@ -68,6 +68,9 @@ export abstract class PlatformDetector {
 
       console.log(`[AllChat ${this.platform}] Streamer found! Has ${streamerInfo.platforms.length} active platform(s)`);
 
+      // Clean up existing UI before creating new one (fixes streamer switching bug)
+      this.removeAllChatUI();
+
       // Hide native chat and inject All-Chat
       this.hideNativeChat();
       const container = this.createInjectionPoint();
@@ -155,6 +158,12 @@ export abstract class PlatformDetector {
    * Show small badge indicating streamer is not configured
    */
   private showNotConfiguredBadge(username: string): void {
+    // Check if badge already exists and remove it
+    const existingBadge = document.getElementById('allchat-not-configured-badge');
+    if (existingBadge) {
+      existingBadge.remove();
+    }
+
     // Find a suitable location for the badge (platform-specific)
     const badge = document.createElement('div');
     badge.id = 'allchat-not-configured-badge';

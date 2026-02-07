@@ -71,9 +71,21 @@ class YouTubeDetector extends PlatformDetector {
       if (match) return match[1];
     }
 
-    // Method 3: From channel name in header
-    const channelName = document.querySelector('ytd-channel-name a')?.textContent?.trim();
-    if (channelName) return channelName;
+    // Method 3: From channel link in header (extract handle from href)
+    const channelNameElement = document.querySelector('ytd-channel-name a');
+    if (channelNameElement) {
+      const href = channelNameElement.getAttribute('href');
+      const match = href?.match(/@([^\/]+)/);
+      if (match) return match[1];
+    }
+
+    // Method 4: From owner link in video page
+    const ownerLink = document.querySelector('a.yt-simple-endpoint.ytd-video-owner-renderer');
+    if (ownerLink) {
+      const href = ownerLink.getAttribute('href');
+      const match = href?.match(/@([^\/]+)/);
+      if (match) return match[1];
+    }
 
     return null;
   }

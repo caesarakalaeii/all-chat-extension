@@ -278,7 +278,7 @@ function setupMutationObserver() {
       }
 
       reinitTimeout = setTimeout(() => {
-        lastCheckedStreamer = currentStreamer;
+        lastCheckedStreamer = currentStreamer ?? null;
         globalDetector?.init();
         reinitTimeout = null;
       }, 500);

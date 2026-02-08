@@ -1,0 +1,1028 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e4]:
+    - generic [ref=e8]:
+      - img "Cookies" [ref=e10]
+      - generic [ref=e11]:
+        - paragraph [ref=e12]: Cookies and Advertising Choices
+        - paragraph [ref=e14]:
+          - text: Twitch uses personal data collected on our services, such as page visits, through
+          - link "cookies" [ref=e16] [cursor=pointer]:
+            - /url: https://www.twitch.tv/p/legal/cookie-policy/
+          - text: and other device identifiers to generate personalized content, remember preferences, analyze usage to improve products, and measure the effectiveness of campaigns to acquire new users. If you agree, we will also permit other Amazon services and up to 14 trusted third party partners to obtain data from our services or store and access cookies on your device to deliver personalized ads, measure effectiveness, and create audience insights. We will also personalize the ads we show you on Twitch using cookies and personal information we may receive from third parties. The ads you see on other sites may also be personalized based on your use of Twitch. See our
+          - link "Cookie Notice" [ref=e18] [cursor=pointer]:
+            - /url: https://www.twitch.tv/p/legal/cookie-policy/
+          - text: and
+          - link "Privacy Notice" [ref=e20] [cursor=pointer]:
+            - /url: https://www.twitch.tv/p/legal/privacy-notice/
+          - text: to learn more. By clicking "Accept", you consent to these activities. Click “Reject” to decline, or “Customize” to make more detailed choices or to learn more. You can change your choices at any time.
+      - generic [ref=e21]:
+        - button "Accept" [ref=e24]:
+          - generic [ref=e27]: Accept
+        - button "Customize" [ref=e30]:
+          - generic [ref=e33]: Customize
+        - button "Reject" [ref=e36]:
+          - generic [ref=e39]: Reject
+    - navigation [ref=e40]:
+      - generic [ref=e41]:
+        - generic [ref=e42]:
+          - button "Skip to... Alt P" [ref=e44]:
+            - generic [ref=e45]:
+              - generic [ref=e46]:
+                - text: Skip to...
+                - generic [ref=e47]:
+                  - generic [ref=e49]: Alt
+                  - generic [ref=e51]: P
+              - img [ref=e55]
+          - link "Twitch Home" [ref=e57] [cursor=pointer]:
+            - /url: /
+            - figure [ref=e59]:
+              - img [ref=e60]
+          - link "Browse" [ref=e70] [cursor=pointer]:
+            - /url: /directory
+            - paragraph [ref=e73]: Browse
+          - button "More Options" [ref=e78]:
+            - generic:
+              - generic:
+                - img
+        - generic [ref=e85]:
+          - searchbox "Search Input" [ref=e89]
+          - button "Search Button" [disabled] [ref=e91]:
+            - img [ref=e95]
+        - generic [ref=e97]:
+          - generic [ref=e99]:
+            - button "Prime offers" [ref=e104]:
+              - generic:
+                - generic:
+                  - img
+            - generic:
+              - generic:
+                - generic:
+                  - generic: "19"
+          - generic [ref=e106]:
+            - generic [ref=e107]:
+              - button "Log In" [ref=e109]:
+                - generic [ref=e111]: Log In
+              - button "Sign Up" [ref=e113]:
+                - generic [ref=e115]: Sign Up
+            - button "User Menu" [ref=e119]:
+              - button "User Menu" [ref=e120]:
+                - generic:
+                  - generic:
+                    - img
+    - generic [ref=e121]:
+      - complementary [ref=e123]:
+        - generic [ref=e126]:
+          - button "Collapse Side Nav" [ref=e129]:
+            - generic:
+              - generic:
+                - img
+          - navigation "Left Navigation" [ref=e131]:
+            - generic [ref=e134]:
+              - group "Live Channels" [ref=e135]:
+                - heading "Live Channels" [level=3] [ref=e137]
+                - generic [ref=e138]:
+                  - link "Papaplatte World of Warcraft Live 10.6K viewers" [ref=e142] [cursor=pointer]:
+                    - /url: /papaplatte
+                    - generic [ref=e146]:
+                      - generic [ref=e147]:
+                        - paragraph [ref=e149]: Papaplatte
+                        - paragraph [ref=e151]: World of Warcraft
+                      - generic [ref=e153]:
+                        - paragraph [ref=e155]: Live
+                        - generic [ref=e156]:
+                          - text: 10.6K
+                          - paragraph [ref=e157]: 10.6K viewers
+                  - link "HandOfBlood World of Warcraft Live 11.9K viewers" [ref=e161] [cursor=pointer]:
+                    - /url: /handofblood
+                    - generic [ref=e165]:
+                      - generic [ref=e166]:
+                        - paragraph [ref=e168]: HandOfBlood
+                        - paragraph [ref=e170]: World of Warcraft
+                      - generic [ref=e172]:
+                        - paragraph [ref=e174]: Live
+                        - generic [ref=e175]:
+                          - text: 11.9K
+                          - paragraph [ref=e176]: 11.9K viewers
+                  - link "metashi12 World of Warcraft Live 4.5K viewers" [ref=e180] [cursor=pointer]:
+                    - /url: /metashi12
+                    - generic [ref=e184]:
+                      - generic [ref=e185]:
+                        - paragraph [ref=e187]: metashi12
+                        - paragraph [ref=e189]: World of Warcraft
+                      - generic [ref=e191]:
+                        - paragraph [ref=e193]: Live
+                        - generic [ref=e194]:
+                          - text: 4.5K
+                          - paragraph [ref=e195]: 4.5K viewers
+                  - link "GamesDoneQuick This Is No Cave Live 40.4K viewers" [ref=e199] [cursor=pointer]:
+                    - /url: /gamesdonequick
+                    - generic [ref=e203]:
+                      - generic [ref=e204]:
+                        - paragraph [ref=e206]: GamesDoneQuick
+                        - paragraph [ref=e208]: This Is No Cave
+                      - generic [ref=e210]:
+                        - paragraph [ref=e212]: Live
+                        - generic [ref=e213]:
+                          - text: 40.4K
+                          - paragraph [ref=e214]: 40.4K viewers
+                  - link "Tolkin World of Warcraft Live 3.9K viewers" [ref=e218] [cursor=pointer]:
+                    - /url: /tolkin
+                    - generic [ref=e222]:
+                      - generic [ref=e223]:
+                        - paragraph [ref=e225]: Tolkin
+                        - paragraph [ref=e227]: World of Warcraft
+                      - generic [ref=e229]:
+                        - paragraph [ref=e231]: Live
+                        - generic [ref=e232]:
+                          - text: 3.9K
+                          - paragraph [ref=e233]: 3.9K viewers
+                  - link "Mahluna and shaker shaker Mahluna +4 Mahluna and 4 guests World of Warcraft Live 2.1K viewers" [ref=e237] [cursor=pointer]:
+                    - /url: /mahluna
+                    - generic [ref=e240]:
+                      - img "Mahluna and shaker" [ref=e242]
+                      - img "shaker" [ref=e246]
+                    - generic [ref=e249]:
+                      - generic [ref=e250]:
+                        - generic [ref=e251]:
+                          - paragraph [ref=e252]: Mahluna
+                          - paragraph [ref=e253]: "+4"
+                          - paragraph [ref=e254]: Mahluna and 4 guests
+                        - paragraph [ref=e256]: World of Warcraft
+                      - generic [ref=e258]:
+                        - paragraph [ref=e260]: Live
+                        - generic [ref=e261]:
+                          - text: 2.1K
+                          - paragraph [ref=e262]: 2.1K viewers
+                  - link "HasanAbi Just Chatting Live 43.4K viewers" [ref=e266] [cursor=pointer]:
+                    - /url: /hasanabi
+                    - generic [ref=e270]:
+                      - generic [ref=e271]:
+                        - paragraph [ref=e273]: HasanAbi
+                        - paragraph [ref=e275]: Just Chatting
+                      - generic [ref=e277]:
+                        - paragraph [ref=e279]: Live
+                        - generic [ref=e280]:
+                          - text: 43.4K
+                          - paragraph [ref=e281]: 43.4K viewers
+                  - link "PhunkRoyal and FalganWoW FalganWoW PhunkRoyal +3 PhunkRoyal and 3 guests World of Warcraft Live 4.5K viewers" [ref=e285] [cursor=pointer]:
+                    - /url: /phunkroyal
+                    - generic [ref=e288]:
+                      - img "PhunkRoyal and FalganWoW" [ref=e290]
+                      - img "FalganWoW" [ref=e294]
+                    - generic [ref=e297]:
+                      - generic [ref=e298]:
+                        - generic [ref=e299]:
+                          - paragraph [ref=e300]: PhunkRoyal
+                          - paragraph [ref=e301]: "+3"
+                          - paragraph [ref=e302]: PhunkRoyal and 3 guests
+                        - paragraph [ref=e304]: World of Warcraft
+                      - generic [ref=e306]:
+                        - paragraph [ref=e308]: Live
+                        - generic [ref=e309]:
+                          - text: 4.5K
+                          - paragraph [ref=e310]: 4.5K viewers
+                  - link "Mowky and Shlorox Shlorox Mowky +2 Mowky and 2 guests World of Warcraft Live 1.3K viewers" [ref=e314] [cursor=pointer]:
+                    - /url: /mowky
+                    - generic [ref=e317]:
+                      - img "Mowky and Shlorox" [ref=e319]
+                      - img "Shlorox" [ref=e323]
+                    - generic [ref=e326]:
+                      - generic [ref=e327]:
+                        - generic [ref=e328]:
+                          - paragraph [ref=e329]: Mowky
+                          - paragraph [ref=e330]: "+2"
+                          - paragraph [ref=e331]: Mowky and 2 guests
+                        - paragraph [ref=e333]: World of Warcraft
+                      - generic [ref=e335]:
+                        - paragraph [ref=e337]: Live
+                        - generic [ref=e338]:
+                          - text: 1.3K
+                          - paragraph [ref=e339]: 1.3K viewers
+                  - link "zackrawrr Just Chatting Live 51.2K viewers Golden Kappa Train" [ref=e343] [cursor=pointer]:
+                    - /url: /zackrawrr
+                    - generic [ref=e348]:
+                      - generic [ref=e349]:
+                        - generic [ref=e350]:
+                          - paragraph [ref=e352]: zackrawrr
+                          - paragraph [ref=e354]: Just Chatting
+                        - generic [ref=e356]:
+                          - paragraph [ref=e358]: Live
+                          - generic [ref=e359]:
+                            - text: 51.2K
+                            - paragraph [ref=e360]: 51.2K viewers
+                      - generic [ref=e361]:
+                        - img [ref=e362]
+                        - paragraph [ref=e363]: Golden Kappa Train
+              - group "xQc Viewers Also Watch" [ref=e364]:
+                - heading "xQc Viewers Also Watch" [level=3] [ref=e366]
+                - generic [ref=e367]:
+                  - link "stableronaldo Fortnite Live 39.1K viewers" [ref=e371] [cursor=pointer]:
+                    - /url: /stableronaldo
+                    - generic [ref=e375]:
+                      - generic [ref=e376]:
+                        - paragraph [ref=e378]: stableronaldo
+                        - paragraph [ref=e380]: Fortnite
+                      - generic [ref=e382]:
+                        - paragraph [ref=e384]: Live
+                        - generic [ref=e385]:
+                          - text: 39.1K
+                          - paragraph [ref=e386]: 39.1K viewers
+                  - link "jasontheween Just Chatting Live 13.7K viewers" [ref=e390] [cursor=pointer]:
+                    - /url: /jasontheween
+                    - generic [ref=e394]:
+                      - generic [ref=e395]:
+                        - paragraph [ref=e397]: jasontheween
+                        - paragraph [ref=e399]: Just Chatting
+                      - generic [ref=e401]:
+                        - paragraph [ref=e403]: Live
+                        - generic [ref=e404]:
+                          - text: 13.7K
+                          - paragraph [ref=e405]: 13.7K viewers
+                  - link "loltyler1 League of Legends Live 11.6K viewers" [ref=e409] [cursor=pointer]:
+                    - /url: /loltyler1
+                    - generic [ref=e413]:
+                      - generic [ref=e414]:
+                        - paragraph [ref=e416]: loltyler1
+                        - paragraph [ref=e418]: League of Legends
+                      - generic [ref=e420]:
+                        - paragraph [ref=e422]: Live
+                        - generic [ref=e423]:
+                          - text: 11.6K
+                          - paragraph [ref=e424]: 11.6K viewers
+                - button "Show More" [ref=e426]
+      - main [ref=e427]:
+        - generic [ref=e429]:
+          - generic [ref=e442]:
+            - region "Stream Information" [ref=e443]:
+              - generic [ref=e446]:
+                - link "xQc LIVE" [ref=e448] [cursor=pointer]:
+                  - /url: /xqc
+                  - generic [ref=e449]:
+                    - img "xQc" [ref=e451]
+                    - generic [ref=e454]:
+                      - generic: LIVE
+                - generic [ref=e455]:
+                  - generic [ref=e456]:
+                    - generic [ref=e458]:
+                      - link "xQc" [ref=e459] [cursor=pointer]:
+                        - /url: /xqc
+                        - heading "xQc" [level=1] [ref=e460]
+                      - img "Verified Partner" [ref=e464]
+                    - generic [ref=e467]:
+                      - button "Follow xQc" [ref=e477]:
+                        - generic [ref=e480]:
+                          - img [ref=e486]
+                          - generic [ref=e489]: Follow
+                      - button "Subscribe" [ref=e494]:
+                        - generic [ref=e495]:
+                          - img [ref=e499]
+                          - generic [ref=e501]: Subscribe
+                          - img [ref=e505]
+                  - generic [ref=e507]:
+                    - generic [ref=e509]:
+                      - paragraph [ref=e511]: 🦸‍♂️LIVE🦸‍♂️CLICK🦸‍♂️DRAMA🦸‍♂️NEWS🦸‍♂️VIDEOS🦸‍♂️REACTS🦸‍♂️THINGS🦸‍♂️STUFF🦸‍♂️DAY1🦸‍♂️OF FULL LOCK IN MODE🦸‍♂️COOL🦸‍♂️SEND IT🦸‍♂
+                      - generic [ref=e514]:
+                        - link "Minecraft" [ref=e516] [cursor=pointer]:
+                          - /url: /directory/category/minecraft
+                        - generic [ref=e518]:
+                          - link "Tag, English" [ref=e520] [cursor=pointer]:
+                            - /url: /directory/all/tags/English
+                            - generic [ref=e522]: English
+                          - link "Tag, femboy" [ref=e524] [cursor=pointer]:
+                            - /url: /directory/all/tags/femboy
+                            - generic [ref=e526]: femboy
+                    - generic [ref=e529]:
+                      - generic [ref=e530]:
+                        - generic [ref=e532]:
+                          - img [ref=e534]
+                          - strong [ref=e536]: 23,881
+                          - paragraph [ref=e537]: 23,881 viewers
+                        - generic [ref=e539]:
+                          - text: 6:25:45
+                          - paragraph [ref=e540]: 6:25:45 since live stream started
+                      - generic [ref=e541]:
+                        - button "Share" [ref=e542]:
+                          - generic:
+                            - generic:
+                              - img
+                        - button "More options" [ref=e543]:
+                          - generic:
+                            - generic:
+                              - img
+            - region "About Panel" [ref=e548]:
+              - generic [ref=e552]:
+                - generic [ref=e553]:
+                  - heading "About xQc" [level=3] [ref=e555]
+                  - img "Verified Partner" [ref=e558]
+                - generic [ref=e561]:
+                  - generic [ref=e562]:
+                    - generic [ref=e568]:
+                      - generic [ref=e569]: 12.2M
+                      - text: followers
+                    - paragraph [ref=e570]: THE BEST AT ABSOLUTELY EVERYTHING. THE JUICER. LEADER OF THE JUICERS.
+                  - generic [ref=e574]:
+                    - generic [ref=e575]:
+                      - link "Twitter" [ref=e578] [cursor=pointer]:
+                        - /url: https://twitter.com/xQc
+                        - generic [ref=e579]:
+                          - img [ref=e583]
+                          - paragraph [ref=e585]: Twitter
+                      - img "External social media link" [ref=e588]
+                    - generic [ref=e590]:
+                      - link "Discord" [ref=e593] [cursor=pointer]:
+                        - /url: https://discord.com/invite/xqcow
+                        - generic [ref=e594]:
+                          - img [ref=e598]
+                          - paragraph [ref=e600]: Discord
+                      - img "External social media link" [ref=e603]
+                    - generic [ref=e605]:
+                      - link "reddit" [ref=e608] [cursor=pointer]:
+                        - /url: https://www.reddit.com/r/xqcow/
+                        - generic [ref=e609]:
+                          - img [ref=e613]
+                          - paragraph [ref=e615]: reddit
+                      - img "External social media link" [ref=e618]
+                    - generic [ref=e620]:
+                      - link "youtube" [ref=e623] [cursor=pointer]:
+                        - /url: https://www.youtube.com/channel/UCmDTrq0LNgPodDOFZiSbsww
+                        - generic [ref=e624]:
+                          - img [ref=e628]
+                          - paragraph [ref=e630]: youtube
+                      - img "External social media link" [ref=e633]
+          - generic [ref=e642]:
+            - generic [ref=e648]:
+              - generic: LIVE
+            - region "Player Controls" [ref=e650]:
+              - generic [ref=e651]:
+                - generic [ref=e652]:
+                  - button "Pause (space/k)" [ref=e655]:
+                    - generic:
+                      - generic:
+                        - img
+                  - generic [ref=e657]:
+                    - button "Unmute (m)" [ref=e661]:
+                      - generic:
+                        - generic:
+                          - img
+                    - generic [ref=e665]:
+                      - generic [ref=e666]: Volume
+                      - slider [ref=e669] [cursor=pointer]: "0"
+                - generic [ref=e672]:
+                  - button "Settings" [ref=e677]:
+                    - generic:
+                      - generic:
+                        - img
+                  - button "Theatre Mode (alt+t)" [ref=e680]:
+                    - generic:
+                      - generic:
+                        - img
+                  - button "Fullscreen (f)" [ref=e683]:
+                    - generic:
+                      - generic:
+                        - img
+      - generic:
+        - complementary "Right Column":
+          - button "Collapse Chat" [ref=e686]:
+            - generic:
+              - generic:
+                - img
+          - generic:
+            - complementary "Stream Chat":
+              - generic [ref=e691]:
+                - region [ref=e692]:
+                  - heading "Stream Chat" [level=4] [ref=e694]
+                  - button "Community" [ref=e697]:
+                    - generic:
+                      - generic:
+                        - img
+                - region "Stream Chat" [ref=e698]:
+                  - generic [ref=e699]:
+                    - generic [ref=e707]:
+                      - button "Previous leaderboard set" [ref=e709]:
+                        - img [ref=e712]
+                      - button "Expand Top Gifters Leaderboard" [ref=e715]:
+                        - generic "Expand Top Gifters Leaderboard" [ref=e716]:
+                          - generic [ref=e720]:
+                            - img "Sub Gift Rank 1" [ref=e723]
+                            - generic [ref=e724]:
+                              - strong [ref=e728]: cael_delgado
+                              - generic [ref=e730]:
+                                - img "Sub Gift Icon" [ref=e732]
+                                - strong [ref=e734]: "30"
+                          - generic [ref=e735]:
+                            - generic [ref=e738]:
+                              - img "Sub Gift Rank 2" [ref=e741]
+                              - strong [ref=e744]: CristianoooRonaldooo
+                              - generic [ref=e746]:
+                                - img "Sub Gift Icon" [ref=e748]
+                                - strong [ref=e750]: "7"
+                            - generic [ref=e753]:
+                              - img "Sub Gift Rank 3" [ref=e756]
+                              - strong [ref=e759]: peroshkaa
+                              - generic [ref=e761]:
+                                - img "Sub Gift Icon" [ref=e763]
+                                - strong [ref=e765]: "6"
+                      - button "Next leaderboard set" [ref=e770]:
+                        - img [ref=e773]
+                    - generic:
+                      - generic:
+                        - link "Skip reading chat messages":
+                          - /url: /xqc#WYSIWGChatInputEditor_SkipChat
+                    - generic "Chat messages" [ref=e775]:
+                      - log [ref=e778]:
+                        - generic [ref=e781]: Welcome to the chat room!
+                        - 'generic "Eileithephaistos: Clueless" [ref=e784]':
+                          - generic [ref=e785]:
+                            - generic [ref=e790]:
+                              - generic [ref=e791]:
+                                - button "Moments Badge - Tier 2 badge" [ref=e794]:
+                                  - img "Moments Badge - Tier 2 badge" [ref=e795]
+                                - button "Eileithephaistos" [ref=e796] [cursor=pointer]:
+                                  - generic [ref=e797]: Eileithephaistos
+                              - text: ":"
+                              - generic [ref=e798]: Clueless
+                            - button "Click to reply to @Eileithephaistos" [ref=e802]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "astartrader: goblin" [ref=e805]':
+                          - generic [ref=e806]:
+                            - generic [ref=e811]:
+                              - generic [ref=e812]:
+                                - button "Twitch Recap 2023 badge" [ref=e815]:
+                                  - img "Twitch Recap 2023 badge" [ref=e816]
+                                - button "astartrader" [ref=e817] [cursor=pointer]:
+                                  - generic [ref=e818]: astartrader
+                              - text: ":"
+                              - generic [ref=e819]: goblin
+                            - button "Click to reply to @astartrader" [ref=e823]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "Havi: Everything" [ref=e826]':
+                          - generic [ref=e827]:
+                            - generic [ref=e832]:
+                              - generic [ref=e833]:
+                                - generic [ref=e834]:
+                                  - button "57-Month Subscriber (4.5-Year Badge) badge" [ref=e836]:
+                                    - img "57-Month Subscriber (4.5-Year Badge) badge" [ref=e837]
+                                  - button "Chaos Orb badge" [ref=e839]:
+                                    - img "Chaos Orb badge" [ref=e840]
+                                - button "Havi" [ref=e841] [cursor=pointer]:
+                                  - generic [ref=e842]: Havi
+                              - text: ":"
+                              - generic [ref=e843]: Everything
+                            - button "Click to reply to @Havi" [ref=e847]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "wizWOT: M hair" [ref=e850]':
+                          - generic [ref=e851]:
+                            - generic [ref=e856]:
+                              - generic [ref=e857]:
+                                - generic [ref=e858]:
+                                  - button "55-Month Subscriber (4.5-Year Badge) badge" [ref=e860]:
+                                    - img "55-Month Subscriber (4.5-Year Badge) badge" [ref=e861]
+                                  - button "Sonic Racing badge" [ref=e863]:
+                                    - img "Sonic Racing badge" [ref=e864]
+                                - button "wizWOT" [ref=e865] [cursor=pointer]:
+                                  - generic [ref=e866]: wizWOT
+                              - text: ":"
+                              - generic [ref=e867]: M hair
+                            - button "Click to reply to @wizWOT" [ref=e871]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "Replying to MDPog, xdeepakx: LO" [ref=e874]':
+                          - generic [ref=e875]:
+                            - generic [ref=e877]:
+                              - generic [ref=e879]:
+                                - img [ref=e881]
+                                - paragraph [ref=e885]: "Replying to @MDPog: remember when xqc spent 30min saying its ok to fuck ur step sis"
+                              - generic [ref=e888]:
+                                - generic [ref=e889]:
+                                  - generic [ref=e890]:
+                                    - button "24-Month Subscriber (2-Year Badge) badge" [ref=e892]:
+                                      - img "24-Month Subscriber (2-Year Badge) badge" [ref=e893]
+                                    - button "Twitch Recap 2025 badge" [ref=e895]:
+                                      - img "Twitch Recap 2025 badge" [ref=e896]
+                                  - button "xdeepakx" [ref=e897] [cursor=pointer]:
+                                    - generic [ref=e898]: xdeepakx
+                                - text: ":"
+                                - generic [ref=e899]: LO
+                            - button "Click to reply to @xdeepakx" [ref=e903]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "giftedlynx: WeirdCat" [ref=e906]':
+                          - generic [ref=e907]:
+                            - generic [ref=e912]:
+                              - generic [ref=e913]:
+                                - generic [ref=e914]:
+                                  - button "68-Month Subscriber (5.5-Year Badge) badge" [ref=e916]:
+                                    - img "68-Month Subscriber (5.5-Year Badge) badge" [ref=e917]
+                                  - button "Prime badge" [ref=e919]:
+                                    - img "Prime badge" [ref=e920]
+                                - button "giftedlynx" [ref=e921] [cursor=pointer]:
+                                  - generic [ref=e922]: giftedlynx
+                              - text: ":"
+                              - generic [ref=e923]: WeirdCat
+                            - button "Click to reply to @giftedlynx" [ref=e927]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "Netcat: @MDPog huhh" [ref=e930]':
+                          - generic [ref=e931]:
+                            - generic [ref=e936]:
+                              - generic [ref=e937]:
+                                - generic [ref=e938]:
+                                  - button "Moderator badge" [ref=e940]:
+                                    - img "Moderator badge" [ref=e941]
+                                  - button "Founder, 109-Month Subscriber badge" [ref=e943]:
+                                    - img "Founder, 109-Month Subscriber badge" [ref=e944]
+                                  - button "Gold Pixel Heart badge" [ref=e946]:
+                                    - img "Gold Pixel Heart badge" [ref=e947]
+                                - button "Netcat" [ref=e948] [cursor=pointer]:
+                                  - generic [ref=e949]: Netcat
+                              - text: ":"
+                              - generic [ref=e950]: "@MDPog huhh"
+                            - button "Click to reply to @Netcat" [ref=e954]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "Replying to MDPog, youluvcats: HUH" [ref=e957]':
+                          - generic [ref=e958]:
+                            - generic [ref=e960]:
+                              - generic [ref=e962]:
+                                - img [ref=e964]
+                                - paragraph [ref=e968]: "Replying to @MDPog: remember when xqc spent 30min saying its ok to fuck ur step sis"
+                              - generic [ref=e971]:
+                                - generic [ref=e972]:
+                                  - generic [ref=e973]:
+                                    - button "10-Month Subscriber (9-Month Badge) badge" [ref=e975]:
+                                      - img "10-Month Subscriber (9-Month Badge) badge" [ref=e976]
+                                    - button "Hornet badge" [ref=e978]:
+                                      - img "Hornet badge" [ref=e979]
+                                  - button "youluvcats" [ref=e980] [cursor=pointer]:
+                                    - generic [ref=e981]: youluvcats
+                                - text: ":"
+                                - generic [ref=e982]: HUH
+                            - button "Click to reply to @youluvcats" [ref=e986]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "SawConnD: dansi" [ref=e989]':
+                          - generic [ref=e990]:
+                            - generic [ref=e995]:
+                              - generic [ref=e996]:
+                                - generic [ref=e997]:
+                                  - button "73-Month Subscriber (6-Year Badge) badge" [ref=e999]:
+                                    - img "73-Month Subscriber (6-Year Badge) badge" [ref=e1000]
+                                  - button "Watching without audio badge" [ref=e1002]:
+                                    - img "Watching without audio badge" [ref=e1003]
+                                - button "SawConnD" [ref=e1004] [cursor=pointer]:
+                                  - generic [ref=e1005]: SawConnD
+                              - text: ":"
+                              - generic [ref=e1006]: dansi
+                            - button "Click to reply to @SawConnD" [ref=e1010]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "notkoltt: @oshy BAND" [ref=e1013]':
+                          - generic [ref=e1014]:
+                            - generic [ref=e1019]:
+                              - button "notkoltt" [ref=e1021] [cursor=pointer]:
+                                - generic [ref=e1022]: notkoltt
+                              - text: ":"
+                              - generic [ref=e1023]: "@oshy BAND"
+                            - button "Click to reply to @notkoltt" [ref=e1027]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "kreply69: it''s everything" [ref=e1030]':
+                          - generic [ref=e1031]:
+                            - generic [ref=e1036]:
+                              - generic [ref=e1037]:
+                                - generic [ref=e1038]:
+                                  - button "6-Month Subscriber (6-Month Badge) badge" [ref=e1040]:
+                                    - img "6-Month Subscriber (6-Month Badge) badge" [ref=e1041]
+                                  - button "Prime badge" [ref=e1043]:
+                                    - img "Prime badge" [ref=e1044]
+                                - button "kreply69" [ref=e1045] [cursor=pointer]:
+                                  - generic [ref=e1046]: kreply69
+                              - text: ":"
+                              - generic [ref=e1047]: it's everything
+                            - button "Click to reply to @kreply69" [ref=e1051]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "vibeswithevan: Cooked" [ref=e1054]':
+                          - generic [ref=e1055]:
+                            - generic [ref=e1060]:
+                              - generic [ref=e1061]:
+                                - generic [ref=e1062]:
+                                  - button "59-Month Subscriber (4.5-Year Badge) badge" [ref=e1064]:
+                                    - img "59-Month Subscriber (4.5-Year Badge) badge" [ref=e1065]
+                                  - button "Raging Wolf Helm badge" [ref=e1067]:
+                                    - img "Raging Wolf Helm badge" [ref=e1068]
+                                - button "vibeswithevan" [ref=e1069] [cursor=pointer]:
+                                  - generic [ref=e1070]: vibeswithevan
+                              - text: ":"
+                              - generic [ref=e1071]: Cooked
+                            - button "Click to reply to @vibeswithevan" [ref=e1075]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "Adralen: MOP HAIR LO" [ref=e1078]':
+                          - generic [ref=e1079]:
+                            - generic [ref=e1084]:
+                              - generic [ref=e1085]:
+                                - generic [ref=e1086]:
+                                  - button "14-Month Subscriber (1-Year Badge) badge" [ref=e1088]:
+                                    - img "14-Month Subscriber (1-Year Badge) badge" [ref=e1089]
+                                  - button "Prime badge" [ref=e1091]:
+                                    - img "Prime badge" [ref=e1092]
+                                - button "Adralen" [ref=e1093] [cursor=pointer]:
+                                  - generic [ref=e1094]: Adralen
+                              - text: ":"
+                              - generic [ref=e1095]: MOP HAIR LO
+                            - button "Click to reply to @Adralen" [ref=e1099]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "Reikhala: Clueless" [ref=e1102]':
+                          - generic [ref=e1103]:
+                            - generic [ref=e1108]:
+                              - generic [ref=e1109]:
+                                - button "Low badge" [ref=e1112]:
+                                  - img "Low badge" [ref=e1113]
+                                - button "Reikhala" [ref=e1114] [cursor=pointer]:
+                                  - generic [ref=e1115]: Reikhala
+                              - text: ":"
+                              - generic [ref=e1116]: Clueless
+                            - button "Click to reply to @Reikhala" [ref=e1120]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "healur_: jah 󠀀" [ref=e1123]':
+                          - generic [ref=e1124]:
+                            - generic [ref=e1129]:
+                              - generic [ref=e1130]:
+                                - button "Share the Love badge" [ref=e1133]:
+                                  - img "Share the Love badge" [ref=e1134]
+                                - button "healur_" [ref=e1135] [cursor=pointer]:
+                                  - generic [ref=e1136]: healur_
+                              - text: ":"
+                              - generic [ref=e1137]: jah 󠀀
+                            - button "Click to reply to @healur_" [ref=e1141]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "Replying to MDPog, terminals_: Concerned" [ref=e1144]':
+                          - generic [ref=e1145]:
+                            - generic [ref=e1147]:
+                              - generic [ref=e1149]:
+                                - img [ref=e1151]
+                                - paragraph [ref=e1155]: "Replying to @MDPog: remember when xqc spent 30min saying its ok to fuck ur step sis"
+                              - generic [ref=e1158]:
+                                - generic [ref=e1159]:
+                                  - generic [ref=e1160]:
+                                    - button "11-Month Subscriber (9-Month Badge) badge" [ref=e1162]:
+                                      - img "11-Month Subscriber (9-Month Badge) badge" [ref=e1163]
+                                    - button "GLHF Pledge badge" [ref=e1165]:
+                                      - img "GLHF Pledge badge" [ref=e1166]
+                                  - button "terminals_" [ref=e1167] [cursor=pointer]:
+                                    - generic [ref=e1168]: terminals_
+                                - text: ":"
+                                - generic [ref=e1169]: Concerned
+                            - button "Click to reply to @terminals_" [ref=e1173]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "jakcooperclank: you look like your mom….." [ref=e1176]':
+                          - generic [ref=e1177]:
+                            - generic [ref=e1182]:
+                              - button "jakcooperclank" [ref=e1184] [cursor=pointer]:
+                                - generic [ref=e1185]: jakcooperclank
+                              - text: ":"
+                              - generic [ref=e1186]: you look like your mom…..
+                            - button "Click to reply to @jakcooperclank" [ref=e1190]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "ㆍㆍㆍㆍㆍㆍㆍㆍㆍㆍ: jah 󠀀" [ref=e1193]':
+                          - generic [ref=e1194]:
+                            - generic [ref=e1199]:
+                              - generic [ref=e1200]:
+                                - generic [ref=e1201]:
+                                  - button "12-Month Subscriber (1-Year Badge) badge" [ref=e1203]:
+                                    - img "12-Month Subscriber (1-Year Badge) badge" [ref=e1204]
+                                  - button "Total War Anniversary badge" [ref=e1206]:
+                                    - img "Total War Anniversary badge" [ref=e1207]
+                                - button "ㆍㆍㆍㆍㆍㆍㆍㆍㆍㆍ (disciplesofannihilation)" [ref=e1208] [cursor=pointer]:
+                                  - generic [ref=e1209]: ㆍㆍㆍㆍㆍㆍㆍㆍㆍㆍ (disciplesofannihilation)
+                              - text: ":"
+                              - generic [ref=e1210]: jah 󠀀
+                            - button "Click to reply to @ㆍㆍㆍㆍㆍㆍㆍㆍㆍㆍ" [ref=e1214]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "iissz: SLAY" [ref=e1217]':
+                          - generic [ref=e1218]:
+                            - generic [ref=e1223]:
+                              - button "iissz" [ref=e1225] [cursor=pointer]:
+                                - generic [ref=e1226]: iissz
+                              - text: ":"
+                              - generic [ref=e1227]: SLAY
+                            - button "Click to reply to @iissz" [ref=e1231]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "deb7000_: Insecure LO" [ref=e1234]':
+                          - generic [ref=e1235]:
+                            - generic [ref=e1240]:
+                              - generic [ref=e1241]:
+                                - generic [ref=e1242]:
+                                  - button "27-Month Subscriber (2-Year Badge) badge" [ref=e1244]:
+                                    - img "27-Month Subscriber (2-Year Badge) badge" [ref=e1245]
+                                  - button "Raging Wolf Helm badge" [ref=e1247]:
+                                    - img "Raging Wolf Helm badge" [ref=e1248]
+                                - button "deb7000_" [ref=e1249] [cursor=pointer]:
+                                  - generic [ref=e1250]: deb7000_
+                              - text: ":"
+                              - generic [ref=e1251]: Insecure LO
+                            - button "Click to reply to @deb7000_" [ref=e1255]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "poopninja007: What is the record right now????" [ref=e1258]':
+                          - generic [ref=e1259]:
+                            - generic [ref=e1264]:
+                              - generic [ref=e1265]:
+                                - button "Prime badge" [ref=e1268]:
+                                  - img "Prime badge" [ref=e1269]
+                                - button "poopninja007" [ref=e1270] [cursor=pointer]:
+                                  - generic [ref=e1271]: poopninja007
+                              - text: ":"
+                              - generic [ref=e1272]: What is the record right now????
+                            - button "Click to reply to @poopninja007" [ref=e1276]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "mattiofc3: TrollAware" [ref=e1279]':
+                          - generic [ref=e1280]:
+                            - generic [ref=e1285]:
+                              - generic [ref=e1286]:
+                                - button "Twitch Recap 2024 badge" [ref=e1289]:
+                                  - img "Twitch Recap 2024 badge" [ref=e1290]
+                                - button "mattiofc3" [ref=e1291] [cursor=pointer]:
+                                  - generic [ref=e1292]: mattiofc3
+                              - text: ":"
+                              - generic [ref=e1293]: TrollAware
+                            - button "Click to reply to @mattiofc3" [ref=e1297]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "SawConnD: dansi dansi" [ref=e1300]':
+                          - generic [ref=e1301]:
+                            - generic [ref=e1306]:
+                              - generic [ref=e1307]:
+                                - generic [ref=e1308]:
+                                  - button "73-Month Subscriber (6-Year Badge) badge" [ref=e1310]:
+                                    - img "73-Month Subscriber (6-Year Badge) badge" [ref=e1311]
+                                  - button "Watching without audio badge" [ref=e1313]:
+                                    - img "Watching without audio badge" [ref=e1314]
+                                - button "SawConnD" [ref=e1315] [cursor=pointer]:
+                                  - generic [ref=e1316]: SawConnD
+                              - text: ":"
+                              - generic [ref=e1317]: dansi dansi
+                            - button "Click to reply to @SawConnD" [ref=e1321]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "trickuna: PaceAware forsen owns you PaceAware forsen owns you PaceAware forsen owns you PaceAware forsen owns you PaceAware forsen owns you PaceAware forsen owns you PaceAware forsen owns you PaceAware forsen owns you ͏" [ref=e1324]':
+                          - generic [ref=e1325]:
+                            - generic [ref=e1330]:
+                              - button "trickuna" [ref=e1332] [cursor=pointer]:
+                                - generic [ref=e1333]: trickuna
+                              - text: ":"
+                              - generic [ref=e1334]: PaceAware forsen owns you PaceAware forsen owns you PaceAware forsen owns you PaceAware forsen owns you PaceAware forsen owns you PaceAware forsen owns you PaceAware forsen owns you PaceAware forsen owns you ͏
+                            - button "Click to reply to @trickuna" [ref=e1338]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "Notpooderman: you look like sideshow bob" [ref=e1341]':
+                          - generic [ref=e1342]:
+                            - generic [ref=e1347]:
+                              - generic [ref=e1348]:
+                                - generic [ref=e1349]:
+                                  - button "58-Month Subscriber (4.5-Year Badge) badge" [ref=e1351]:
+                                    - img "58-Month Subscriber (4.5-Year Badge) badge" [ref=e1352]
+                                  - button "Former Hype Train Conductor badge" [ref=e1354]:
+                                    - img "Former Hype Train Conductor badge" [ref=e1355]
+                                - button "Notpooderman" [ref=e1356] [cursor=pointer]:
+                                  - generic [ref=e1357]: Notpooderman
+                              - text: ":"
+                              - generic [ref=e1358]: you look like sideshow bob
+                            - button "Click to reply to @Notpooderman" [ref=e1362]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "luigisprisoncell: We going for it now???" [ref=e1365]':
+                          - generic [ref=e1366]:
+                            - generic [ref=e1371]:
+                              - button "luigisprisoncell" [ref=e1373] [cursor=pointer]:
+                                - generic [ref=e1374]: luigisprisoncell
+                              - text: ":"
+                              - generic [ref=e1375]: We going for it now???
+                            - button "Click to reply to @luigisprisoncell" [ref=e1379]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "xxlethargic: banana peel ahh" [ref=e1382]':
+                          - generic [ref=e1383]:
+                            - generic [ref=e1388]:
+                              - generic [ref=e1389]:
+                                - generic [ref=e1390]:
+                                  - button "58-Month Subscriber (4.5-Year Badge) badge" [ref=e1392]:
+                                    - img "58-Month Subscriber (4.5-Year Badge) badge" [ref=e1393]
+                                  - button "Raging Wolf Helm badge" [ref=e1395]:
+                                    - img "Raging Wolf Helm badge" [ref=e1396]
+                                - button "xxlethargic" [ref=e1397] [cursor=pointer]:
+                                  - generic [ref=e1398]: xxlethargic
+                              - text: ":"
+                              - generic [ref=e1399]: banana peel ahh
+                            - button "Click to reply to @xxlethargic" [ref=e1403]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "Replying to 202Nyx, Coochiehun7er: u made him self-conscious..." [ref=e1406]':
+                          - generic [ref=e1407]:
+                            - generic [ref=e1409]:
+                              - generic [ref=e1411]:
+                                - img [ref=e1413]
+                                - paragraph [ref=e1417]: "Replying to @202Nyx: why do you look so weird rn"
+                              - generic [ref=e1420]:
+                                - generic [ref=e1421]:
+                                  - button "Moments Badge - Tier 2 badge" [ref=e1424]:
+                                    - img "Moments Badge - Tier 2 badge" [ref=e1425]
+                                  - button "Coochiehun7er" [ref=e1426] [cursor=pointer]:
+                                    - generic [ref=e1427]: Coochiehun7er
+                                - text: ":"
+                                - generic [ref=e1428]: u made him self-conscious...
+                            - button "Click to reply to @Coochiehun7er" [ref=e1432]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "schrippe07: jah EDM" [ref=e1435]':
+                          - generic [ref=e1436]:
+                            - generic [ref=e1441]:
+                              - button "schrippe07" [ref=e1443] [cursor=pointer]:
+                                - generic [ref=e1444]: schrippe07
+                              - text: ":"
+                              - generic [ref=e1445]: jah EDM
+                            - button "Click to reply to @schrippe07" [ref=e1449]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "AidanSeo: xqcHobo" [ref=e1452]':
+                          - generic [ref=e1453]:
+                            - generic [ref=e1458]:
+                              - generic [ref=e1459]:
+                                - button "Purple Pixel Heart - Together For Good '24 badge" [ref=e1462]:
+                                  - img "Purple Pixel Heart - Together For Good '24 badge" [ref=e1463]
+                                - button "AidanSeo" [ref=e1464] [cursor=pointer]:
+                                  - generic [ref=e1465]: AidanSeo
+                              - text: ":"
+                              - generic [ref=e1466]: xqcHobo
+                            - button "Click to reply to @AidanSeo" [ref=e1470]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "robin_williams96: ImNotSad" [ref=e1473]':
+                          - generic [ref=e1474]:
+                            - generic [ref=e1479]:
+                              - button "robin_williams96" [ref=e1481] [cursor=pointer]:
+                                - generic [ref=e1482]: robin_williams96
+                              - text: ":"
+                              - generic [ref=e1483]: ImNotSad
+                            - button "Click to reply to @robin_williams96" [ref=e1487]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "lagops_: been rimming?" [ref=e1490]':
+                          - generic [ref=e1491]:
+                            - generic [ref=e1496]:
+                              - generic [ref=e1497]:
+                                - generic [ref=e1498]:
+                                  - button "47-Month Subscriber (3.5-Year Badge) badge" [ref=e1500]:
+                                    - img "47-Month Subscriber (3.5-Year Badge) badge" [ref=e1501]
+                                  - button "Raging Wolf Helm badge" [ref=e1503]:
+                                    - img "Raging Wolf Helm badge" [ref=e1504]
+                                - button "lagops_" [ref=e1505] [cursor=pointer]:
+                                  - generic [ref=e1506]: lagops_
+                              - text: ":"
+                              - generic [ref=e1507]: been rimming?
+                            - button "Click to reply to @lagops_" [ref=e1511]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "defendz: we can see the bald spot Aware" [ref=e1514]':
+                          - generic [ref=e1515]:
+                            - generic [ref=e1520]:
+                              - generic [ref=e1521]:
+                                - button "Moments Badge - Tier 5 badge" [ref=e1524]:
+                                  - img "Moments Badge - Tier 5 badge" [ref=e1525]
+                                - button "defendz" [ref=e1526] [cursor=pointer]:
+                                  - generic [ref=e1527]: defendz
+                              - text: ":"
+                              - generic [ref=e1528]: we can see the bald spot Aware
+                            - button "Click to reply to @defendz" [ref=e1532]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "v0idvt: juicers forsenLaughingAtYou juicers forsenLaughingAtYou juicers forsenLaughingAtYou juicers forsenLaughingAtYou juicers forsenLaughingAtYou juicers forsenLaughingAtYou juicers forsenLaughingAtYou juicers forsenLaughingAtYou ͏" [ref=e1535]':
+                          - generic [ref=e1536]:
+                            - generic [ref=e1541]:
+                              - generic [ref=e1542]:
+                                - button "Twitch Recap 2025 badge" [ref=e1545]:
+                                  - img "Twitch Recap 2025 badge" [ref=e1546]
+                                - button "v0idvt" [ref=e1547] [cursor=pointer]:
+                                  - generic [ref=e1548]: v0idvt
+                              - text: ":"
+                              - generic [ref=e1549]: juicers forsenLaughingAtYou juicers forsenLaughingAtYou juicers forsenLaughingAtYou juicers forsenLaughingAtYou juicers forsenLaughingAtYou juicers forsenLaughingAtYou juicers forsenLaughingAtYou juicers forsenLaughingAtYou ͏
+                            - button "Click to reply to @v0idvt" [ref=e1553]:
+                              - generic:
+                                - generic:
+                                  - img
+                        - 'generic "MDPog: @Netcat u dont remember that?? it was like a month or 2 ago" [ref=e1556]':
+                          - generic [ref=e1557]:
+                            - generic [ref=e1562]:
+                              - generic [ref=e1563]:
+                                - generic [ref=e1564]:
+                                  - button "VIP badge" [ref=e1566]:
+                                    - img "VIP badge" [ref=e1567]
+                                  - button "78-Month Subscriber (6.5-Year Badge) badge" [ref=e1569]:
+                                    - img "78-Month Subscriber (6.5-Year Badge) badge" [ref=e1570]
+                                  - button "Purple Pixel Heart - Together For Good '24 badge" [ref=e1572]:
+                                    - img "Purple Pixel Heart - Together For Good '24 badge" [ref=e1573]
+                                - button "MDPog" [ref=e1574] [cursor=pointer]:
+                                  - generic [ref=e1575]: MDPog
+                              - text: ":"
+                              - generic [ref=e1576]: "@Netcat u dont remember that?? it was like a month or 2 ago"
+                            - button "Click to reply to @MDPog" [ref=e1580]:
+                              - generic:
+                                - generic:
+                                  - img
+                    - generic [ref=e1581]:
+                      - article [ref=e1585]:
+                        - generic [ref=e1587]:
+                          - generic [ref=e1592]: Animated Emotes can be disabled in Settings
+                          - button "Show me" [ref=e1597]:
+                            - generic [ref=e1599]: Show me
+                          - button "Close" [ref=e1601]:
+                            - generic:
+                              - generic:
+                                - img
+                      - generic [ref=e1602]:
+                        - generic [ref=e1607]:
+                          - generic [ref=e1609]:
+                            - generic [ref=e1614]:
+                              - generic: Send a message
+                              - textbox "Send a message" [ref=e1615]
+                            - status
+                          - button "Emote picker" [ref=e1621]:
+                            - generic:
+                              - generic:
+                                - img
+                        - generic [ref=e1622]:
+                          - button "Bits and Points Balances" [ref=e1629]:
+                            - generic [ref=e1632]:
+                              - img [ref=e1636]
+                              - generic [ref=e1639]: "0"
+                              - generic [ref=e1640]:
+                                - img [ref=e1644]
+                                - generic [ref=e1648]: "0"
+                          - generic [ref=e1649]:
+                            - generic:
+                              - paragraph
+                            - button "Chat settings" [ref=e1653]:
+                              - generic:
+                                - generic:
+                                  - img
+                            - button "Send Chat" [ref=e1656]:
+                              - generic [ref=e1658]: Chat
+    - contentinfo [ref=e1659]:
+      - article [ref=e1661]:
+        - generic [ref=e1668]:
+          - img "CoolCat" [ref=e1670]
+          - strong [ref=e1672]: Sign up to experience the best of xQc
+          - paragraph [ref=e1673]: Chat, follow or subscribe – Twitch is your oyster.
+          - button "Sign Up" [ref=e1675]:
+            - generic [ref=e1677]: Sign Up
+  - status [ref=e1678]
+  - alert [ref=e1679]
+```

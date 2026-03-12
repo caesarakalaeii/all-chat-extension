@@ -64,7 +64,13 @@ Plans:
   2. Navigating from one Kick stream to another (SPA navigation) correctly reinjects the iframe in the new stream's chat slot
   3. `manifest.json` declares Kick `content_scripts`, `host_permissions`, and `web_accessible_resources` entries — the extension loads on kick.com without manual `chrome://extensions` override
   4. `postMessage` origin validation in `PlatformDetector` rejects messages from unexpected origins — no regression on Twitch or YouTube
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Wave 0 test scaffold: skip-stubs for KICK-01 through KICK-07 + kick-mock.html fixture
+- [ ] 03-02-PLAN.md — postMessage origin hardening: replace '*' with extensionOrigin in PlatformDetector, twitch.ts, youtube.ts, index.tsx
+- [ ] 03-03-PLAN.md — KickDetector content script: selector checkpoint + kick.ts implementation (isLiveStream, injection, SPA nav)
+- [ ] 03-04-PLAN.md — Manifest + webpack wiring: Kick entries in manifest.json and webpack.config.js, build verification
 
 ### Phase 4: LLM Test Infrastructure
 **Goal**: An LLM-agent-driven Playwright test suite exercises at least one end-to-end scenario per platform against fixture HTML pages — agent tests run separately from the fast CI suite and are documented with the required API key
@@ -86,5 +92,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. DOM Slot Injection | 3/3 | Complete   | 2026-03-12 |
 | 2. Design System | 5/5 | Complete   | 2026-03-12 |
-| 3. Kick Platform | 0/TBD | Not started | - |
+| 3. Kick Platform | 0/4 | Not started | - |
 | 4. LLM Test Infrastructure | 0/TBD | Not started | - |

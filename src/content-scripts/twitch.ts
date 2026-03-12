@@ -8,15 +8,15 @@
 import { PlatformDetector } from './base/PlatformDetector';
 import { getSyncStorage } from '../lib/storage';
 
-// Delay for Twitch initialization (ms) - Give Twitch time to render
-const TWITCH_INIT_DELAY = 1000;
+// Module-level slot observer — shared between createInjectionPoint and teardown
+let slotObserver: MutationObserver | null = null;
 
 class TwitchDetector extends PlatformDetector {
   platform = 'twitch' as const;
 
   extractStreamerUsername(): string | null {
     // Extract from URL: twitch.tv/username or twitch.tv/username/video/123
-    const match = window.location.pathname.match(/^\/([^\/]+)/);
+    const match = window.location.pathname.match(/^\/([^/]+)/);
     if (!match) return null;
 
     const username = match[1];
@@ -90,34 +90,43 @@ class TwitchDetector extends PlatformDetector {
     }
   }
 
-  createInjectionPoint(): HTMLElement | null {
-    // Find the right column chat container
-    const rightColumn = document.querySelector('[class*="right-column"]') ||
-                        document.querySelector('[data-a-target="right-column-chat-bar"]');
+  async createInjectionPoint(): Promise<HTMLElement | null> {
+    try {
+      // .chat-shell is the Twitch native chat slot
+      // Selector noted: 2026-03-12 — verify against live Twitch if this breaks
+      const slot = await this.waitForElement('.chat-shell');
+      const container = document.createElement('div');
+      container.id = 'allchat-container';
+      container.style.cssText = 'width: 100%; height: 100%;';
+      slot.appendChild(container);
 
-    if (!rightColumn) {
-      console.error('[AllChat] Could not find right column');
+      // Set up scoped MutationObserver on .chat-shell's parent (INJ-03)
+      if (slot.parentElement) {
+        slotObserver?.disconnect();
+        slotObserver = new MutationObserver(() => {
+          const slotExists = slot.parentElement?.querySelector('.chat-shell');
+          const containerExists = document.getElementById('allchat-container');
+          if (!slotExists && !containerExists && globalDetector) {
+            console.log('[AllChat Twitch] .chat-shell removed, re-running waitForElement...');
+            globalDetector.init();
+          }
+        });
+        slotObserver.observe(slot.parentElement, { childList: true, subtree: false });
+      } else {
+        console.warn('[AllChat Twitch] .chat-shell has no parentElement — slot observer not set up');
+      }
+
+      return container;
+    } catch {
+      console.warn('[AllChat Twitch] .chat-shell not found after timeout — native chat remains visible');
       return null;
     }
+  }
 
-    // Create overlay container that sits on top
-    const container = document.createElement('div');
-    container.id = 'allchat-container';
-    container.style.cssText = `
-      position: fixed;
-      top: 50px;
-      right: 0;
-      width: 340px;
-      height: calc(100vh - 50px);
-      background-color: #18181b;
-      display: flex;
-      flex-direction: column;
-      z-index: 1000;
-      transition: width 0.3s ease, height 0.3s ease, top 0.3s ease;
-    `;
-
-    document.body.appendChild(container);
-    return container;
+  teardown(): void {
+    slotObserver?.disconnect();
+    slotObserver = null;
+    super.teardown();
   }
 }
 
@@ -144,17 +153,14 @@ async function initialize() {
   // Set up message relay IMMEDIATELY (before any async operations)
   setupGlobalMessageRelay();
 
-  // Wait for chat to load
+  // Wait for chat to load — waitForElement handles timing via preDelayMs
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-      setTimeout(() => globalDetector?.init(), TWITCH_INIT_DELAY);
+      globalDetector?.init();
     });
   } else {
-    setTimeout(() => globalDetector?.init(), TWITCH_INIT_DELAY);
+    globalDetector?.init();
   }
-
-  // Watch for React re-renders
-  setupMutationObserver();
 
   // Watch for URL changes (Twitch is an SPA)
   setupUrlWatcher();
@@ -170,8 +176,7 @@ function handleExtensionStateChange(enabled: boolean) {
     // Disable extension: remove UI and restore native chat
     if (globalDetector) {
       console.log('[AllChat Twitch] Disabling extension');
-      globalDetector.removeAllChatUI();
-      globalDetector.showNativeChat();
+      globalDetector.teardown();
       globalDetector = null;
     }
   }
@@ -209,7 +214,7 @@ function setupGlobalMessageRelay() {
     return false;
   });
 
-  // Listen for messages FROM iframes requesting current state or UI changes
+  // Listen for messages FROM iframes requesting current state
   window.addEventListener('message', async (event) => {
     if (event.data.type === 'GET_CONNECTION_STATE') {
       console.log('[AllChat Twitch] iframe requested connection state');
@@ -223,22 +228,6 @@ function setupGlobalMessageRelay() {
         }, '*');
         console.log('[AllChat Twitch] Sent current connection state to iframe:', response.data);
       }
-    } else if (event.data.type === 'UI_COLLAPSED') {
-      // Handle collapse/expand UI change
-      const container = document.getElementById('allchat-container');
-      if (container) {
-        const collapsed = event.data.collapsed;
-        if (collapsed) {
-          container.style.width = '48px';
-          container.style.height = '48px';
-          container.style.top = '60px';
-        } else {
-          container.style.width = '340px';
-          container.style.height = 'calc(100vh - 50px)';
-          container.style.top = '50px';
-        }
-        console.log(`[AllChat Twitch] Container ${collapsed ? 'collapsed' : 'expanded'}`);
-      }
     }
   });
 
@@ -246,61 +235,8 @@ function setupGlobalMessageRelay() {
 }
 
 /**
- * Set up MutationObserver to detect when Twitch re-renders and removes our UI
- */
-function setupMutationObserver() {
-  let reinitTimeout: ReturnType<typeof setTimeout> | null = null;
-
-  const observer = new MutationObserver(() => {
-    // Remove duplicate containers if they exist
-    const allchatContainers = document.querySelectorAll('#allchat-container');
-    if (allchatContainers.length > 1) {
-      console.log(`[AllChat Twitch] Found ${allchatContainers.length} containers, removing duplicates...`);
-      // Keep only the first one, remove the rest
-      for (let i = 1; i < allchatContainers.length; i++) {
-        allchatContainers[i].remove();
-      }
-    }
-
-    const allchatExists = document.getElementById('allchat-container');
-    const nativeExists = document.querySelector('.chat-scrollable-area__message-container');
-    const currentStreamer = globalDetector?.extractStreamerUsername();
-
-    // If our container was removed but native chat exists, re-inject
-    // BUT: only if we haven't already checked this streamer recently
-    if (!allchatExists && nativeExists && globalDetector && currentStreamer !== lastCheckedStreamer) {
-      // Debounce re-initialization
-      if (reinitTimeout) {
-        clearTimeout(reinitTimeout);
-      } else {
-        // Only log once per debounce cycle
-        console.log('[AllChat Twitch] Detected re-render, re-injecting...');
-      }
-
-      reinitTimeout = setTimeout(() => {
-        lastCheckedStreamer = currentStreamer ?? null;
-        globalDetector?.init();
-        reinitTimeout = null;
-      }, 500);
-    }
-
-    // If AllChat exists but native chat is visible, hide it again
-    if (allchatExists && nativeExists && globalDetector) {
-      const nativeColumn = document.querySelector('.right-column:not(#allchat-container)') as HTMLElement;
-      if (nativeColumn && nativeColumn.style.display !== 'none') {
-        globalDetector.hideNativeChat();
-      }
-    }
-  });
-
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-  });
-}
-
-/**
  * Watch for URL changes (Twitch uses client-side routing)
+ * Calls teardown() immediately on URL change before re-calling init()
  */
 function setupUrlWatcher() {
   let lastUrl = location.href;
@@ -309,12 +245,10 @@ function setupUrlWatcher() {
     const url = location.href;
     if (url !== lastUrl) {
       lastUrl = url;
-      lastCheckedStreamer = null; // Reset on URL change
-      console.log('[AllChat Twitch] URL changed, re-initializing...');
-      // Check if detector still exists (extension might have been disabled)
-      if (globalDetector) {
-        setTimeout(() => globalDetector?.init(), TWITCH_INIT_DELAY);
-      }
+      lastCheckedStreamer = null;
+      console.log('[AllChat Twitch] URL changed, tearing down...');
+      globalDetector?.teardown();
+      globalDetector?.init();
     }
   }).observe(document, { subtree: true, childList: true });
 }

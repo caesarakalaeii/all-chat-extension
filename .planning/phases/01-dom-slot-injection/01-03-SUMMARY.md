@@ -62,7 +62,7 @@ completed: 2026-03-12
 - **Duration:** 1 min
 - **Started:** 2026-03-12T14:04:08Z
 - **Completed:** 2026-03-12T14:05:28Z
-- **Tasks:** 1 (of 2 — checkpoint:human-verify reached after Task 1)
+- **Tasks:** 2 of 2 (checkpoint:human-verify approved 2026-03-12)
 - **Files modified:** 1
 
 ## Accomplishments
@@ -75,8 +75,12 @@ completed: 2026-03-12
 ## Task Commits
 
 1. **Task 1: Rewrite YouTubeDetector — slot injection, style-tag hide, event navigation** - `b63b9d7` (feat)
+2. **Task 2 (checkpoint:human-verify): Browser verification** - Approved by user 2026-03-12
 
-**Plan metadata:** (docs commit to follow)
+**Deviation fix:** `d3149b0` (fix) — wait for ytd-channel-name before init on direct page load
+
+**Plan metadata:** `4ef612c` (docs: complete youtube slot injection plan)
+**Post-checkpoint metadata:** `ccd6cf5` (docs: mark plan complete after browser verification approval)
 
 ## Files Created/Modified
 
@@ -90,7 +94,20 @@ completed: 2026-03-12
 
 ## Deviations from Plan
 
-None - plan executed exactly as written.
+### Auto-fixed Issues
+
+**1. [Rule 1 - Bug] Wait for ytd-channel-name before init on direct page load**
+- **Found during:** Task 2 (checkpoint:human-verify — browser testing)
+- **Issue:** `extractStreamerUsername()` relies on `ytd-channel-name a` rendering, which is not ready when the content script fires on `/watch?v=` URLs directly. The race condition caused username extraction to fail.
+- **Fix:** Added `await this.waitForElement('ytd-channel-name a')` before `init()` call in `initialize()` — timing delegated to the same `waitForElement` utility, no fixed delay introduced
+- **Files modified:** `src/content-scripts/youtube.ts`
+- **Verification:** Confirmed working in live browser — username extraction succeeds on direct page loads
+- **Committed in:** `d3149b0` (fix: wait for channel name element before init on direct page load)
+
+---
+
+**Total deviations:** 1 auto-fixed (Rule 1 - Bug)
+**Impact on plan:** Auto-fix necessary for correctness on direct page loads. No scope creep — uses existing waitForElement() utility.
 
 ## Issues Encountered
 
@@ -102,8 +119,8 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 
-- YouTube injection code complete — awaiting human verification in a live browser (Task 2 is `checkpoint:human-verify`)
-- Once approved, Playwright test stubs for INJ-04, INJ-05, INJ-06 can be un-skipped in `tests/test-slot-injection.spec.ts` and `tests/test-spa-navigation.spec.ts`
+- YouTube injection code complete — human verification approved 2026-03-12
+- Playwright test stubs for INJ-04, INJ-05, INJ-06 can be un-skipped in `tests/test-slot-injection.spec.ts` and `tests/test-spa-navigation.spec.ts`
 - `npx tsc --noEmit` passes with zero errors — both Twitch and YouTube now implement async `createInjectionPoint()`
 - No `INIT_DELAY` constants remain anywhere in `src/` — INJ-08 complete across all platforms
 

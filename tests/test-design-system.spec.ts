@@ -63,6 +63,24 @@ test.describe('Design System — Phase 2', () => {
     expect(major).toBeGreaterThanOrEqual(3);
   });
 
+  test.skip('DS-10a: ErrorBoundary.tsx exists and contains getDerivedStateFromError', () => {
+    const filePath = path.resolve(__dirname, '../src/ui/components/ErrorBoundary.tsx');
+    expect(fs.existsSync(filePath)).toBe(true);
+    const src = fs.readFileSync(filePath, 'utf8');
+    expect(src.includes('getDerivedStateFromError')).toBe(true);
+    expect(src.includes('componentDidCatch')).toBe(true);
+    expect(src.includes('Chat failed to load')).toBe(true);
+    expect(src.includes('hasError: false')).toBe(true);
+    expect(src.includes(' any')).toBe(false);
+  });
+
+  test.skip('DS-10b: index.tsx wraps ChatContainer with ErrorBoundary', () => {
+    const filePath = path.resolve(__dirname, '../src/ui/index.tsx');
+    const src = fs.readFileSync(filePath, 'utf8');
+    expect(src.includes('import ErrorBoundary')).toBe(true);
+    expect(src.includes('<ErrorBoundary>')).toBe(true);
+  });
+
   // DS-10 needs page fixture — skipped via runtime test.skip()
   test('DS-10: ErrorBoundary shows fallback card on render error', async ({ page }) => {
     test.skip();

@@ -81,7 +81,12 @@ Plans:
   2. At least one agent test per platform (Twitch, YouTube, Kick) passes against a local fixture HTML page: chat visible, platform badge correct, message send flow completes
   3. `frameLocator('iframe[data-platform]')` is used for all in-iframe Playwright assertions — no test reaches into the iframe via `page.$` or raw CSS selectors on the platform page
   4. CI configuration documents `ANTHROPIC_API_KEY` as a required secret for the agent suite — missing key causes a clear error, not a silent skip
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Infrastructure: mock WS server, globalSetup/globalTeardown, npm test scripts, playwright.config.ts
+- [ ] 04-02-PLAN.md — Fast suite implementation: unskip static fs tests, implement page.route() fixture tests, frameLocator assertions
+- [ ] 04-03-PLAN.md — Agent scenarios + CI job: twitch/youtube/kick scenario markdown files, GitHub Actions test job
 
 ## Progress
 
@@ -93,4 +98,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. DOM Slot Injection | 3/3 | Complete   | 2026-03-12 |
 | 2. Design System | 5/5 | Complete   | 2026-03-12 |
 | 3. Kick Platform | 3/4 | In Progress|  |
-| 4. LLM Test Infrastructure | 0/TBD | Not started | - |
+| 4. LLM Test Infrastructure | 0/3 | Not started | - |

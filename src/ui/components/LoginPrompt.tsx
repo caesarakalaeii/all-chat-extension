@@ -88,12 +88,12 @@ export default function LoginPrompt({ platform, streamer, onLogin }: LoginPrompt
   };
 
   return (
-    <div className="flex flex-col items-center justify-center p-6 space-y-4 bg-gray-800 rounded-lg">
+    <div className="flex flex-col items-center justify-center p-6 space-y-4 bg-surface rounded-lg">
       <div className="text-center">
-        <h3 className="text-lg font-semibold text-white mb-2">
+        <h3 className="text-lg font-semibold text-text mb-2">
           Login to Send Messages
         </h3>
-        <p className="text-sm text-gray-400">
+        <p className="text-sm text-[var(--color-text-sub)]">
           Log in with your {platform.charAt(0).toUpperCase() + platform.slice(1)} account to send messages in {streamer}'s chat
         </p>
       </div>
@@ -109,14 +109,14 @@ export default function LoginPrompt({ platform, streamer, onLogin }: LoginPrompt
         disabled={loading}
         className={`px-6 py-3 rounded font-semibold transition-colors ${
           loading
-            ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-            : 'bg-purple-600 hover:bg-purple-700 text-white'
+            ? 'bg-surface-2 text-[var(--color-text-dim)] cursor-not-allowed'
+            : 'bg-purple-600 hover:bg-purple-700 text-text'
         }`}
       >
         {loading ? 'Opening login...' : `Login with ${platform.charAt(0).toUpperCase() + platform.slice(1)}`}
       </button>
 
-      <p className="text-xs text-gray-500 text-center max-w-xs">
+      <p className="text-xs text-[var(--color-text-dim)] text-center max-w-xs">
         You'll be redirected to {platform.charAt(0).toUpperCase() + platform.slice(1)} to authorize All-Chat. Your credentials are never stored by this extension.
       </p>
     </div>

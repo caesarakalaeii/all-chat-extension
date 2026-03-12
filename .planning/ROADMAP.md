@@ -29,7 +29,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. `waitForElement()` utility is in `PlatformDetector` base class — both Twitch and YouTube content scripts call it from there rather than implementing their own wait loops
   4. Navigating between YouTube videos does not leave behind orphaned containers or duplicate injection points
   5. No hardcoded `TWITCH_INIT_DELAY` or `YOUTUBE_INIT_DELAY` constants exist anywhere in the codebase
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Base class infrastructure: waitForElement(), teardown(), async createInjectionPoint() signature + Wave 0 test scaffolding
+- [ ] 01-02-PLAN.md — Twitch slot injection: async createInjectionPoint() targeting .chat-shell, scoped MutationObserver, teardown override
+- [ ] 01-03-PLAN.md — YouTube slot injection: style-tag native chat hide, insertBefore injection, yt-navigate-finish SPA navigation
 
 ### Phase 2: Design System
 **Goal**: The chat iframe renders with OkLCh design tokens, Inter/DM Mono typography, and the InfinityLogo SVG — Tailwind 3 is fully replaced by Tailwind 4 with no style leakage to the platform page
@@ -72,7 +77,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. DOM Slot Injection | 0/TBD | Not started | - |
+| 1. DOM Slot Injection | 0/3 | Not started | - |
 | 2. Design System | 0/TBD | Not started | - |
 | 3. Kick Platform | 0/TBD | Not started | - |
 | 4. LLM Test Infrastructure | 0/TBD | Not started | - |

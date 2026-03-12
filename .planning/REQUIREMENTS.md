@@ -18,16 +18,16 @@
 
 ### Design System
 
-- [ ] **DS-01**: Tailwind 3 fully replaced by Tailwind 4 (`tailwindcss@^4.1` + `@tailwindcss/postcss`); `tailwind.config.js` deleted
-- [ ] **DS-02**: OkLCh design tokens from `all-chat/frontend/src/app/globals.css` applied to iframe `@theme` block (colors, text sizes, spacing, radii)
-- [ ] **DS-03**: `MiniCssExtractPlugin` used for iframe CSS bundle (replaces `style-loader`) — CSS injected via `<link>` in `chat-container.html`
-- [ ] **DS-04**: Iframe CSS tokens are confirmed isolated to iframe `:root` — no `--color-neutral-*` variables on platform page `:root`
-- [ ] **DS-05**: `InfinityLogo` SVG component integrated into chat header (animated infinity sign in chat bubble)
-- [ ] **DS-06**: Inter font and DM Mono applied to chat UI (scoped to iframe only)
-- [ ] **DS-07**: Platform color accents updated to match design system (`--color-twitch: #A37BFF`, `--color-youtube: #FF4444`, `--color-kick: #53FC18`)
-- [ ] **DS-08**: `autoprefixer` removed from PostCSS config (Tailwind 4 handles vendor prefixes natively)
-- [ ] **DS-09**: `tailwind-merge` upgraded to v3 (compatible with Tailwind 4 class names)
-- [ ] **DS-10**: `ErrorBoundary` wraps `ChatContainer` — uncaught errors show a readable fallback instead of blank iframe
+- [x] **DS-01**: Tailwind 3 fully replaced by Tailwind 4 (`tailwindcss@^4.1` + `@tailwindcss/postcss`); `tailwind.config.js` deleted
+- [x] **DS-02**: OkLCh design tokens from `all-chat/frontend/src/app/globals.css` applied to iframe `@theme` block (colors, text sizes, spacing, radii)
+- [x] **DS-03**: `MiniCssExtractPlugin` used for iframe CSS bundle (replaces `style-loader`) — CSS injected via `<link>` in `chat-container.html`
+- [x] **DS-04**: Iframe CSS tokens are confirmed isolated to iframe `:root` — no `--color-neutral-*` variables on platform page `:root`
+- [x] **DS-05**: `InfinityLogo` SVG component integrated into chat header (animated infinity sign in chat bubble)
+- [x] **DS-06**: Inter font and DM Mono applied to chat UI (scoped to iframe only)
+- [x] **DS-07**: Platform color accents updated to match design system (`--color-twitch: #A37BFF`, `--color-youtube: #FF4444`, `--color-kick: #53FC18`)
+- [x] **DS-08**: `autoprefixer` removed from PostCSS config (Tailwind 4 handles vendor prefixes natively)
+- [x] **DS-09**: `tailwind-merge` upgraded to v3 (compatible with Tailwind 4 class names)
+- [x] **DS-10**: `ErrorBoundary` wraps `ChatContainer` — uncaught errors show a readable fallback instead of blank iframe
 
 ### Kick Platform
 
@@ -91,16 +91,16 @@ _Populated during roadmap creation._
 | INJ-06 | Phase 1 | Complete |
 | INJ-07 | Phase 1 | Complete |
 | INJ-08 | Phase 1 | Complete |
-| DS-01 | Phase 2 | Pending |
-| DS-02 | Phase 2 | Pending |
-| DS-03 | Phase 2 | Pending |
-| DS-04 | Phase 2 | Pending |
-| DS-05 | Phase 2 | Pending |
-| DS-06 | Phase 2 | Pending |
-| DS-07 | Phase 2 | Pending |
-| DS-08 | Phase 2 | Pending |
-| DS-09 | Phase 2 | Pending |
-| DS-10 | Phase 2 | Pending |
+| DS-01 | Phase 2 | Complete |
+| DS-02 | Phase 2 | Complete |
+| DS-03 | Phase 2 | Complete |
+| DS-04 | Phase 2 | Complete |
+| DS-05 | Phase 2 | Complete |
+| DS-06 | Phase 2 | Complete |
+| DS-07 | Phase 2 | Complete |
+| DS-08 | Phase 2 | Complete |
+| DS-09 | Phase 2 | Complete |
+| DS-10 | Phase 2 | Complete |
 | KICK-01 | Phase 3 | Pending |
 | KICK-02 | Phase 3 | Pending |
 | KICK-03 | Phase 3 | Pending |

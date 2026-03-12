@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 03-kick-platform 03-01-PLAN.md
-last_updated: "2026-03-12T17:02:02.426Z"
+stopped_at: Completed 03-kick-platform 03-02-PLAN.md
+last_updated: "2026-03-12T17:07:05.443Z"
 last_activity: 2026-03-12 — Roadmap created; all 32 v1 requirements mapped to 4 phases
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 12
-  completed_plans: 9
+  completed_plans: 10
   percent: 0
 ---
 
@@ -59,6 +59,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02-design-system P04 | 4min | 2 tasks | 5 files |
 | Phase 02-design-system P05 | 5min | 2 tasks | 3 files |
 | Phase 03-kick-platform P01 | 2min | 2 tasks | 6 files |
+| Phase 03-kick-platform P02 | 4min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,8 @@ Recent decisions affecting current work:
 - [Phase 02-design-system]: Retry button calls setState({ hasError: false }) — no window.location.reload
 - [Phase 03-kick-platform]: kick-mock.html nests #channel-chatroom > #chatroom > .chatroom-wrapper so all three fallback selectors coexist in one fixture
 - [Phase 03-kick-platform]: Static test.skip for KICK-07a fs test; runtime test.skip() for page-fixture tests (KICK-07b/07c)
+- [Phase 03-kick-platform]: extensionOrigin derived at call site (not module-level) — getURL synchronous, avoids top-level init ordering issues
+- [Phase 03-kick-platform]: iframe origin guard placed as first two lines inside message listener — fires before any event.data access
 
 ### Pending Todos
 
@@ -104,6 +107,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-12T17:02:02.424Z
-Stopped at: Completed 03-kick-platform 03-01-PLAN.md
+Last session: 2026-03-12T17:07:05.441Z
+Stopped at: Completed 03-kick-platform 03-02-PLAN.md
 Resume file: None

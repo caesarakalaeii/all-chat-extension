@@ -15,6 +15,7 @@ import { API_BASE_URL } from '../../config';
 import LoginPrompt from './LoginPrompt';
 import MessageInput from './MessageInput';
 import ToastContainer, { Toast } from './Toast';
+import { InfinityLogo } from './InfinityLogo';
 
 interface ChatContainerProps {
   platform: 'twitch' | 'youtube' | 'kick';
@@ -274,83 +275,49 @@ export default function ChatContainer({ platform, streamer }: ChatContainerProps
   };
 
   return (
-    <div className="h-full flex flex-col bg-gray-900">
+    <div className="h-full flex flex-col bg-bg">
       {/* Header */}
-      <div className="px-3 py-2 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={toggleCollapse}
-            className="text-gray-400 hover:text-gray-200 transition-colors"
-            title={isCollapsed ? "Expand" : "Collapse"}
-            aria-label={isCollapsed ? "Expand" : "Collapse"}
+      <div className="px-2 py-1.5 bg-surface border-b border-border flex items-center">
+        {/* Left: collapse button */}
+        <button
+          onClick={toggleCollapse}
+          className="text-[var(--color-text-dim)] hover:text-text transition-colors"
+          title={isCollapsed ? 'Expand' : 'Collapse'}
+          aria-label={isCollapsed ? 'Expand' : 'Collapse'}
+        >
+          <svg
+            className="w-4 h-4 transition-transform"
+            style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
           >
-            <svg
-              className="w-4 h-4 transition-transform"
-              style={{ transform: isCollapsed ? 'rotate(90deg)' : 'rotate(0deg)' }}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-          {!isCollapsed && (
-            <>
-              <span className="text-sm font-semibold text-white">All-Chat</span>
-              <span className="text-xs text-gray-400">• {platform}</span>
-            </>
-          )}
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+
+        {/* Center: InfinityLogo */}
+        <div className="flex-1 flex justify-center">
+          <InfinityLogo size={24} />
         </div>
-        {!isCollapsed && (
-          <div className="flex items-center gap-3">
-            {viewerInfo && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400">{viewerInfo.display_name || viewerInfo.username}</span>
-                <button
-                  onClick={handleLogout}
-                  className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                  title="Logout"
-                >
-                  Logout
-                </button>
-              </div>
-            )}
-            {connectionStatus.state === 'connected' ? (
-              <span className="text-xs text-green-400 flex items-center gap-1">
-                <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-                Connected
-              </span>
-            ) : connectionStatus.state === 'connecting' ? (
-              <span className="text-xs text-yellow-400 flex items-center gap-1">
-                <span className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></span>
-                Connecting
-              </span>
-            ) : connectionStatus.state === 'reconnecting' ? (
-              <span className="text-xs text-yellow-400 flex items-center gap-1">
-                <span className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></span>
-                Reconnecting
-                {reconnectCountdown !== null && reconnectCountdown > 0 && (
-                  <span className="text-gray-500">({reconnectCountdown}s)</span>
-                )}
-                {connectionStatus.attempts && connectionStatus.maxAttempts && (
-                  <span className="text-gray-500">
-                    [{connectionStatus.attempts}/{connectionStatus.maxAttempts}]
-                  </span>
-                )}
-              </span>
-            ) : connectionStatus.state === 'failed' ? (
-              <span className="text-xs text-red-400 flex items-center gap-1">
-                <span className="w-2 h-2 bg-red-400 rounded-full"></span>
-                Failed
-              </span>
-            ) : (
-              <span className="text-xs text-gray-400 flex items-center gap-1">
-                <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
-                Disconnected
-              </span>
-            )}
-          </div>
-        )}
+
+        {/* Right: connection dot + platform badge */}
+        <div className="flex items-center gap-1.5">
+          {/* Connection dot */}
+          <span className={`w-2 h-2 rounded-full ${
+            connectionStatus.state === 'connected'    ? 'bg-green-400' :
+            connectionStatus.state === 'connecting'   ? 'bg-yellow-400 animate-pulse' :
+            connectionStatus.state === 'reconnecting' ? 'bg-yellow-400 animate-pulse' :
+            connectionStatus.state === 'failed'       ? 'bg-red-400' :
+                                                        'bg-[var(--color-text-dim)]'
+          }`} title={connectionStatus.state} />
+          {/* Platform badge */}
+          <span
+            className="w-2 h-2 rounded-full"
+            style={{ backgroundColor: `var(--color-${platform})` }}
+            title={platform}
+          />
+        </div>
       </div>
 
       {!isCollapsed && (
@@ -380,7 +347,7 @@ export default function ChatContainer({ platform, streamer }: ChatContainerProps
                 </div>
                 <button
                   onClick={() => window.location.reload()}
-                  className={`px-3 py-1 text-white text-xs rounded transition-colors ${
+                  className={`px-3 py-1 text-text text-xs rounded transition-colors ${
                     connectionStatus.error === 'OVERLAY_NOT_PUBLIC'
                       ? 'bg-orange-700 hover:bg-orange-600'
                       : 'bg-red-700 hover:bg-red-600'
@@ -396,7 +363,7 @@ export default function ChatContainer({ platform, streamer }: ChatContainerProps
           <div id="messages-container" className="flex-1 overflow-y-auto p-3 space-y-2">
             {messages.length === 0 ? (
               <div className="flex items-center justify-center h-full">
-                <div className="text-center text-gray-500">
+                <div className="text-center text-[var(--color-text-dim)]">
                   <p className="text-sm">Waiting for messages...</p>
                   <p className="text-xs mt-1">Messages from {streamer} will appear here</p>
                 </div>
@@ -405,7 +372,7 @@ export default function ChatContainer({ platform, streamer }: ChatContainerProps
               messages.map((message) => (
                 <div
                   key={message.id}
-                  className={`message-enter p-2 rounded bg-gray-800/50 platform-${message.platform}`}
+                  className={`message-enter p-2 rounded bg-surface/50 platform-${message.platform}`}
                 >
                   <div className="flex items-center gap-2 mb-1">
                     {/* Badges */}
@@ -430,11 +397,11 @@ export default function ChatContainer({ platform, streamer }: ChatContainerProps
                     </span>
 
                     {/* Platform indicator */}
-                    <span className="text-xs text-gray-500">({message.platform})</span>
+                    <span className="text-xs text-[var(--color-text-dim)]">({message.platform})</span>
                   </div>
 
                   {/* Message text with emotes */}
-                  <div className="text-sm text-gray-200">
+                  <div className="text-sm text-text">
                     {renderMessageContent(message)}
                   </div>
                 </div>
@@ -444,8 +411,8 @@ export default function ChatContainer({ platform, streamer }: ChatContainerProps
 
           {/* Footer / Message Input */}
           {loadingAuth ? (
-            <div className="px-3 py-3 bg-gray-800 border-t border-gray-700 text-center">
-              <p className="text-xs text-gray-500">Loading...</p>
+            <div className="px-3 py-3 bg-surface border-t border-border text-center">
+              <p className="text-xs text-[var(--color-text-dim)]">Loading...</p>
             </div>
           ) : viewerToken ? (
             <MessageInput
@@ -456,7 +423,7 @@ export default function ChatContainer({ platform, streamer }: ChatContainerProps
               onSendSuccess={handleMessageSent}
             />
           ) : (
-            <div className="border-t border-gray-700">
+            <div className="border-t border-border">
               <LoginPrompt
                 platform={platform}
                 streamer={streamer}

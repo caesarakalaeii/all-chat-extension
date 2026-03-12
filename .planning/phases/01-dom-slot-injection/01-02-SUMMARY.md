@@ -61,7 +61,7 @@ completed: 2026-03-12
 - **Duration:** 3 min
 - **Started:** 2026-03-12T14:18:08Z
 - **Completed:** 2026-03-12T14:21:17Z
-- **Tasks:** 1 of 2 completed (Task 2 is checkpoint:human-verify)
+- **Tasks:** 2 of 2 completed (Task 2 checkpoint:human-verify approved 2026-03-12)
 - **Files modified:** 2
 
 ## Accomplishments
@@ -81,9 +81,7 @@ Each task was committed atomically:
 1. **TDD RED: Un-skip INJ-01, INJ-02 tests** - `8cf39e1` (test)
 2. **Task 1: Rewrite TwitchDetector — slot injection, scoped observer, teardown** - `b2ef9fd` (feat)
 
-**Plan metadata:** (docs commit to follow)
-
-_Note: Task 2 is checkpoint:human-verify — awaiting manual browser verification_
+**Plan metadata:** `6878193` (docs: complete plan — checkpoint:human-verify)
 
 ## Files Created/Modified
 
@@ -110,9 +108,9 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 
-- `src/content-scripts/twitch.ts` is ready for human browser verification (Task 2: checkpoint:human-verify)
-- After approval, plan 01-03 (YouTube slot injection) can proceed in parallel or sequence
-- Pre-existing TypeScript error in `youtube.ts` (sync `createInjectionPoint()` vs async signature) will be resolved by plan 01-03
+- Browser verification approved (2026-03-12): `#allchat-container` confirmed as child of `.chat-shell`, no `position:fixed`, width/height 100%
+- Plan 01-03 (YouTube slot injection) is complete — Phase 1 fully done
+- Pre-existing TypeScript error in `youtube.ts` resolved by plan 01-03
 
 ## Self-Check: PASSED
 

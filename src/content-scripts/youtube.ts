@@ -198,14 +198,11 @@ async function initialize() {
   // Set up message relay IMMEDIATELY (before any async operations)
   setupGlobalMessageRelay();
 
-  // Wait for page to load — waitForElement() handles timing, no delay needed
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      globalDetector?.init();
-    });
-  } else {
-    globalDetector?.init();
-  }
+  // Wait for channel name to render before init — on /watch?v= URLs the DOM
+  // isn't ready when the content script fires, causing extractStreamerUsername to fail.
+  // waitForElement handles both loading and already-loaded states.
+  await globalDetector.waitForElement('ytd-channel-name a').catch(() => null);
+  globalDetector?.init();
 
   // Watch for URL changes (YouTube is an SPA) — registered once
   setupUrlWatcher();

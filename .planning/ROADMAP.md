@@ -12,7 +12,7 @@ This milestone upgrades the all-chat extension from a fixed-position overlay to 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: DOM Slot Injection** - Replace fixed-position overlay with native DOM slot injection on Twitch and YouTube
+- [x] **Phase 1: DOM Slot Injection** - Replace fixed-position overlay with native DOM slot injection on Twitch and YouTube (completed 2026-03-12)
 - [ ] **Phase 2: Design System** - Migrate to Tailwind 4 with OkLCh tokens and integrate InfinityLogo into the iframe UI
 - [ ] **Phase 3: Kick Platform** - Add full Kick platform support reusing the validated injection base class
 - [ ] **Phase 4: LLM Test Infrastructure** - Build LLM-agent-driven Playwright tests for all three platforms
@@ -77,7 +77,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. DOM Slot Injection | 2/3 | In Progress|  |
+| 1. DOM Slot Injection | 3/3 | Complete   | 2026-03-12 |
 | 2. Design System | 0/TBD | Not started | - |
 | 3. Kick Platform | 0/TBD | Not started | - |
 | 4. LLM Test Infrastructure | 0/TBD | Not started | - |

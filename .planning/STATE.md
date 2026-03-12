@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: "checkpoint:human-verify — 01-02 Task 1 complete, awaiting browser verification"
-last_updated: "2026-03-12T14:03:16.120Z"
+stopped_at: "checkpoint:human-verify — 01-03 Task 1 complete, awaiting browser verification"
+last_updated: "2026-03-12T14:06:29.246Z"
 last_activity: 2026-03-12 — Roadmap created; all 32 v1 requirements mapped to 4 phases
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 *Updated after each plan completion*
 | Phase 01-dom-slot-injection P01 | 3 | 2 tasks | 5 files |
 | Phase 01-dom-slot-injection P02 | 5min | 1 tasks | 2 files |
+| Phase 01-dom-slot-injection P03 | 1 | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,9 @@ Recent decisions affecting current work:
 - [Phase 01-dom-slot-injection]: createInjectionPoint() async signature — tsc errors in twitch.ts/youtube.ts expected and resolved in Wave 2
 - [Phase 01-dom-slot-injection]: UI_COLLAPSED handler removed — .chat-shell controls dimensions in slot injection mode
 - [Phase 01-dom-slot-injection]: slotObserver kept as module-level let for teardown() override access
+- [Phase 01-dom-slot-injection]: insertBefore(container, nativeChat) places #allchat-container before ytd-live-chat-frame in flex parent — correct slot position
+- [Phase 01-dom-slot-injection]: Style tag hide in <head> chosen over inline style — Polymer re-creation restores inline styles; style tag persists
+- [Phase 01-dom-slot-injection]: yt-navigate-finish is canonical YouTube SPA signal — replaces MutationObserver polling (fires thousands of times per navigation)
 
 ### Pending Todos
 
@@ -82,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-12T14:03:16.117Z
-Stopped at: checkpoint:human-verify — 01-02 Task 1 complete, awaiting browser verification
+Last session: 2026-03-12T14:06:29.244Z
+Stopped at: checkpoint:human-verify — 01-03 Task 1 complete, awaiting browser verification
 Resume file: None

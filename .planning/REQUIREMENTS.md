@@ -7,12 +7,12 @@
 
 ### Injection
 
-- [ ] **INJ-01**: Twitch chat iframe is mounted in the native `.chat-shell` DOM slot, not appended to `document.body` as a fixed overlay
-- [ ] **INJ-02**: Fixed-position overlay code path (`createInjectionPoint()` body append) is fully removed — no silent fallback
-- [ ] **INJ-03**: MutationObserver is scoped to the native chat slot parent only (not `document.body subtree: true`)
-- [ ] **INJ-04**: YouTube chat iframe is mounted by hiding `ytd-live-chat-frame` and inserting our container in the same flex slot
-- [ ] **INJ-05**: YouTube SPA navigation uses `yt-navigate-finish` event instead of URL-polling MutationObserver
-- [ ] **INJ-06**: YouTube native chat is hidden via injected `<style>` tag (not inline style) so Polymer recreation on navigation doesn't restore it
+- [x] **INJ-01**: Twitch chat iframe is mounted in the native `.chat-shell` DOM slot, not appended to `document.body` as a fixed overlay
+- [x] **INJ-02**: Fixed-position overlay code path (`createInjectionPoint()` body append) is fully removed — no silent fallback
+- [x] **INJ-03**: MutationObserver is scoped to the native chat slot parent only (not `document.body subtree: true`)
+- [x] **INJ-04**: YouTube chat iframe is mounted by hiding `ytd-live-chat-frame` and inserting our container in the same flex slot
+- [x] **INJ-05**: YouTube SPA navigation uses `yt-navigate-finish` event instead of URL-polling MutationObserver
+- [x] **INJ-06**: YouTube native chat is hidden via injected `<style>` tag (not inline style) so Polymer recreation on navigation doesn't restore it
 - [x] **INJ-07**: `waitForElement()` utility extracted to `PlatformDetector` base class, shared by all content scripts
 - [x] **INJ-08**: Fixed `TWITCH_INIT_DELAY` and `YOUTUBE_INIT_DELAY` constants removed; injection waits for DOM readiness instead
 
@@ -83,12 +83,12 @@ _Populated during roadmap creation._
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INJ-01 | Phase 1 | Pending |
-| INJ-02 | Phase 1 | Pending |
-| INJ-03 | Phase 1 | Pending |
-| INJ-04 | Phase 1 | Pending |
-| INJ-05 | Phase 1 | Pending |
-| INJ-06 | Phase 1 | Pending |
+| INJ-01 | Phase 1 | Complete |
+| INJ-02 | Phase 1 | Complete |
+| INJ-03 | Phase 1 | Complete |
+| INJ-04 | Phase 1 | Complete |
+| INJ-05 | Phase 1 | Complete |
+| INJ-06 | Phase 1 | Complete |
 | INJ-07 | Phase 1 | Complete |
 | INJ-08 | Phase 1 | Complete |
 | DS-01 | Phase 2 | Pending |

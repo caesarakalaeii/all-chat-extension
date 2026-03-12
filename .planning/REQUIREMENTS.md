@@ -41,10 +41,10 @@
 
 ### Testing Infrastructure
 
-- [ ] **TEST-01**: Mock WebSocket server (`tests/fixtures/mock-ws-server.ts`) provides deterministic chat messages for all test scenarios
-- [ ] **TEST-02**: Fixture HTML pages for Twitch, YouTube, and Kick served locally for offline injection tests
+- [x] **TEST-01**: Mock WebSocket server (`tests/fixtures/mock-ws-server.ts`) provides deterministic chat messages for all test scenarios
+- [x] **TEST-02**: Fixture HTML pages for Twitch, YouTube, and Kick served locally for offline injection tests
 - [ ] **TEST-03**: `LlmAgent` helper class (`tests/helpers/llm-agent.ts`) wraps Stagehand `act()` / `extract()` / `observe()` interface
-- [ ] **TEST-04**: Agent test specs in `tests/agent/` tagged `@agent` — excluded from default CI fast run
+- [x] **TEST-04**: Agent test specs in `tests/agent/` tagged `@agent` — excluded from default CI fast run
 - [ ] **TEST-05**: At least one passing LLM-agent scenario per platform: chat visible, platform badge correct, message send flow
 - [ ] **TEST-06**: `frameLocator('iframe[data-platform]')` used for all in-iframe Playwright assertions (requires slot injection from INJ phase)
 - [ ] **TEST-07**: CI configuration documents `ANTHROPIC_API_KEY` as required for agent test suite
@@ -108,10 +108,10 @@ _Populated during roadmap creation._
 | KICK-05 | Phase 3 | Complete |
 | KICK-06 | Phase 3 | Complete |
 | KICK-07 | Phase 3 | Complete |
-| TEST-01 | Phase 4 | Pending |
-| TEST-02 | Phase 4 | Pending |
+| TEST-01 | Phase 4 | Complete |
+| TEST-02 | Phase 4 | Complete |
 | TEST-03 | Phase 4 | Pending |
-| TEST-04 | Phase 4 | Pending |
+| TEST-04 | Phase 4 | Complete |
 | TEST-05 | Phase 4 | Pending |
 | TEST-06 | Phase 4 | Pending |
 | TEST-07 | Phase 4 | Pending |

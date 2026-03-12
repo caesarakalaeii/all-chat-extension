@@ -13,8 +13,8 @@
 - [ ] **INJ-04**: YouTube chat iframe is mounted by hiding `ytd-live-chat-frame` and inserting our container in the same flex slot
 - [ ] **INJ-05**: YouTube SPA navigation uses `yt-navigate-finish` event instead of URL-polling MutationObserver
 - [ ] **INJ-06**: YouTube native chat is hidden via injected `<style>` tag (not inline style) so Polymer recreation on navigation doesn't restore it
-- [ ] **INJ-07**: `waitForElement()` utility extracted to `PlatformDetector` base class, shared by all content scripts
-- [ ] **INJ-08**: Fixed `TWITCH_INIT_DELAY` and `YOUTUBE_INIT_DELAY` constants removed; injection waits for DOM readiness instead
+- [x] **INJ-07**: `waitForElement()` utility extracted to `PlatformDetector` base class, shared by all content scripts
+- [x] **INJ-08**: Fixed `TWITCH_INIT_DELAY` and `YOUTUBE_INIT_DELAY` constants removed; injection waits for DOM readiness instead
 
 ### Design System
 
@@ -89,8 +89,8 @@ _Populated during roadmap creation._
 | INJ-04 | Phase 1 | Pending |
 | INJ-05 | Phase 1 | Pending |
 | INJ-06 | Phase 1 | Pending |
-| INJ-07 | Phase 1 | Pending |
-| INJ-08 | Phase 1 | Pending |
+| INJ-07 | Phase 1 | Complete |
+| INJ-08 | Phase 1 | Complete |
 | DS-01 | Phase 2 | Pending |
 | DS-02 | Phase 2 | Pending |
 | DS-03 | Phase 2 | Pending |

@@ -230,7 +230,8 @@ function setupGlobalMessageRelay() {
       iframes.forEach((iframe) => {
         const iframeElement = iframe as HTMLIFrameElement;
         if (iframeElement.contentWindow) {
-          iframeElement.contentWindow.postMessage(message, '*');
+          const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
+          iframeElement.contentWindow.postMessage(message, extensionOrigin);
           console.log('[AllChat YouTube] Relayed message to iframe:', message.type);
         }
       });
@@ -246,10 +247,11 @@ function setupGlobalMessageRelay() {
       const response = await chrome.runtime.sendMessage({ type: 'GET_CONNECTION_STATE' });
       if (response.success && event.source) {
         // Send back to the iframe that requested it
+        const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
         (event.source as Window).postMessage({
           type: 'CONNECTION_STATE',
           data: response.data
-        }, '*');
+        }, extensionOrigin);
         console.log('[AllChat YouTube] Sent current connection state to iframe:', response.data);
       }
     }

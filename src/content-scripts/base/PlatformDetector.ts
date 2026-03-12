@@ -179,14 +179,16 @@ export abstract class PlatformDetector {
     container.appendChild(iframe);
 
     // Send initialization data to iframe via postMessage
+    // Use explicit extensionOrigin instead of '*' to prevent spoofed ALLCHAT_INIT from page iframes
     iframe.addEventListener('load', () => {
+      const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
       iframe.contentWindow?.postMessage(
         {
           type: 'ALLCHAT_INIT',
           platform: this.platform,
           streamer: streamer,
         },
-        '*'
+        extensionOrigin
       );
     });
 

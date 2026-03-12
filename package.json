@@ -8,7 +8,9 @@
     "dev": "webpack --mode development --watch",
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx",
-    "package": "npm run build && cd dist && zip -r ../allchat-extension.zip ."
+    "package": "npm run build && cd dist && zip -r ../allchat-extension.zip .",
+    "test": "npx playwright test --grep-invert @agent",
+    "test:agent": "npx playwright test --grep @agent"
   },
   "dependencies": {
     "@fontsource/dm-mono": "^5.2.7",

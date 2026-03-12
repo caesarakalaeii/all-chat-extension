@@ -41,7 +41,60 @@ export abstract class PlatformDetector {
   /**
    * Create injection point for All-Chat UI
    */
-  abstract createInjectionPoint(): HTMLElement | null;
+  abstract createInjectionPoint(): Promise<HTMLElement | null>;
+
+  /**
+   * Wait for a DOM element matching selector to appear.
+   * Polls every pollIntervalMs after an initial preDelayMs delay.
+   * Rejects if the element is not found within timeoutMs.
+   */
+  protected waitForElement(
+    selector: string,
+    timeoutMs = 10_000,
+    preDelayMs = 200,
+    pollIntervalMs = 100
+  ): Promise<HTMLElement> {
+    return new Promise<HTMLElement>((resolve, reject) => {
+      setTimeout(() => {
+        const immediate = document.querySelector(selector) as HTMLElement | null;
+        if (immediate) {
+          resolve(immediate);
+          return;
+        }
+
+        const deadline = Date.now() + timeoutMs - preDelayMs;
+        const interval = setInterval(() => {
+          const el = document.querySelector(selector) as HTMLElement | null;
+          if (el) {
+            clearInterval(interval);
+            resolve(el);
+          } else if (Date.now() >= deadline) {
+            clearInterval(interval);
+            reject(new Error(`[AllChat] waitForElement: "${selector}" not found after ${timeoutMs}ms`));
+          }
+        }, pollIntervalMs);
+      }, preDelayMs);
+    });
+  }
+
+  /**
+   * Remove All-Chat UI from the page and restore native chat.
+   * Subclasses may override and call super.teardown() for extra cleanup.
+   */
+  teardown(): void {
+    const container = document.getElementById('allchat-container');
+    if (container) {
+      container.remove();
+    }
+
+    const style = document.getElementById('allchat-hide-native-style');
+    if (style) {
+      style.remove();
+    }
+
+    this.showNativeChat();
+    console.log(`[AllChat ${this.platform}] Teardown complete`);
+  }
 
   /**
    * Initialize All-Chat on this platform
@@ -73,7 +126,7 @@ export abstract class PlatformDetector {
 
       // Hide native chat and inject All-Chat
       this.hideNativeChat();
-      const container = this.createInjectionPoint();
+      const container = await this.createInjectionPoint();
       if (!container) {
         console.error(`[AllChat ${this.platform}] Failed to create injection point`);
         return;

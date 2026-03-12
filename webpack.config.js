@@ -14,6 +14,7 @@ module.exports = (env, argv) => {
     'background': './src/background/service-worker.ts',
     'content-scripts/twitch': './src/content-scripts/twitch.ts',
     'content-scripts/youtube': './src/content-scripts/youtube.ts',
+    'content-scripts/kick': './src/content-scripts/kick.ts',
     'ui/chat-bundle': './src/ui/index.tsx',
     'popup/popup': './src/popup/popup.tsx'
   },

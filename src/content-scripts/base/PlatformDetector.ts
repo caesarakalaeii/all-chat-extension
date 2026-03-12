@@ -48,7 +48,7 @@ export abstract class PlatformDetector {
    * Polls every pollIntervalMs after an initial preDelayMs delay.
    * Rejects if the element is not found within timeoutMs.
    */
-  protected waitForElement(
+  public waitForElement(
     selector: string,
     timeoutMs = 10_000,
     preDelayMs = 200,

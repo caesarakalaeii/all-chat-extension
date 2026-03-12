@@ -46,7 +46,14 @@ Plans:
   3. The InfinityLogo animated SVG is visible in the chat header when the iframe loads
   4. Chat UI renders with Inter for body text and DM Mono for code/monospace — not the platform page's font stack
   5. Uncaught React errors inside the iframe show a readable fallback instead of a blank iframe
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Wave 0 test scaffold: DS-01 through DS-10 skip-stubs in test-design-system.spec.ts
+- [ ] 02-02-PLAN.md — Build tooling: Tailwind 4 + MiniCssExtractPlugin + postcss migration + tailwind-merge v3
+- [ ] 02-03-PLAN.md — CSS pipeline: styles.css @theme block + fontsource imports + chat-container.html link tag
+- [ ] 02-04-PLAN.md — Component migration: ChatContainer header redesign + InfinityLogo + token class rewrite across all 5 components
+- [ ] 02-05-PLAN.md — ErrorBoundary: class component + ChatContainer wrapper in index.tsx
 
 ### Phase 3: Kick Platform
 **Goal**: Kick.com live stream pages display the all-chat iframe in the native chat slot — all five required manifest and webpack locations are updated and the extension functions without manual configuration
@@ -78,6 +85,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. DOM Slot Injection | 3/3 | Complete   | 2026-03-12 |
-| 2. Design System | 0/TBD | Not started | - |
+| 2. Design System | 0/5 | Not started | - |
 | 3. Kick Platform | 0/TBD | Not started | - |
 | 4. LLM Test Infrastructure | 0/TBD | Not started | - |

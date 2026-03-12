@@ -5,7 +5,7 @@ const twitchFixture = `file://${path.resolve('tests/fixtures/twitch-mock.html')}
 const youtubeFixture = `file://${path.resolve('tests/fixtures/youtube-mock.html')}`;
 
 test.describe('INJ-01: Twitch iframe mounts in .chat-shell', () => {
-  test.skip('allchat-container is a child of .chat-shell', async ({ page }) => {
+  test('allchat-container is a child of .chat-shell', async ({ page }) => {
     await page.goto(twitchFixture);
     const container = page.locator('.chat-shell #allchat-container');
     await expect(container).toBeAttached();
@@ -13,7 +13,7 @@ test.describe('INJ-01: Twitch iframe mounts in .chat-shell', () => {
 });
 
 test.describe('INJ-02: No position:fixed container on Twitch page', () => {
-  test.skip('no element with position:fixed exists after injection', async ({ page }) => {
+  test('no element with position:fixed exists after injection', async ({ page }) => {
     await page.goto(twitchFixture);
     const fixed = page.locator('#allchat-container[style*="position: fixed"]');
     await expect(fixed).not.toBeAttached();

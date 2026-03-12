@@ -31,13 +31,13 @@
 
 ### Kick Platform
 
-- [ ] **KICK-01**: `kick.ts` content script detects live stream on kick.com via URL pattern and DOM state
-- [ ] **KICK-02**: Kick chat iframe mounted in `#channel-chatroom` slot (native chat hidden)
+- [x] **KICK-01**: `kick.ts` content script detects live stream on kick.com via URL pattern and DOM state
+- [x] **KICK-02**: Kick chat iframe mounted in `#channel-chatroom` slot (native chat hidden)
 - [ ] **KICK-03**: `manifest.json` updated with Kick `content_scripts`, `host_permissions`, and `web_accessible_resources` entries
 - [ ] **KICK-04**: Webpack entry added for `content-scripts/kick`
-- [ ] **KICK-05**: `postMessage` origin validation in `PlatformDetector` base class fixed before Kick ships (kick.com embeds more third-party iframes)
-- [ ] **KICK-06**: Kick SPA navigation handled via `popstate` + `pushState` intercept
-- [ ] **KICK-07**: Kick selector fallback chain in place (`#channel-chatroom` → `#chatroom` → `.chatroom-wrapper`) with date-comment for maintenance
+- [x] **KICK-05**: `postMessage` origin validation in `PlatformDetector` base class fixed before Kick ships (kick.com embeds more third-party iframes)
+- [x] **KICK-06**: Kick SPA navigation handled via `popstate` + `pushState` intercept
+- [x] **KICK-07**: Kick selector fallback chain in place (`#channel-chatroom` → `#chatroom` → `.chatroom-wrapper`) with date-comment for maintenance
 
 ### Testing Infrastructure
 
@@ -101,13 +101,13 @@ _Populated during roadmap creation._
 | DS-08 | Phase 2 | Complete |
 | DS-09 | Phase 2 | Complete |
 | DS-10 | Phase 2 | Complete |
-| KICK-01 | Phase 3 | Pending |
-| KICK-02 | Phase 3 | Pending |
+| KICK-01 | Phase 3 | Complete |
+| KICK-02 | Phase 3 | Complete |
 | KICK-03 | Phase 3 | Pending |
 | KICK-04 | Phase 3 | Pending |
-| KICK-05 | Phase 3 | Pending |
-| KICK-06 | Phase 3 | Pending |
-| KICK-07 | Phase 3 | Pending |
+| KICK-05 | Phase 3 | Complete |
+| KICK-06 | Phase 3 | Complete |
+| KICK-07 | Phase 3 | Complete |
 | TEST-01 | Phase 4 | Pending |
 | TEST-02 | Phase 4 | Pending |
 | TEST-03 | Phase 4 | Pending |

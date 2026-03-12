@@ -4,18 +4,18 @@ import path from 'path';
 
 test.describe('Design System — Phase 2', () => {
 
-  test.skip('DS-01: tailwind.config.js deleted and Tailwind 4 in postcss.config.js', () => {
+  test('DS-01: tailwind.config.js deleted and Tailwind 4 in postcss.config.js', () => {
     expect(fs.existsSync(path.resolve(__dirname, '../tailwind.config.js'))).toBe(false);
     const postcss = fs.readFileSync(path.resolve(__dirname, '../postcss.config.js'), 'utf8');
     expect(postcss.includes('@tailwindcss/postcss')).toBe(true);
   });
 
-  test.skip('DS-02: dist/ui/chat-styles.css contains oklch values', () => {
+  test('DS-02: dist/ui/chat-styles.css contains oklch values', () => {
     const css = fs.readFileSync(path.resolve(__dirname, '../dist/ui/chat-styles.css'), 'utf8');
     expect(css.includes('oklch(')).toBe(true);
   });
 
-  test.skip('DS-03: chat-styles.css exists and chat-container.html links it', () => {
+  test('DS-03: chat-styles.css exists and chat-container.html links it', () => {
     expect(fs.existsSync(path.resolve(__dirname, '../dist/ui/chat-styles.css'))).toBe(true);
     const html = fs.readFileSync(path.resolve(__dirname, '../dist/ui/chat-container.html'), 'utf8');
     expect(html.includes('chat-styles.css')).toBe(true);
@@ -50,12 +50,12 @@ test.describe('Design System — Phase 2', () => {
     // Requires built extension
   });
 
-  test.skip('DS-08: autoprefixer removed from postcss.config.js', () => {
+  test('DS-08: autoprefixer removed from postcss.config.js', () => {
     const postcss = fs.readFileSync(path.resolve(__dirname, '../postcss.config.js'), 'utf8');
     expect(postcss.includes('autoprefixer')).toBe(false);
   });
 
-  test.skip('DS-09: tailwind-merge at v3+', () => {
+  test('DS-09: tailwind-merge at v3+', () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.resolve(__dirname, '../node_modules/tailwind-merge/package.json'), 'utf8')
     );
@@ -63,7 +63,7 @@ test.describe('Design System — Phase 2', () => {
     expect(major).toBeGreaterThanOrEqual(3);
   });
 
-  test.skip('DS-10a: ErrorBoundary.tsx exists and contains getDerivedStateFromError', () => {
+  test('DS-10a: ErrorBoundary.tsx exists and contains getDerivedStateFromError', () => {
     const filePath = path.resolve(__dirname, '../src/ui/components/ErrorBoundary.tsx');
     expect(fs.existsSync(filePath)).toBe(true);
     const src = fs.readFileSync(filePath, 'utf8');
@@ -74,7 +74,7 @@ test.describe('Design System — Phase 2', () => {
     expect(src.includes(' any')).toBe(false);
   });
 
-  test.skip('DS-10b: index.tsx wraps ChatContainer with ErrorBoundary', () => {
+  test('DS-10b: index.tsx wraps ChatContainer with ErrorBoundary', () => {
     const filePath = path.resolve(__dirname, '../src/ui/index.tsx');
     const src = fs.readFileSync(filePath, 'utf8');
     expect(src.includes('import ErrorBoundary')).toBe(true);

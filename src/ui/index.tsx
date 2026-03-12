@@ -16,6 +16,11 @@ let initialized = false;
 
 // Wait for initialization message from parent window
 window.addEventListener('message', (event) => {
+  // Reject messages from any origin other than the extension's own chrome-extension:// origin
+  // This prevents spoofed ALLCHAT_INIT messages from third-party page iframes (KICK-05)
+  const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
+  if (event.origin !== extensionOrigin) return;
+
   if (event.data.type === 'ALLCHAT_INIT') {
     const { platform, streamer } = event.data;
 

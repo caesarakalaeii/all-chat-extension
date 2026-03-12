@@ -7,6 +7,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import ChatContainer from './components/ChatContainer';
+import ErrorBoundary from './components/ErrorBoundary';
 import './styles.css';
 
 // Create root once and reuse it
@@ -30,7 +31,9 @@ window.addEventListener('message', (event) => {
 
     // Render (or re-render with new props)
     root.render(
-      <ChatContainer platform={platform} streamer={streamer} />
+      <ErrorBoundary>
+        <ChatContainer platform={platform} streamer={streamer} />
+      </ErrorBoundary>
     );
 
     initialized = true;

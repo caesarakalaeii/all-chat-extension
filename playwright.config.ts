@@ -8,6 +8,8 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: 1,
   reporter: 'html',
+  globalSetup: require.resolve('./tests/fixtures/global-setup'),
+  globalTeardown: require.resolve('./tests/fixtures/global-teardown'),
 
   use: {
     trace: 'on-first-retry',

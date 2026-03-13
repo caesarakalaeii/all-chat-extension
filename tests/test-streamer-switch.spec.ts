@@ -1,7 +1,7 @@
 import { test, expect, chromium, BrowserContext } from '@playwright/test';
 import path from 'path';
 
-test.describe('Streamer Switch Test', () => {
+test.describe('@agent Streamer Switch Test', () => {
   let context: BrowserContext;
 
   test.beforeAll(async () => {
@@ -62,6 +62,9 @@ test.describe('Streamer Switch Test', () => {
       if (allchatContainer1 === 0 || notConfiguredBadge2 > 0) {
         console.log('WARNING: Extension is not injecting on any streamer. This might be a different issue.');
         console.log('Skipping test since we need at least one configured streamer to test switching.');
+        // test.skip(): intentional live-network guard — no configured streamer found on real Twitch.
+        // This test requires a live Twitch channel configured in allch.at; cannot use page.route() mocks
+        // because the test verifies real extension injection against the actual Twitch DOM, not fixtures.
         test.skip();
         return;
       }
@@ -72,6 +75,8 @@ test.describe('Streamer Switch Test', () => {
       console.log('Checking for native chat elements...');
       const nativeChat = await page.locator('[data-test-selector="chat-scrollable-area"]').count();
       console.log(`Native Twitch chat found: ${nativeChat > 0}`);
+      // test.skip(): intentional live-network guard — extension did not inject on any real streamer.
+      // This is an expected skip in environments without configured streamers (e.g., CI without allch.at credentials).
       test.skip();
       return;
     }

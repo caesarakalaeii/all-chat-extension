@@ -57,7 +57,10 @@
         </div>
         <div id="info">
           <h2>Test Video Title</h2>
-          <p>Test Channel</p>
+          <!-- ytd-channel-name a is required by the YouTube content script to extract streamer username -->
+          <ytd-channel-name>
+            <a class="yt-simple-endpoint" href="/@teststreamer">teststreamer</a>
+          </ytd-channel-name>
         </div>
       </div>
       <div id="secondary">
@@ -70,10 +73,6 @@
     </div>
   </div>
 
-  <script>
-    // Set YouTube-like window properties
-    window.location.pathname = '/watch';
-    window.location.search = '?v=dQw4w9WgXcQ';
-  </script>
+
 </body>
 </html>

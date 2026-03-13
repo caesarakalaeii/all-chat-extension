@@ -1,7 +1,7 @@
 import { test, expect, chromium, BrowserContext } from '@playwright/test';
 import path from 'path';
 
-test.describe('Streamer Switch Test', () => {
+test.describe('@agent Streamer Switch Test', () => {
   let context: BrowserContext;
 
   test.beforeAll(async () => {

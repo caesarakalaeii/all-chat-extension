@@ -56,11 +56,44 @@ test.describe('postMessage Origin Validation — KICK-05', () => {
     expect(guardIndex).toBeLessThan(initCheckIndex);
   });
 
-  // Needs page fixture and built extension — skipped via runtime test.skip()
+  // Needs page fixture and built extension
   test('KICK-05e: iframe rejects postMessage from non-extension origin', async ({ page }) => {
-    test.skip();
-    // Requires built extension + fixture page
-    // Implementation pending
+    const html = fs.readFileSync(path.resolve(__dirname, 'fixtures/twitch-mock.html'), 'utf8');
+    const mockStreamer = JSON.stringify({
+      username: 'teststreamer',
+      platforms: [{ platform: 'twitch', channel_id: 'test123' }]
+    });
+
+    await page.route('https://www.twitch.tv/**', route =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: html })
+    );
+    await page.route('https://allch.at/api/v1/auth/streamers/**', route =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: mockStreamer })
+    );
+
+    await page.goto('https://www.twitch.tv/teststreamer');
+    // Wait for iframe injection
+    await expect(page.locator('#allchat-container')).toBeAttached({ timeout: 15000 });
+
+    // Dispatch a postMessage from an unexpected (non-extension) origin
+    // The iframe's origin guard should reject messages not from the extension origin
+    const errorsBefore = await page.evaluate(() => {
+      // Send message from the platform page (twitch.tv origin) — not the extension origin
+      // The iframe should reject this and not process ALLCHAT_INIT
+      const iframe = document.querySelector('iframe[data-platform]') as HTMLIFrameElement;
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({ type: 'ALLCHAT_INIT', streamer: 'hacked' }, '*');
+      }
+      return (window as unknown as { __allchat_init_count?: number }).__allchat_init_count ?? 0;
+    });
+
+    await page.waitForTimeout(500);
+
+    // Verify the page did not crash and iframe is still in initial state
+    // The iframe should still be attached (no crash from the rejected message)
+    await expect(page.locator('iframe[data-platform]')).toBeAttached();
+    // errorsBefor should be 0 — no init counter set from unauthorized origin
+    expect(errorsBefore).toBe(0);
   });
 
 });

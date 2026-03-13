@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { API_BASE_URL } from '../../config';
 
 interface LoginPromptProps {
-  platform: 'twitch' | 'youtube' | 'kick';
+  platform: 'twitch' | 'youtube' | 'kick' | 'tiktok';
   streamer: string;
   onLogin: (token: string) => void;
 }

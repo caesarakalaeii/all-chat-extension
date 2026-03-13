@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-03-12T18:39:28.281Z"
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-03-13T16:21:50.007Z"
 last_activity: 2026-03-12 — Roadmap created; all 32 v1 requirements mapped to 4 phases
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 15
-  completed_plans: 13
+  completed_plans: 14
   percent: 0
 ---
 
@@ -63,6 +63,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03-kick-platform P03 | 15min | 2 tasks | 1 files |
 | Phase 03-kick-platform P04 | 5min | 2 tasks | 2 files |
 | Phase 04-llm-test-infrastructure P01 | 7min | 2 tasks | 5 files |
+| Phase 04-llm-test-infrastructure P03 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -102,6 +103,9 @@ Recent decisions affecting current work:
 - [Phase 03-kick-platform]: Kick manifest entries use https://kick.com/* (no www subdomain) — consistent across host_permissions, content_scripts.matches, and web_accessible_resources.matches
 - [Phase 04-llm-test-infrastructure]: Mock WS server uses Node.js ws library (not page.routeWebSocket) — service worker WebSockets are not interceptable via page context
 - [Phase 04-llm-test-infrastructure]: test script uses --grep-invert @agent for fast suite; test:agent uses --grep @agent — clean separation without duplicating test file lists
+- [Phase 04-llm-test-infrastructure]: TEST-03 and TEST-07 dropped: agent tests are manual Claude MCP sessions only; no ANTHROPIC_API_KEY secret in CI
+- [Phase 04-llm-test-infrastructure]: test CI job builds own artifact with API_URL=http://localhost:8080 for mock WS server connectivity
+- [Phase 04-llm-test-infrastructure]: xvfb-run -a npm test used in CI: Chrome extension tests require display context on ubuntu-latest
 
 ### Pending Todos
 
@@ -115,6 +119,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-12T18:39:28.279Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-03-13T16:21:50.005Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-03-13T16:21:50.007Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-03-13T18:02:49.496Z"
 last_activity: 2026-03-12 — Roadmap created; all 32 v1 requirements mapped to 4 phases
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 15
-  completed_plans: 14
+  completed_plans: 15
   percent: 0
 ---
 
@@ -64,6 +64,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03-kick-platform P04 | 5min | 2 tasks | 2 files |
 | Phase 04-llm-test-infrastructure P01 | 7min | 2 tasks | 5 files |
 | Phase 04-llm-test-infrastructure P03 | 3min | 2 tasks | 4 files |
+| Phase 04-llm-test-infrastructure P02 | 90min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -106,6 +107,9 @@ Recent decisions affecting current work:
 - [Phase 04-llm-test-infrastructure]: TEST-03 and TEST-07 dropped: agent tests are manual Claude MCP sessions only; no ANTHROPIC_API_KEY secret in CI
 - [Phase 04-llm-test-infrastructure]: test CI job builds own artifact with API_URL=http://localhost:8080 for mock WS server connectivity
 - [Phase 04-llm-test-infrastructure]: xvfb-run -a npm test used in CI: Chrome extension tests require display context on ubuntu-latest
+- [Phase 04-llm-test-infrastructure]: chromium.launchPersistentContext() required for Chrome extensions in Playwright — page fixture does not load extensions
+- [Phase 04-llm-test-infrastructure]: context.route() intercepts service worker fetches; page.route() only intercepts page-context requests — use context.route() for allch.at API mock
+- [Phase 04-llm-test-infrastructure]: window.location.pathname assignment in fixture HTML causes infinite navigation loops — must not assign location properties in fixture scripts served via page.route()
 
 ### Pending Todos
 
@@ -119,6 +123,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-13T16:21:50.005Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-03-13T18:02:49.494Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None

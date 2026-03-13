@@ -10,40 +10,23 @@ import ChatContainer from './components/ChatContainer';
 import ErrorBoundary from './components/ErrorBoundary';
 import './styles.css';
 
-// Create root once and reuse it
-let root: ReactDOM.Root | null = null;
-let initialized = false;
-
-// Wait for initialization message from parent window
-window.addEventListener('message', (event) => {
-  // Reject messages from any origin other than the extension's own chrome-extension:// origin
-  // This prevents spoofed ALLCHAT_INIT messages from third-party page iframes (KICK-05)
-  const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
-  if (event.origin !== extensionOrigin) return;
-
-  if (event.data.type === 'ALLCHAT_INIT') {
-    const { platform, streamer } = event.data;
-
-    console.log('[AllChat UI] Initializing with:', { platform, streamer });
-
-    // Only create root once
-    if (!root) {
-      console.log('[AllChat UI] Creating React root');
-      root = ReactDOM.createRoot(document.getElementById('root')!);
-    } else {
-      console.log('[AllChat UI] Reusing existing React root');
-    }
-
-    // Render (or re-render with new props)
-    root.render(
-      <ErrorBoundary>
-        <ChatContainer platform={platform} streamer={streamer} />
-      </ErrorBoundary>
-    );
-
-    initialized = true;
-  }
-});
-
 const manifest = chrome.runtime.getManifest();
-console.log(`[AllChat UI] Waiting for initialization... v${manifest.version}`);
+
+// Read platform and streamer from URL params (set by the content script in the iframe src).
+// This avoids postMessage for init — content scripts report the page origin, not the extension
+// origin, so a postMessage-based init would be blocked by the KICK-05 origin check.
+const params = new URLSearchParams(location.search);
+const platform = params.get('platform');
+const streamer = params.get('streamer');
+
+if (platform && streamer) {
+  console.log('[AllChat UI] Initializing with:', { platform, streamer });
+  const root = ReactDOM.createRoot(document.getElementById('root')!);
+  root.render(
+    <ErrorBoundary>
+      <ChatContainer platform={platform} streamer={streamer} />
+    </ErrorBoundary>
+  );
+} else {
+  console.log(`[AllChat UI] Waiting for initialization... v${manifest.version}`);
+}

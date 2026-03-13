@@ -106,6 +106,19 @@
 }
 
 /* ============================================================
+   IFRAME DOCUMENT SIZING — ensure h-full stretches to fill iframe
+   ============================================================ */
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+#root {
+  height: 100%;
+}
+
+/* ============================================================
    SCROLLBAR — token references (replaces hardcoded hex values)
    ============================================================ */
 ::-webkit-scrollbar {

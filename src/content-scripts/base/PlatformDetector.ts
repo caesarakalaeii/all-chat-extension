@@ -170,27 +170,17 @@ export abstract class PlatformDetector {
    */
   private injectAllChatUI(container: HTMLElement, streamer: string): void {
     // Create iframe for complete isolation
+    // Pass platform and streamer via URL params — content script postMessage reports the page
+    // origin (not extension origin) so it would be blocked by the UI's origin check. URL params
+    // are set by the extension and cannot be spoofed by page iframes.
     const iframe = document.createElement('iframe');
-    iframe.src = chrome.runtime.getURL('ui/chat-container.html');
+    const params = new URLSearchParams({ platform: this.platform, streamer });
+    iframe.src = chrome.runtime.getURL(`ui/chat-container.html?${params}`);
     iframe.style.cssText = 'width: 100%; height: 100%; border: none; background: transparent;';
     iframe.setAttribute('data-streamer', streamer);
     iframe.setAttribute('data-platform', this.platform);
 
     container.appendChild(iframe);
-
-    // Send initialization data to iframe via postMessage
-    // Use explicit extensionOrigin instead of '*' to prevent spoofed ALLCHAT_INIT from page iframes
-    iframe.addEventListener('load', () => {
-      const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
-      iframe.contentWindow?.postMessage(
-        {
-          type: 'ALLCHAT_INIT',
-          platform: this.platform,
-          streamer: streamer,
-        },
-        extensionOrigin
-      );
-    });
 
     console.log(`[AllChat ${this.platform}] UI injected`);
   }

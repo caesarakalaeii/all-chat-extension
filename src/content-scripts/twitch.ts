@@ -95,9 +95,12 @@ class TwitchDetector extends PlatformDetector {
       // .chat-shell is the Twitch native chat slot
       // Selector noted: 2026-03-12 — verify against live Twitch if this breaks
       const slot = await this.waitForElement('.chat-shell');
+      // Make .chat-shell a positioning context so allchat-container can overlay it
+      slot.style.position = 'relative';
       const container = document.createElement('div');
       container.id = 'allchat-container';
-      container.style.cssText = 'width: 100%; height: 100%;';
+      // Absolute overlay — native chat sits as first child, we overlay it
+      container.style.cssText = 'position: absolute; inset: 0; z-index: 1;';
       slot.appendChild(container);
 
       // Set up scoped MutationObserver on .chat-shell's parent (INJ-03)

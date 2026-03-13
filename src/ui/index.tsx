@@ -6,7 +6,7 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import ChatContainer from './components/ChatContainer';
+import ChatContainer, { Platform } from './components/ChatContainer';
 import ErrorBoundary from './components/ErrorBoundary';
 import './styles.css';
 
@@ -24,7 +24,7 @@ if (platform && streamer) {
   const root = ReactDOM.createRoot(document.getElementById('root')!);
   root.render(
     <ErrorBoundary>
-      <ChatContainer platform={platform} streamer={streamer} />
+      <ChatContainer platform={platform as Platform} streamer={streamer} />
     </ErrorBoundary>
   );
 } else {

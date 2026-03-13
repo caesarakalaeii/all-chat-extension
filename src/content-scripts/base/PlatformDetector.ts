@@ -134,8 +134,9 @@ export abstract class PlatformDetector {
 
       this.injectAllChatUI(container, username);
 
-      // Connect to viewer WebSocket (uses streamer username, not overlay ID)
-      await this.connectWebSocket(username);
+      // Connect to viewer WebSocket using the overlay owner's username (not the channel name)
+      // e.g. watching etro's Twitch channel → streamerInfo.username = caesarlp → ws/chat/caesarlp
+      await this.connectWebSocket(streamerInfo.username);
     } catch (error) {
       console.error(`[AllChat ${this.platform}] Initialization failed:`, error);
     }

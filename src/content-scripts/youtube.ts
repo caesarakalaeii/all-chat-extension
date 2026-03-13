@@ -8,9 +8,6 @@
 import { PlatformDetector } from './base/PlatformDetector';
 import { getSyncStorage } from '../lib/storage';
 
-// Delay for YouTube initialization (ms) - YouTube needs more time to load
-const YOUTUBE_INIT_DELAY = 2000;
-
 class YouTubeDetector extends PlatformDetector {
   platform = 'youtube' as const;
 
@@ -118,19 +115,20 @@ class YouTubeDetector extends PlatformDetector {
   }
 
   hideNativeChat(): void {
-    const chatFrame = this.findChatContainer();
-    if (chatFrame) {
-      (chatFrame as HTMLElement).style.display = 'none';
-      (chatFrame as HTMLElement).setAttribute('data-allchat-hidden', 'true');
-    }
+    if (document.getElementById('allchat-hide-native-style')) return; // idempotent
+
+    const style = document.createElement('style');
+    style.id = 'allchat-hide-native-style';
+    style.textContent = `ytd-live-chat-frame { display: none !important; }`;
+    document.head.appendChild(style);
+    console.log('[AllChat YouTube] Injected CSS to hide native chat');
   }
 
   showNativeChat(): void {
-    const chatFrame = document.querySelector('[data-allchat-hidden="true"]');
-    if (chatFrame) {
-      (chatFrame as HTMLElement).style.display = '';
-      (chatFrame as HTMLElement).removeAttribute('data-allchat-hidden');
-      console.log('[AllChat YouTube] Removed hiding to show native chat');
+    const style = document.getElementById('allchat-hide-native-style');
+    if (style) {
+      style.remove();
+      console.log('[AllChat YouTube] Removed CSS to show native chat');
     }
   }
 
@@ -142,26 +140,24 @@ class YouTubeDetector extends PlatformDetector {
     }
   }
 
-  createInjectionPoint(): HTMLElement | null {
-    const nativeChat = this.findChatContainer();
-    if (!nativeChat) return null;
+  async createInjectionPoint(): Promise<HTMLElement | null> {
+    try {
+      const nativeChat = await this.waitForElement('ytd-live-chat-frame');
+      const parent = nativeChat.parentElement;
+      if (!parent) {
+        console.warn('[AllChat YouTube] ytd-live-chat-frame has no parent — native chat remains visible');
+        return null;
+      }
 
-    const parent = nativeChat.parentElement;
-    if (!parent) return null;
-
-    // Create replacement container
-    const container = document.createElement('div');
-    container.id = 'allchat-container';
-    container.style.cssText = `
-      width: 100%;
-      height: 100%;
-      background-color: #0f0f0f;
-      display: flex;
-      flex-direction: column;
-    `;
-
-    parent.appendChild(container);
-    return container;
+      const container = document.createElement('div');
+      container.id = 'allchat-container';
+      container.style.cssText = 'width: 100%; height: 100%;';
+      parent.insertBefore(container, nativeChat);
+      return container;
+    } catch {
+      console.warn('[AllChat YouTube] ytd-live-chat-frame not found after timeout — native chat remains visible');
+      return null;
+    }
   }
 }
 
@@ -202,16 +198,13 @@ async function initialize() {
   // Set up message relay IMMEDIATELY (before any async operations)
   setupGlobalMessageRelay();
 
-  // Wait for page to load
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      setTimeout(() => globalDetector?.init(), YOUTUBE_INIT_DELAY);
-    });
-  } else {
-    setTimeout(() => globalDetector?.init(), YOUTUBE_INIT_DELAY);
-  }
+  // Wait for channel name to render before init — on /watch?v= URLs the DOM
+  // isn't ready when the content script fires, causing extractStreamerUsername to fail.
+  // waitForElement handles both loading and already-loaded states.
+  await globalDetector.waitForElement('ytd-channel-name a').catch(() => null);
+  globalDetector?.init();
 
-  // Watch for URL changes (YouTube is an SPA)
+  // Watch for URL changes (YouTube is an SPA) — registered once
   setupUrlWatcher();
 }
 
@@ -237,7 +230,8 @@ function setupGlobalMessageRelay() {
       iframes.forEach((iframe) => {
         const iframeElement = iframe as HTMLIFrameElement;
         if (iframeElement.contentWindow) {
-          iframeElement.contentWindow.postMessage(message, '*');
+          const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
+          iframeElement.contentWindow.postMessage(message, extensionOrigin);
           console.log('[AllChat YouTube] Relayed message to iframe:', message.type);
         }
       });
@@ -253,10 +247,11 @@ function setupGlobalMessageRelay() {
       const response = await chrome.runtime.sendMessage({ type: 'GET_CONNECTION_STATE' });
       if (response.success && event.source) {
         // Send back to the iframe that requested it
+        const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
         (event.source as Window).postMessage({
           type: 'CONNECTION_STATE',
           data: response.data
-        }, '*');
+        }, extensionOrigin);
         console.log('[AllChat YouTube] Sent current connection state to iframe:', response.data);
       }
     }
@@ -266,22 +261,28 @@ function setupGlobalMessageRelay() {
 }
 
 /**
- * Watch for URL changes
+ * Watch for URL changes using YouTube SPA navigation events.
+ * yt-navigate-finish is the canonical YouTube SPA signal — fires once per navigation.
+ * popstate handles browser back/forward. Both are deduplicated via URL equality check.
  */
-function setupUrlWatcher() {
-  let lastUrl = location.href;
+function setupUrlWatcher(): void {
+  let activeUrl = location.href;
 
-  new MutationObserver(() => {
+  const handleNavigation = () => {
     const url = location.href;
-    if (url !== lastUrl) {
-      lastUrl = url;
-      console.log('[AllChat YouTube] URL changed, re-initializing...');
-      // Check if detector still exists (extension might have been disabled)
-      if (globalDetector) {
-        setTimeout(() => globalDetector?.init(), YOUTUBE_INIT_DELAY);
-      }
+    if (url === activeUrl) return; // Dedup: both events may fire for same navigation
+    activeUrl = url;
+
+    console.log('[AllChat YouTube] Navigation detected, tearing down...');
+    globalDetector?.teardown();
+
+    if (globalDetector?.isLiveStream()) {
+      globalDetector.init();
     }
-  }).observe(document, { subtree: true, childList: true });
+  };
+
+  window.addEventListener('yt-navigate-finish', handleNavigation);
+  window.addEventListener('popstate', handleNavigation);
 }
 
 // Start initialization

@@ -41,7 +41,60 @@ export abstract class PlatformDetector {
   /**
    * Create injection point for All-Chat UI
    */
-  abstract createInjectionPoint(): HTMLElement | null;
+  abstract createInjectionPoint(): Promise<HTMLElement | null>;
+
+  /**
+   * Wait for a DOM element matching selector to appear.
+   * Polls every pollIntervalMs after an initial preDelayMs delay.
+   * Rejects if the element is not found within timeoutMs.
+   */
+  public waitForElement(
+    selector: string,
+    timeoutMs = 10_000,
+    preDelayMs = 200,
+    pollIntervalMs = 100
+  ): Promise<HTMLElement> {
+    return new Promise<HTMLElement>((resolve, reject) => {
+      setTimeout(() => {
+        const immediate = document.querySelector(selector) as HTMLElement | null;
+        if (immediate) {
+          resolve(immediate);
+          return;
+        }
+
+        const deadline = Date.now() + timeoutMs - preDelayMs;
+        const interval = setInterval(() => {
+          const el = document.querySelector(selector) as HTMLElement | null;
+          if (el) {
+            clearInterval(interval);
+            resolve(el);
+          } else if (Date.now() >= deadline) {
+            clearInterval(interval);
+            reject(new Error(`[AllChat] waitForElement: "${selector}" not found after ${timeoutMs}ms`));
+          }
+        }, pollIntervalMs);
+      }, preDelayMs);
+    });
+  }
+
+  /**
+   * Remove All-Chat UI from the page and restore native chat.
+   * Subclasses may override and call super.teardown() for extra cleanup.
+   */
+  teardown(): void {
+    const container = document.getElementById('allchat-container');
+    if (container) {
+      container.remove();
+    }
+
+    const style = document.getElementById('allchat-hide-native-style');
+    if (style) {
+      style.remove();
+    }
+
+    this.showNativeChat();
+    console.log(`[AllChat ${this.platform}] Teardown complete`);
+  }
 
   /**
    * Initialize All-Chat on this platform
@@ -73,7 +126,7 @@ export abstract class PlatformDetector {
 
       // Hide native chat and inject All-Chat
       this.hideNativeChat();
-      const container = this.createInjectionPoint();
+      const container = await this.createInjectionPoint();
       if (!container) {
         console.error(`[AllChat ${this.platform}] Failed to create injection point`);
         return;
@@ -81,8 +134,9 @@ export abstract class PlatformDetector {
 
       this.injectAllChatUI(container, username);
 
-      // Connect to viewer WebSocket (uses streamer username, not overlay ID)
-      await this.connectWebSocket(username);
+      // Connect to viewer WebSocket using the overlay owner's username (not the channel name)
+      // e.g. watching etro's Twitch channel → streamerInfo.username = caesarlp → ws/chat/caesarlp
+      await this.connectWebSocket(streamerInfo.username);
     } catch (error) {
       console.error(`[AllChat ${this.platform}] Initialization failed:`, error);
     }
@@ -117,25 +171,17 @@ export abstract class PlatformDetector {
    */
   private injectAllChatUI(container: HTMLElement, streamer: string): void {
     // Create iframe for complete isolation
+    // Pass platform and streamer via URL params — content script postMessage reports the page
+    // origin (not extension origin) so it would be blocked by the UI's origin check. URL params
+    // are set by the extension and cannot be spoofed by page iframes.
     const iframe = document.createElement('iframe');
-    iframe.src = chrome.runtime.getURL('ui/chat-container.html');
+    const params = new URLSearchParams({ platform: this.platform, streamer });
+    iframe.src = chrome.runtime.getURL(`ui/chat-container.html?${params}`);
     iframe.style.cssText = 'width: 100%; height: 100%; border: none; background: transparent;';
     iframe.setAttribute('data-streamer', streamer);
     iframe.setAttribute('data-platform', this.platform);
 
     container.appendChild(iframe);
-
-    // Send initialization data to iframe via postMessage
-    iframe.addEventListener('load', () => {
-      iframe.contentWindow?.postMessage(
-        {
-          type: 'ALLCHAT_INIT',
-          platform: this.platform,
-          streamer: streamer,
-        },
-        '*'
-      );
-    });
 
     console.log(`[AllChat ${this.platform}] UI injected`);
   }

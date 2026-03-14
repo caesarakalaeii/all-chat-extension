@@ -92,9 +92,10 @@ class TwitchDetector extends PlatformDetector {
 
   async createInjectionPoint(): Promise<HTMLElement | null> {
     try {
-      // .chat-shell is the Twitch native chat slot
-      // Selector noted: 2026-03-12 — verify against live Twitch if this breaks
-      const slot = await this.waitForElement('.chat-shell');
+      // .chat-shell is the Twitch native chat slot.
+      // On offline channel pages it only exists after the "Chat" tab is clicked,
+      // so we wait up to 60s to accommodate offline channel visits.
+      const slot = await this.waitForElement('.chat-shell', 60_000);
       // Make .chat-shell a positioning context so allchat-container can overlay it
       slot.style.position = 'relative';
       const container = document.createElement('div');
@@ -167,6 +168,9 @@ async function initialize() {
 
   // Watch for URL changes (Twitch is an SPA)
   setupUrlWatcher();
+
+  // Watch for Chat tab clicks on offline channel pages
+  setupChatTabWatcher();
 }
 
 /**
@@ -218,20 +222,52 @@ function setupGlobalMessageRelay() {
     return false;
   });
 
-  // Listen for messages FROM iframes requesting current state
+  // Listen for messages FROM iframes requesting current state or login
   window.addEventListener('message', async (event) => {
+    const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
+
     if (event.data.type === 'GET_CONNECTION_STATE') {
       console.log('[AllChat Twitch] iframe requested connection state');
-      // Request from service worker
       const response = await chrome.runtime.sendMessage({ type: 'GET_CONNECTION_STATE' });
       if (response.success && event.source) {
-        // Send back to the iframe that requested it
-        const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
         (event.source as Window).postMessage({
           type: 'CONNECTION_STATE',
           data: response.data
         }, extensionOrigin);
-        console.log('[AllChat Twitch] Sent current connection state to iframe:', response.data);
+      }
+    }
+
+    if (event.data.type === 'REQUEST_LOGIN' && event.source) {
+      console.log('[AllChat Twitch] iframe requested login, opening popup from page context');
+      const source = event.source as Window;
+      try {
+        const resp = await chrome.runtime.sendMessage({
+          type: 'DO_LOGIN',
+          platform: event.data.platform,
+          streamerUsername: event.data.streamer,
+        });
+        if (!resp.success) throw new Error(resp.error);
+
+        const popup = window.open(resp.data.loginUrl, 'AllChatOAuth', 'width=600,height=700,left=100,top=100');
+        if (!popup) throw new Error('Failed to open popup');
+
+        const handleAuthMessage = (authEvent: MessageEvent) => {
+          if (authEvent.data.type === 'ALLCHAT_AUTH_SUCCESS' && authEvent.data.token) {
+            window.removeEventListener('message', handleAuthMessage);
+            popup.close();
+            // Store token via service worker then notify iframe
+            chrome.runtime.sendMessage({ type: 'STORE_VIEWER_TOKEN', token: authEvent.data.token }).then(() => {
+              source.postMessage({ type: 'LOGIN_SUCCESS', token: authEvent.data.token }, extensionOrigin);
+            });
+          } else if (authEvent.data.type === 'ALLCHAT_AUTH_ERROR') {
+            window.removeEventListener('message', handleAuthMessage);
+            popup.close();
+            source.postMessage({ type: 'LOGIN_ERROR', error: authEvent.data.error }, extensionOrigin);
+          }
+        };
+        window.addEventListener('message', handleAuthMessage);
+      } catch (err: any) {
+        source.postMessage({ type: 'LOGIN_ERROR', error: err.message }, extensionOrigin);
       }
     }
   });
@@ -256,6 +292,28 @@ function setupUrlWatcher() {
       globalDetector?.init();
     }
   }).observe(document, { subtree: true, childList: true });
+}
+
+/**
+ * Watch for the Twitch "Chat" tab being clicked on offline channel pages.
+ * When a channel is offline, the chat panel is hidden until the user clicks
+ * the Chat tab — .chat-shell only renders after that interaction.
+ * Re-runs init() when the tab is clicked so injection can proceed.
+ */
+function setupChatTabWatcher() {
+  document.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement;
+    // The Chat tab contains a paragraph with text "Chat"
+    const isChatTab = target.closest('[data-a-target="channel-home-tab-Chat"]') ||
+      target.closest('a[href$="/chat"]') ||
+      (target.tagName === 'P' && target.textContent?.trim() === 'Chat') ||
+      target.closest('button')?.querySelector('p')?.textContent?.trim() === 'Chat';
+
+    if (isChatTab && globalDetector && !document.getElementById('allchat-container')) {
+      console.log('[AllChat Twitch] Chat tab clicked, re-running init...');
+      globalDetector.init();
+    }
+  });
 }
 
 // Start initialization

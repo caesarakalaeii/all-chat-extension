@@ -10,7 +10,7 @@ import { ViewerInfo } from '../../lib/types/extension';
 import { renderMessageContent } from '../../lib/renderMessage';
 import { resolveTwitchBadgeIcons } from '../../lib/twitchBadges';
 import { sortMessageBadges } from '../../lib/badgeOrder';
-import { getLocalStorage, setLocalStorage, clearViewerAuth } from '../../lib/storage';
+import { getLocalStorage, setLocalStorage, clearViewerAuth, getNameColor } from '../../lib/storage';
 import { API_BASE_URL } from '../../config';
 import LoginPrompt from './LoginPrompt';
 import MessageInput from './MessageInput';
@@ -57,6 +57,7 @@ function PlatformIcon({ platform }: { platform: Platform }) {
 interface ChatContainerProps {
   platform: Platform;
   streamer: string;
+  displayName: string;
 }
 
 type ConnectionState = 'connected' | 'connecting' | 'reconnecting' | 'disconnected' | 'failed';
@@ -70,7 +71,7 @@ interface ConnectionStatus {
   message?: string;
 }
 
-export default function ChatContainer({ platform, streamer }: ChatContainerProps) {
+export default function ChatContainer({ platform, streamer, displayName }: ChatContainerProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
     state: 'connecting',
@@ -81,6 +82,7 @@ export default function ChatContainer({ platform, streamer }: ChatContainerProps
   const [reconnectCountdown, setReconnectCountdown] = useState<number | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [viewerNameColor, setViewerNameColor] = useState<string | null>(null);
 
   // Debug: Log connection status changes
   useEffect(() => {
@@ -96,6 +98,8 @@ export default function ChatContainer({ platform, streamer }: ChatContainerProps
           setViewerToken(storage.viewer_jwt_token);
           setViewerInfo(storage.viewer_info);
         }
+        const color = await getNameColor();
+        setViewerNameColor(color);
         // Load collapse state from localStorage
         if (storage.ui_collapsed !== undefined) {
           setIsCollapsed(storage.ui_collapsed);
@@ -402,7 +406,7 @@ export default function ChatContainer({ platform, streamer }: ChatContainerProps
               <div className="flex items-center justify-center h-full">
                 <div className="text-center text-[var(--color-text-dim)]">
                   <p className="text-sm">Waiting for messages...</p>
-                  <p className="text-xs mt-1">Messages from {streamer} will appear here</p>
+                  <p className="text-xs mt-1">Messages from {displayName} will appear here</p>
                 </div>
               </div>
             ) : (
@@ -431,7 +435,11 @@ export default function ChatContainer({ platform, streamer }: ChatContainerProps
                     {/* Username */}
                     <span
                       className="font-semibold text-sm"
-                      style={{ color: message.user.color || '#fff' }}
+                      style={{
+                        color: (viewerInfo && message.user.username === viewerInfo.username && viewerNameColor)
+                          ? viewerNameColor
+                          : (message.user.color || '#fff')
+                      }}
                     >
                       {message.user.display_name || message.user.username}
                     </span>
@@ -463,7 +471,7 @@ export default function ChatContainer({ platform, streamer }: ChatContainerProps
             <div className="border-t border-border">
               <LoginPrompt
                 platform={platform}
-                streamer={streamer}
+                streamer={displayName}
                 onLogin={handleLogin}
               />
             </div>

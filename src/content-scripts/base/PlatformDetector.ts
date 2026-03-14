@@ -97,9 +97,11 @@ export abstract class PlatformDetector {
   }
 
   /**
-   * Initialize All-Chat on this platform
+   * Initialize All-Chat on this platform.
+   * @param displayNameResolver Optional function to resolve a human-readable
+   *   display name from the raw username (e.g. channel ID → channel title).
    */
-  async init(): Promise<void> {
+  async init(displayNameResolver?: (username: string) => string): Promise<void> {
     console.log(`[AllChat ${this.platform}] Initializing...`);
 
     const username = this.extractStreamerUsername();
@@ -132,7 +134,10 @@ export abstract class PlatformDetector {
         return;
       }
 
-      this.injectAllChatUI(container, username);
+      const displayName = displayNameResolver ? displayNameResolver(username) : username;
+      // Use streamerInfo.username (All-Chat account owner) for WebSocket + login,
+      // not the raw channel ID / handle used for the API lookup.
+      this.injectAllChatUI(container, streamerInfo.username, displayName);
 
       // Connect to viewer WebSocket using the overlay owner's username (not the channel name)
       // e.g. watching etro's Twitch channel → streamerInfo.username = caesarlp → ws/chat/caesarlp
@@ -147,10 +152,13 @@ export abstract class PlatformDetector {
    */
   private async checkStreamerExists(username: string): Promise<StreamerInfo | null> {
     try {
+      console.log(`[AllChat ${this.platform}] Sending GET_STREAMER_INFO for: ${username}`);
       const response: ExtensionResponse = await chrome.runtime.sendMessage({
         type: 'GET_STREAMER_INFO',
         username,
       } as ExtensionMessage);
+
+      console.log(`[AllChat ${this.platform}] GET_STREAMER_INFO response:`, JSON.stringify(response));
 
       if (!response.success) {
         if (response.error === 'STREAMER_NOT_FOUND') {
@@ -169,13 +177,9 @@ export abstract class PlatformDetector {
   /**
    * Inject All-Chat UI into the page
    */
-  private injectAllChatUI(container: HTMLElement, streamer: string): void {
-    // Create iframe for complete isolation
-    // Pass platform and streamer via URL params — content script postMessage reports the page
-    // origin (not extension origin) so it would be blocked by the UI's origin check. URL params
-    // are set by the extension and cannot be spoofed by page iframes.
+  private injectAllChatUI(container: HTMLElement, streamer: string, displayName?: string): void {
     const iframe = document.createElement('iframe');
-    const params = new URLSearchParams({ platform: this.platform, streamer });
+    const params = new URLSearchParams({ platform: this.platform, streamer, display_name: displayName || streamer });
     iframe.src = chrome.runtime.getURL(`ui/chat-container.html?${params}`);
     iframe.style.cssText = 'width: 100%; height: 100%; border: none; background: transparent;';
     iframe.setAttribute('data-streamer', streamer);

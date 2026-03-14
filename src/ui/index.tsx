@@ -18,13 +18,14 @@ const manifest = chrome.runtime.getManifest();
 const params = new URLSearchParams(location.search);
 const platform = params.get('platform');
 const streamer = params.get('streamer');
+const displayName = params.get('display_name') || streamer;
 
 if (platform && streamer) {
-  console.log('[AllChat UI] Initializing with:', { platform, streamer });
+  console.log('[AllChat UI] Initializing with:', { platform, streamer, displayName });
   const root = ReactDOM.createRoot(document.getElementById('root')!);
   root.render(
     <ErrorBoundary>
-      <ChatContainer platform={platform as Platform} streamer={streamer} />
+      <ChatContainer platform={platform as Platform} streamer={streamer} displayName={displayName!} />
     </ErrorBoundary>
   );
 } else {

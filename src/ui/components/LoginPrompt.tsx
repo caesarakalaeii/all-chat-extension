@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { API_BASE_URL } from '../../config';
 
 interface LoginPromptProps {
@@ -12,56 +12,29 @@ const API_BASE = API_BASE_URL;
 export default function LoginPrompt({ platform, streamer, onLogin }: LoginPromptProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const authCompleted = useRef(false);
 
   const handleLogin = async () => {
     setLoading(true);
     setError(null);
+    authCompleted.current = false;
 
     try {
-      // Get OAuth URL from API
-      const loginEndpoint = `${API_BASE}/api/v1/auth/viewer/${platform}/login?streamer=${encodeURIComponent(streamer)}`;
-      const response = await fetch(loginEndpoint);
+      // Delegate to service worker via parent window (content script relay)
+      // This uses chrome.identity.launchWebAuthFlow which is the correct
+      // extension OAuth mechanism — window.open from an iframe doesn't work reliably
+      window.parent.postMessage({ type: 'REQUEST_LOGIN', platform, streamer }, '*');
 
-      if (!response.ok) {
-        throw new Error('Failed to get login URL');
-      }
-
-      const data = await response.json();
-      const authURL = data.auth_url;
-
-      if (!authURL) {
-        throw new Error('No auth URL returned');
-      }
-
-      // Open OAuth flow in popup
-      const popup = window.open(
-        authURL,
-        'AllChatOAuth',
-        'width=600,height=700,left=100,top=100'
-      );
-
-      if (!popup) {
-        throw new Error('Failed to open popup. Please allow popups for this site.');
-      }
-
-      // Listen for message from OAuth callback
+      // Listen for login result relayed back from content script
       const handleMessage = (event: MessageEvent) => {
-        // Check origin is from our API (localhost or production)
-        const apiOrigin = new URL(API_BASE).origin;
-        if (event.origin !== apiOrigin) {
-          return;
-        }
-
-        if (event.data.type === 'ALLCHAT_AUTH_SUCCESS' && event.data.token) {
-          console.log('[AllChat Login] Received token from OAuth callback');
+        if (event.data.type === 'LOGIN_SUCCESS' && event.data.token) {
+          authCompleted.current = true;
           window.removeEventListener('message', handleMessage);
-          popup.close();
           onLogin(event.data.token);
           setLoading(false);
-        } else if (event.data.type === 'ALLCHAT_AUTH_ERROR') {
-          console.error('[AllChat Login] OAuth error:', event.data.error);
+        } else if (event.data.type === 'LOGIN_ERROR') {
+          authCompleted.current = true;
           window.removeEventListener('message', handleMessage);
-          popup.close();
           setError(event.data.error || 'Authentication failed');
           setLoading(false);
         }
@@ -69,17 +42,14 @@ export default function LoginPrompt({ platform, streamer, onLogin }: LoginPrompt
 
       window.addEventListener('message', handleMessage);
 
-      // Check if popup was closed without completing auth
-      const checkPopupClosed = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(checkPopupClosed);
+      // Timeout after 3 minutes
+      setTimeout(() => {
+        if (!authCompleted.current) {
           window.removeEventListener('message', handleMessage);
-          if (loading) {
-            setLoading(false);
-            setError('Authentication cancelled');
-          }
+          setLoading(false);
+          setError('Login timed out');
         }
-      }, 500);
+      }, 180_000);
     } catch (err) {
       console.error('[AllChat Login] Error:', err);
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -107,11 +77,17 @@ export default function LoginPrompt({ platform, streamer, onLogin }: LoginPrompt
       <button
         onClick={handleLogin}
         disabled={loading}
-        className={`px-6 py-3 rounded font-semibold transition-colors ${
-          loading
-            ? 'bg-surface-2 text-[var(--color-text-dim)] cursor-not-allowed'
-            : 'bg-purple-600 hover:bg-purple-700 text-text'
+        className={`px-6 py-3 rounded font-semibold transition-opacity ${
+          loading ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'
         }`}
+        style={loading ? {} : {
+          backgroundColor:
+            platform === 'twitch'  ? '#9146FF' :
+            platform === 'youtube' ? '#FF4444' :
+            platform === 'kick'    ? '#53FC18' :
+            platform === 'tiktok'  ? '#69C9D0' : '#9146FF',
+          color: platform === 'kick' ? '#000' : '#fff',
+        }}
       >
         {loading ? 'Opening login...' : `Login with ${platform.charAt(0).toUpperCase() + platform.slice(1)}`}
       </button>

@@ -15,6 +15,7 @@ function Popup() {
   const [viewerInfo, setViewerInfo] = useState<ViewerInfo | null>(null);
   const [nameColor, setNameColor] = useState<string>('#ffffff');
   const [saveStatus, setSaveStatus] = useState<'' | 'saving' | 'saved'>('');
+  const [currentPlatform, setCurrentPlatform] = useState<string | null>(null);
   const colorSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -24,6 +25,8 @@ function Popup() {
         setIsEnabled(settings.extensionEnabled);
         setViewerInfo(local.viewer_info || null);
         setNameColor(local.viewer_name_color || '#ffffff');
+        const sessionData = await chrome.storage.session.get(['current_platform']) as { current_platform?: string };
+        setCurrentPlatform(sessionData.current_platform ?? null);
       } catch (err) {
         console.error('Failed to load settings:', err);
       } finally {
@@ -65,6 +68,19 @@ function Popup() {
         setSaveStatus('');
       }
     }, 300);
+  };
+
+  const handleColorReset = async () => {
+    setNameColor('#ffffff');
+    setSaveStatus('saving');
+    try {
+      await chrome.runtime.sendMessage({ type: 'SAVE_NAME_COLOR', color: null });
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus(''), 1500);
+    } catch (err) {
+      console.error('Failed to reset color:', err);
+      setSaveStatus('');
+    }
   };
 
   const handleLogout = async () => {
@@ -158,6 +174,13 @@ function Popup() {
                   onChange={(e) => handleColorChange(e.target.value)}
                   style={{ width: '32px', height: '24px', cursor: 'pointer', border: 'none', padding: 0, background: 'none' }}
                 />
+                <button
+                  onClick={handleColorReset}
+                  title="Reset to default"
+                  style={{ fontSize: '11px', color: '#adadb8', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}
+                >
+                  &#x21BA;
+                </button>
                 {saveStatus === 'saving' && <span style={{ fontSize: '11px', color: '#adadb8' }}>Saving…</span>}
                 {saveStatus === 'saved' && <span style={{ fontSize: '11px', color: '#00c853' }}>Saved</span>}
               </div>
@@ -172,7 +195,9 @@ function Popup() {
                 Sign in to personalize your chat identity.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {(['twitch', 'youtube', 'kick'] as const).map((p) => (
+                {((['twitch', 'youtube', 'kick'] as const).filter(
+                  (p) => currentPlatform === null || currentPlatform === p
+                )).map((p) => (
                   <button key={p} className={`btn-platform btn-${p}`} onClick={() => handleSignIn(p)}>
                     <PlatformIcon platform={p} />
                     Sign in with {platformLabel[p]}

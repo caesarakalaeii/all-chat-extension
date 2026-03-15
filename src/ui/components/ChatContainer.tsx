@@ -4,13 +4,13 @@
  * Main component that manages WebSocket connection and message state
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ChatMessage } from '../../lib/types/message';
 import { ViewerInfo } from '../../lib/types/extension';
 import { renderMessageContent } from '../../lib/renderMessage';
 import { resolveTwitchBadgeIcons } from '../../lib/twitchBadges';
 import { sortMessageBadges } from '../../lib/badgeOrder';
-import { getLocalStorage, setLocalStorage, clearViewerAuth, getNameColor } from '../../lib/storage';
+import { getLocalStorage, setLocalStorage, clearViewerAuth, getNameColor, getNameGradient } from '../../lib/storage';
 import { API_BASE_URL } from '../../config';
 import LoginPrompt from './LoginPrompt';
 import MessageInput from './MessageInput';
@@ -18,6 +18,14 @@ import ToastContainer, { Toast } from './Toast';
 import { InfinityLogo } from './InfinityLogo';
 
 export type Platform = 'twitch' | 'youtube' | 'kick' | 'tiktok';
+
+/**
+ * Converts a parsed NameGradient object to a CSS linear-gradient() string.
+ * Inlined here because the extension is a separate repo without @/lib/utils/gradient.
+ */
+function buildGradientCSS(g: { type: string; colors: string[]; angle: number }): string {
+  return `linear-gradient(${g.angle}deg, ${g.colors.join(', ')})`;
+}
 
 function PlatformIcon({ platform }: { platform: Platform }) {
   switch (platform) {
@@ -83,6 +91,17 @@ export default function ChatContainer({ platform, streamer, displayName }: ChatC
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [viewerNameColor, setViewerNameColor] = useState<string | null>(null);
+  const [viewerNameGradient, setViewerNameGradient] = useState<string | null>(null);
+
+  // Parse gradient JSON string for use in style — null when absent or invalid
+  const parsedGradient = useMemo((): { type: string; colors: string[]; angle: number } | null => {
+    if (!viewerNameGradient) return null;
+    try {
+      return JSON.parse(viewerNameGradient) as { type: string; colors: string[]; angle: number };
+    } catch {
+      return null;
+    }
+  }, [viewerNameGradient]);
 
   // Debug: Log connection status changes
   useEffect(() => {
@@ -100,6 +119,8 @@ export default function ChatContainer({ platform, streamer, displayName }: ChatC
         }
         const color = await getNameColor();
         setViewerNameColor(color);
+        const gradient = await getNameGradient();
+        setViewerNameGradient(gradient);
         // Load collapse state from localStorage
         if (storage.ui_collapsed !== undefined) {
           setIsCollapsed(storage.ui_collapsed);
@@ -433,16 +454,25 @@ export default function ChatContainer({ platform, streamer, displayName }: ChatC
                     ))}
 
                     {/* Username */}
-                    <span
-                      className="font-semibold text-sm"
-                      style={{
-                        color: (viewerInfo && message.user.username === viewerInfo.username && viewerNameColor)
-                          ? viewerNameColor
-                          : (message.user.color || '#fff')
-                      }}
-                    >
-                      {message.user.display_name || message.user.username}
-                    </span>
+                    {(viewerInfo && message.user.username === viewerInfo.username && parsedGradient) ? (
+                      <span
+                        className="font-semibold text-sm bg-clip-text text-transparent"
+                        style={{ backgroundImage: buildGradientCSS(parsedGradient) }}
+                      >
+                        {message.user.display_name || message.user.username}
+                      </span>
+                    ) : (
+                      <span
+                        className="font-semibold text-sm"
+                        style={{
+                          color: (viewerInfo && message.user.username === viewerInfo.username && viewerNameColor)
+                            ? viewerNameColor
+                            : (message.user.color || '#fff')
+                        }}
+                      >
+                        {message.user.display_name || message.user.username}
+                      </span>
+                    )}
                   </div>
 
                   {/* Message text with emotes */}

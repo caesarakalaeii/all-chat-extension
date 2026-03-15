@@ -21,6 +21,7 @@ import {
   setLocalStorage,
   setSyncStorage,
   clearViewerAuth,
+  setNameGradient,
   DEFAULT_SETTINGS,
 } from '../lib/storage';
 
@@ -105,6 +106,17 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           await saveNameColor(message.color);
           sendResponse({ success: true });
           break;
+
+        case 'SAVE_NAME_GRADIENT': {
+          const gradientMsg = message as { type: 'SAVE_NAME_GRADIENT'; gradient: string | null };
+          await setNameGradient(gradientMsg.gradient);
+          // Clear name_color when gradient is saved (mutual exclusion)
+          if (gradientMsg.gradient !== null) {
+            await setLocalStorage({ viewer_name_color: undefined });
+          }
+          sendResponse({ success: true });
+          break;
+        }
 
         case 'GET_AUTH_STATUS':
           const token = await getViewerToken();

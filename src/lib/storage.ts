@@ -88,3 +88,22 @@ export async function getNameColor(): Promise<string | null> {
   const storage = await getLocalStorage();
   return storage.viewer_name_color || null;
 }
+
+/**
+ * Get viewer name gradient (JSON-serialized NameGradient string)
+ */
+export async function getNameGradient(): Promise<string | null> {
+  const storage = await getLocalStorage();
+  return storage.viewer_name_gradient ?? null;
+}
+
+/**
+ * Set or clear viewer name gradient
+ */
+export async function setNameGradient(gradient: string | null): Promise<void> {
+  if (gradient === null) {
+    await setLocalStorage({ viewer_name_gradient: undefined });
+  } else {
+    await setLocalStorage({ viewer_name_gradient: gradient });
+  }
+}

@@ -39,7 +39,8 @@ export type ExtensionMessage =
   | { type: 'GET_CONNECTION_STATE' }
   | { type: 'LOGOUT' }
   | { type: 'STORE_VIEWER_TOKEN'; token: string }
-  | { type: 'SAVE_NAME_COLOR'; color: string | null };
+  | { type: 'SAVE_NAME_COLOR'; color: string | null }
+  | { type: 'SAVE_NAME_GRADIENT'; gradient: string | null };
 
 export type ExtensionResponse =
   | { success: true; data?: any }
@@ -52,6 +53,7 @@ export interface LocalStorage {
   viewer_jwt_token?: string;
   viewer_info?: ViewerInfo;
   viewer_name_color?: string;
+  viewer_name_gradient?: string; // JSON-serialized NameGradient, e.g. '{"type":"linear","colors":["#9146ff","#00b5ad"],"angle":90}'
   ui_collapsed?: boolean;
 }
 

@@ -157,6 +157,11 @@ async function initialize() {
   // Set up message relay IMMEDIATELY (before any async operations)
   setupGlobalMessageRelay();
 
+  // Signal to popup which platform page the user is on
+  chrome.storage.session.set({ current_platform: 'twitch' }).catch((err: unknown) => {
+    console.warn('[AllChat Twitch] Failed to write current_platform to session:', err);
+  });
+
   // Wait for chat to load — waitForElement handles timing via preDelayMs
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {

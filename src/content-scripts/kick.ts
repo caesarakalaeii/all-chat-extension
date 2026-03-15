@@ -184,6 +184,11 @@ async function initialize() {
 
   globalDetector = new KickDetector();
 
+  // Signal to popup which platform page the user is on
+  chrome.storage.session.set({ current_platform: 'kick' }).catch((err: unknown) => {
+    console.warn('[AllChat Kick] Failed to write current_platform to session:', err);
+  });
+
   // Set up message relay IMMEDIATELY (before any async operations)
   setupGlobalMessageRelay();
 

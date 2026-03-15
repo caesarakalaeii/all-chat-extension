@@ -24,6 +24,9 @@ export interface UserInfo {
   avatar_url?: string;
   badges: Badge[];
   color?: string;
+  name_gradient?: string;        // Phase 29: raw JSON string e.g. {"type":"linear","colors":[...],"angle":90}
+  avatar_frame_url?: string;     // Phase 30: URL of selected avatar frame
+  avatar_flair_url?: string;     // Phase 30: URL of selected avatar flair
 }
 
 export interface Badge {

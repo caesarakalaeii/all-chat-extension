@@ -16,6 +16,7 @@ import LoginPrompt from './LoginPrompt';
 import MessageInput from './MessageInput';
 import ToastContainer, { Toast } from './Toast';
 import { InfinityLogo } from './InfinityLogo';
+import { UserAvatar } from './UserAvatar';
 
 export type Platform = 'twitch' | 'youtube' | 'kick' | 'tiktok';
 
@@ -437,6 +438,15 @@ export default function ChatContainer({ platform, streamer, displayName }: ChatC
                   className={`message-enter p-2 rounded bg-surface/50 platform-${message.platform}`}
                 >
                   <div className="flex items-center gap-2 mb-1">
+                    {/* Avatar (with optional frame and flair) */}
+                    <UserAvatar
+                      avatarUrl={message.user.avatar_url}
+                      frameUrl={message.user.avatar_frame_url}
+                      flairUrl={message.user.avatar_flair_url}
+                      size={32}
+                      displayName={message.user.display_name}
+                    />
+
                     {/* Platform icon */}
                     <PlatformIcon platform={message.platform as Platform} />
 

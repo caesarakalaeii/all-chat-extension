@@ -17,6 +17,8 @@ import MessageInput from './MessageInput';
 import ToastContainer, { Toast } from './Toast';
 import { InfinityLogo } from './InfinityLogo';
 import { UserAvatar } from './UserAvatar';
+import { AllChatBadge } from './AllChatBadge';
+import { PremiumBadge } from './PremiumBadge';
 
 export type Platform = 'twitch' | 'youtube' | 'kick' | 'tiktok';
 
@@ -452,12 +454,16 @@ export default function ChatContainer({ platform, streamer, displayName }: ChatC
 
                     {/* Badges */}
                     {message.user.badges?.map((badge, idx) => (
-                      badge.icon_url ? (
+                      badge.name === 'allchat' ? (
+                        <AllChatBadge key={idx} size={18} title={badge.name} />
+                      ) : badge.name === 'premium' ? (
+                        <PremiumBadge key={idx} size={18} title={badge.name} />
+                      ) : badge.icon_url ? (
                         <img
                           key={idx}
                           src={badge.icon_url}
                           alt={badge.name}
-                          className="w-4 h-4"
+                          style={{ height: '1em', width: 'auto', objectFit: 'contain', display: 'inline-block' }}
                           title={`${badge.name} (${badge.version})`}
                         />
                       ) : null

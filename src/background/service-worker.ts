@@ -37,8 +37,42 @@ let wsStreamerUsername: string | null = null;
 let wsReconnectAttempts = 0;
 const WS_MAX_RECONNECT_ATTEMPTS = 10;
 const WS_RECONNECT_DELAY_MS = 1000; // Base delay, will be multiplied by attempt number
-let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+
+// Alarm name used to wake the service worker periodically so it can detect
+// and recover from WebSocket drops caused by MV3 service worker termination.
+// chrome.alarms is the only reliable keepalive mechanism in MV3 (setInterval
+// does not prevent the worker from being evicted).
+const KEEPALIVE_ALARM = 'allchat-ws-keepalive';
+
+// chrome.storage.session key for persisting the active streamer across
+// service worker restarts. Session storage is cleared when the browser closes.
+const SESSION_STREAMER_KEY = 'ws_active_streamer';
+
+// Restore WebSocket connection if the service worker was restarted while a
+// session was active (e.g. due to MV3 30-second idle eviction).
+(async () => {
+  const result = await chrome.storage.session.get(SESSION_STREAMER_KEY);
+  const savedStreamer = result[SESSION_STREAMER_KEY] as string | undefined;
+  if (savedStreamer) {
+    console.log('[AllChat] Service worker restarted — restoring connection for:', savedStreamer);
+    connectWebSocket(savedStreamer);
+  }
+})();
+
+// Wake up every ~1 minute and reconnect if the WebSocket dropped while the
+// worker was suspended.
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name !== KEEPALIVE_ALARM) return;
+  const result = await chrome.storage.session.get(SESSION_STREAMER_KEY);
+  const savedStreamer = result[SESSION_STREAMER_KEY] as string | undefined;
+  if (savedStreamer && (!wsConnection || wsConnection.readyState !== WebSocket.OPEN)) {
+    console.log('[AllChat] Keepalive alarm: reconnecting WebSocket for:', savedStreamer);
+    wsStreamerUsername = null; // Force connectWebSocket to open a new connection
+    connectWebSocket(savedStreamer);
+  }
+});
 
 // Connection states
 type ConnectionState = 'connected' | 'connecting' | 'reconnecting' | 'disconnected' | 'failed';
@@ -200,6 +234,11 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
     wsConnection.close();
   }
 
+  // Persist active streamer so a restarted service worker can reconnect.
+  await chrome.storage.session.set({ [SESSION_STREAMER_KEY]: streamerUsername });
+  // Ensure the keepalive alarm is running.
+  chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 0.9 });
+
   const apiUrl = await getApiGatewayUrl();
   const wsUrl = apiUrl.replace(/^http/, 'ws');
 
@@ -307,6 +346,8 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
  * Disconnect from WebSocket
  */
 function disconnectWebSocket(): void {
+  chrome.storage.session.remove(SESSION_STREAMER_KEY);
+  chrome.alarms.clear(KEEPALIVE_ALARM);
   if (wsConnection) {
     wsConnection.close();
     wsConnection = null;
@@ -326,29 +367,23 @@ function disconnectWebSocket(): void {
 }
 
 /**
- * Start WebSocket heartbeat (ping every 30 seconds)
+ * Start WebSocket heartbeat.
+ * The server sends WebSocket protocol-level pings every 30 s; the browser's
+ * WebSocket implementation responds with pongs automatically, so no
+ * application-level ping is needed here. The keepalive alarm handles
+ * service-worker restart recovery instead of setInterval.
  */
 function startWebSocketHeartbeat(): void {
-  heartbeatInterval = setInterval(() => {
-    if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
-      wsConnection.send(
-        JSON.stringify({
-          type: 'ping',
-          timestamp: new Date().toISOString(),
-        })
-      );
-    }
-  }, 30000);
+  // Intentionally empty: server-side protocol pings keep the connection alive.
+  // Recovery from service-worker eviction is handled by KEEPALIVE_ALARM.
 }
 
 /**
- * Stop WebSocket heartbeat
+ * Stop WebSocket heartbeat.
  */
 function stopWebSocketHeartbeat(): void {
-  if (heartbeatInterval) {
-    clearInterval(heartbeatInterval);
-    heartbeatInterval = null;
-  }
+  // No-op: alarm is cleared only on an explicit disconnectWebSocket() call
+  // so it continues running across automatic service-worker restarts.
 }
 
 /**

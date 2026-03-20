@@ -14,7 +14,8 @@
   "permissions": [
     "storage",
     "tabs",
-    "identity"
+    "identity",
+    "alarms"
   ],
 
   "host_permissions": [

@@ -21,7 +21,7 @@ export interface ViewerInfo {
   id: string;
   username: string;
   display_name: string;
-  platform: 'twitch' | 'youtube';
+  platform: 'twitch' | 'youtube' | 'kick';
 }
 
 /**
@@ -32,11 +32,15 @@ export type ExtensionMessage =
   | { type: 'CONNECT_WEBSOCKET'; streamerUsername: string }
   | { type: 'DISCONNECT_WEBSOCKET' }
   | { type: 'SEND_CHAT_MESSAGE'; streamerUsername: string; message: string }
-  | { type: 'START_AUTH'; platform: 'twitch' | 'youtube'; streamerUsername?: string }
+  | { type: 'START_AUTH'; platform: 'twitch' | 'youtube' | 'kick'; streamerUsername?: string }
+  | { type: 'EXCHANGE_CODE'; platform: 'twitch' | 'youtube' | 'kick'; code: string; state: string }
+  | { type: 'DO_LOGIN'; platform: 'twitch' | 'youtube' | 'kick'; streamerUsername?: string }
   | { type: 'GET_AUTH_STATUS' }
   | { type: 'GET_CONNECTION_STATE' }
   | { type: 'LOGOUT' }
-  | { type: 'STORE_VIEWER_TOKEN'; token: string };
+  | { type: 'STORE_VIEWER_TOKEN'; token: string }
+  | { type: 'SAVE_NAME_COLOR'; color: string | null }
+  | { type: 'SAVE_NAME_GRADIENT'; gradient: string | null };
 
 export type ExtensionResponse =
   | { success: true; data?: any }
@@ -48,6 +52,8 @@ export type ExtensionResponse =
 export interface LocalStorage {
   viewer_jwt_token?: string;
   viewer_info?: ViewerInfo;
+  viewer_name_color?: string;
+  viewer_name_gradient?: string; // JSON-serialized NameGradient, e.g. '{"type":"linear","colors":["#9146ff","#00b5ad"],"angle":90}'
   ui_collapsed?: boolean;
 }
 

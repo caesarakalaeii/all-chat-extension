@@ -21,8 +21,15 @@ import {
   setLocalStorage,
   setSyncStorage,
   clearViewerAuth,
+  setNameGradient,
   DEFAULT_SETTINGS,
 } from '../lib/storage';
+
+// Extension OAuth redirect URI — computed lazily to avoid crashing at module load
+// if the identity permission is missing
+function getExtensionRedirectURI(): string {
+  return chrome.identity.getRedirectURL('oauth');
+}
 
 // WebSocket connection
 let wsConnection: WebSocket | null = null;
@@ -30,8 +37,42 @@ let wsStreamerUsername: string | null = null;
 let wsReconnectAttempts = 0;
 const WS_MAX_RECONNECT_ATTEMPTS = 10;
 const WS_RECONNECT_DELAY_MS = 1000; // Base delay, will be multiplied by attempt number
-let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+
+// Alarm name used to wake the service worker periodically so it can detect
+// and recover from WebSocket drops caused by MV3 service worker termination.
+// chrome.alarms is the only reliable keepalive mechanism in MV3 (setInterval
+// does not prevent the worker from being evicted).
+const KEEPALIVE_ALARM = 'allchat-ws-keepalive';
+
+// chrome.storage.session key for persisting the active streamer across
+// service worker restarts. Session storage is cleared when the browser closes.
+const SESSION_STREAMER_KEY = 'ws_active_streamer';
+
+// Restore WebSocket connection if the service worker was restarted while a
+// session was active (e.g. due to MV3 30-second idle eviction).
+(async () => {
+  const result = await chrome.storage.session.get(SESSION_STREAMER_KEY);
+  const savedStreamer = result[SESSION_STREAMER_KEY] as string | undefined;
+  if (savedStreamer) {
+    console.log('[AllChat] Service worker restarted — restoring connection for:', savedStreamer);
+    connectWebSocket(savedStreamer);
+  }
+})();
+
+// Wake up every ~1 minute and reconnect if the WebSocket dropped while the
+// worker was suspended.
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name !== KEEPALIVE_ALARM) return;
+  const result = await chrome.storage.session.get(SESSION_STREAMER_KEY);
+  const savedStreamer = result[SESSION_STREAMER_KEY] as string | undefined;
+  if (savedStreamer && (!wsConnection || wsConnection.readyState !== WebSocket.OPEN)) {
+    console.log('[AllChat] Keepalive alarm: reconnecting WebSocket for:', savedStreamer);
+    wsStreamerUsername = null; // Force connectWebSocket to open a new connection
+    connectWebSocket(savedStreamer);
+  }
+});
 
 // Connection states
 type ConnectionState = 'connected' | 'connecting' | 'reconnecting' | 'disconnected' | 'failed';
@@ -43,13 +84,13 @@ let currentConnectionState: ConnectionState = 'disconnected';
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
     console.log('[AllChat] Extension installed');
-    // Initialize default settings
     setSyncStorage(DEFAULT_SETTINGS);
   } else if (details.reason === 'update') {
     console.log('[AllChat] Extension updated to', chrome.runtime.getManifest().version);
-    // Always update API URL on updates to ensure it's correct
     setSyncStorage({ apiGatewayUrl: DEFAULT_SETTINGS.apiGatewayUrl });
   }
+  // Always reset API URL on install/update to clear stale localhost values
+  setSyncStorage({ apiGatewayUrl: DEFAULT_SETTINGS.apiGatewayUrl });
 });
 
 /**
@@ -83,6 +124,33 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           const authUrl = await initiateAuth(message.platform, message.streamerUsername);
           sendResponse({ success: true, data: { authUrl } });
           break;
+
+        case 'EXCHANGE_CODE':
+          await exchangeCodeForToken(message.platform, message.code, message.state);
+          sendResponse({ success: true });
+          break;
+
+        case 'DO_LOGIN': {
+          const loginUrl = await initiateAuthUrl(message.platform, message.streamerUsername);
+          sendResponse({ success: true, data: { loginUrl } });
+          break;
+        }
+
+        case 'SAVE_NAME_COLOR':
+          await saveNameColor(message.color);
+          sendResponse({ success: true });
+          break;
+
+        case 'SAVE_NAME_GRADIENT': {
+          const gradientMsg = message as { type: 'SAVE_NAME_GRADIENT'; gradient: string | null };
+          await setNameGradient(gradientMsg.gradient);
+          // Clear name_color when gradient is saved (mutual exclusion)
+          if (gradientMsg.gradient !== null) {
+            await setLocalStorage({ viewer_name_color: undefined });
+          }
+          sendResponse({ success: true });
+          break;
+        }
 
         case 'GET_AUTH_STATUS':
           const token = await getViewerToken();
@@ -129,7 +197,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
 async function fetchStreamerInfo(username: string): Promise<StreamerInfo> {
   const apiUrl = await getApiGatewayUrl();
   const fetchUrl = `${apiUrl}/api/v1/auth/streamers/${encodeURIComponent(username)}`;
-  console.log('[AllChat] Fetching streamer info from:', fetchUrl);
+  console.log('[AllChat SW] Fetching streamer info from:', fetchUrl);
 
   const response = await fetch(fetchUrl, {
     method: 'GET',
@@ -165,6 +233,11 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
   if (wsConnection) {
     wsConnection.close();
   }
+
+  // Persist active streamer so a restarted service worker can reconnect.
+  await chrome.storage.session.set({ [SESSION_STREAMER_KEY]: streamerUsername });
+  // Ensure the keepalive alarm is running.
+  chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 0.9 });
 
   const apiUrl = await getApiGatewayUrl();
   const wsUrl = apiUrl.replace(/^http/, 'ws');
@@ -273,6 +346,8 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
  * Disconnect from WebSocket
  */
 function disconnectWebSocket(): void {
+  chrome.storage.session.remove(SESSION_STREAMER_KEY);
+  chrome.alarms.clear(KEEPALIVE_ALARM);
   if (wsConnection) {
     wsConnection.close();
     wsConnection = null;
@@ -292,29 +367,23 @@ function disconnectWebSocket(): void {
 }
 
 /**
- * Start WebSocket heartbeat (ping every 30 seconds)
+ * Start WebSocket heartbeat.
+ * The server sends WebSocket protocol-level pings every 30 s; the browser's
+ * WebSocket implementation responds with pongs automatically, so no
+ * application-level ping is needed here. The keepalive alarm handles
+ * service-worker restart recovery instead of setInterval.
  */
 function startWebSocketHeartbeat(): void {
-  heartbeatInterval = setInterval(() => {
-    if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
-      wsConnection.send(
-        JSON.stringify({
-          type: 'ping',
-          timestamp: new Date().toISOString(),
-        })
-      );
-    }
-  }, 30000);
+  // Intentionally empty: server-side protocol pings keep the connection alive.
+  // Recovery from service-worker eviction is handled by KEEPALIVE_ALARM.
 }
 
 /**
- * Stop WebSocket heartbeat
+ * Stop WebSocket heartbeat.
  */
 function stopWebSocketHeartbeat(): void {
-  if (heartbeatInterval) {
-    clearInterval(heartbeatInterval);
-    heartbeatInterval = null;
-  }
+  // No-op: alarm is cleared only on an explicit disconnectWebSocket() call
+  // so it continues running across automatic service-worker restarts.
 }
 
 /**
@@ -372,19 +441,19 @@ function handleWebSocketMessage(message: any): void {
 }
 
 /**
- * Initiate OAuth flow
+ * Initiate OAuth flow — returns auth_url with extension redirect_uri substituted
  */
 async function initiateAuth(platform: string, streamerUsername?: string): Promise<string> {
   const apiUrl = await getApiGatewayUrl();
 
-  let endpoint: string;
-  if (platform === 'twitch') {
-    endpoint = '/api/v1/auth/viewer/twitch/login';
-  } else if (platform === 'youtube') {
-    endpoint = '/api/v1/auth/viewer/youtube/login';
-  } else {
-    throw new Error('Unsupported platform');
-  }
+  const platformEndpoints: Record<string, string> = {
+    twitch: '/api/v1/auth/viewer/twitch/login',
+    youtube: '/api/v1/auth/viewer/youtube/login',
+    kick: '/api/v1/auth/viewer/kick/login',
+  };
+
+  const endpoint = platformEndpoints[platform];
+  if (!endpoint) throw new Error('Unsupported platform');
 
   const url = new URL(`${apiUrl}${endpoint}`);
   if (streamerUsername) {
@@ -394,7 +463,73 @@ async function initiateAuth(platform: string, streamerUsername?: string): Promis
   const response = await fetch(url.toString());
   const data = await response.json();
 
+  // Swap the backend redirect_uri for the extension redirect URI
+  const authUrl = new URL(data.auth_url);
+  authUrl.searchParams.set('redirect_uri', getExtensionRedirectURI());
+  return authUrl.toString();
+}
+
+/**
+ * Get the OAuth login URL for the given platform without modifying the redirect_uri.
+ * The content script opens a popup to this URL and the allch.at callback posts the token back.
+ */
+async function initiateAuthUrl(platform: string, streamerUsername?: string): Promise<string> {
+  const apiUrl = await getApiGatewayUrl();
+  const platformEndpoints: Record<string, string> = {
+    twitch: '/api/v1/auth/viewer/twitch/login',
+    youtube: '/api/v1/auth/viewer/youtube/login',
+    kick: '/api/v1/auth/viewer/kick/login',
+  };
+  const endpoint = platformEndpoints[platform];
+  if (!endpoint) throw new Error('Unsupported platform');
+  const url = new URL(`${apiUrl}${endpoint}`);
+  if (streamerUsername) url.searchParams.set('streamer', streamerUsername);
+  const response = await fetch(url.toString());
+  const data = await response.json();
   return data.auth_url;
+}
+
+/**
+ * Exchange OAuth code for viewer JWT via extension-mode endpoint
+ */
+async function exchangeCodeForToken(platform: string, code: string, state: string): Promise<void> {
+  const apiUrl = await getApiGatewayUrl();
+  const response = await fetch(`${apiUrl}/api/v1/auth/viewer/${platform}/exchange`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, state }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Exchange failed: ${response.status}`);
+  }
+
+  const { token } = await response.json();
+  await storeViewerToken(token);
+}
+
+/**
+ * Save viewer name color locally and persist to backend
+ */
+async function saveNameColor(color: string | null): Promise<void> {
+  if (color) {
+    await setLocalStorage({ viewer_name_color: color });
+  } else {
+    await new Promise<void>((resolve) => chrome.storage.local.remove('viewer_name_color', resolve));
+  }
+
+  const token = await getViewerToken();
+  if (!token) return;
+
+  const apiUrl = await getApiGatewayUrl();
+  await fetch(`${apiUrl}/api/v1/auth/viewer/cosmetics`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ name_color: color }),
+  });
 }
 
 /**

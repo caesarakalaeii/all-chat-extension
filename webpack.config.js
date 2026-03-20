@@ -2,6 +2,7 @@ const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const webpack = require('webpack');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 
 module.exports = (env, argv) => {
   const isProduction = argv.mode === 'production';
@@ -13,6 +14,7 @@ module.exports = (env, argv) => {
     'background': './src/background/service-worker.ts',
     'content-scripts/twitch': './src/content-scripts/twitch.ts',
     'content-scripts/youtube': './src/content-scripts/youtube.ts',
+    'content-scripts/kick': './src/content-scripts/kick.ts',
     'ui/chat-bundle': './src/ui/index.tsx',
     'popup/popup': './src/popup/popup.tsx'
   },
@@ -35,7 +37,14 @@ module.exports = (env, argv) => {
       },
       {
         test: /\.css$/,
-        use: ['style-loader', 'css-loader', 'postcss-loader']
+        use: [MiniCssExtractPlugin.loader, 'css-loader', 'postcss-loader']
+      },
+      {
+        test: /\.(woff|woff2|eot|ttf|otf)$/i,
+        type: 'asset/resource',
+        generator: {
+          filename: 'ui/fonts/[name][ext]'
+        }
       }
     ]
   },
@@ -48,6 +57,9 @@ module.exports = (env, argv) => {
   plugins: [
     new webpack.DefinePlugin({
       'process.env.API_URL': JSON.stringify(API_URL)
+    }),
+    new MiniCssExtractPlugin({
+      filename: 'ui/chat-styles.css'
     }),
     new CopyPlugin({
       patterns: [

@@ -112,6 +112,57 @@
       opacity: 0.5;
       cursor: not-allowed;
     }
+
+    /* Platform sign-in buttons */
+    .btn-platform {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      color: #fff;
+    }
+    .btn-platform:hover { opacity: 0.88; }
+    .btn-platform:active { transform: scale(0.98); }
+    .btn-platform .platform-icon {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+    .btn-twitch  { background: #9146FF; }
+    .btn-youtube { background: #FF4444; }
+    .btn-kick    { background: #1a6b1a; color: #53FC18; }
+
+    /* Secondary actions */
+    .btn-secondary {
+      background: none;
+      border: 1px solid #3a3a3d;
+      border-radius: 6px;
+      color: #adadb8;
+      font-size: 12px;
+      padding: 5px 10px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-secondary:hover { border-color: #6a6a7a; color: #fff; }
+
+    .btn-danger {
+      background: none;
+      border: 1px solid #5a1a1a;
+      border-radius: 6px;
+      color: #ff6b6b;
+      font-size: 12px;
+      padding: 5px 10px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .btn-danger:hover { background: #3a0a0a; border-color: #ff6b6b; }
   </style>
 </head>
 <body>

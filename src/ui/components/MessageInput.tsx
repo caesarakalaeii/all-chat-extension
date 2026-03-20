@@ -30,7 +30,7 @@ export default function MessageInput({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<ChatError | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  
+
   // Autocomplete state
   const [emotes, setEmotes] = useState<EmoteData[]>([]);
   const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<EmoteData[]>([]);
@@ -113,14 +113,14 @@ export default function MessageInput({
     const textBeforeCursor = message.slice(0, cursorPosition);
     const textAfterCursor = message.slice(cursorPosition);
     const lastSpaceIndex = textBeforeCursor.lastIndexOf(' ');
-    
+
     // Replace the partial word with the full emote name
     const newTextBefore = textBeforeCursor.slice(0, lastSpaceIndex + 1) + emote.name;
     const newMessage = newTextBefore + ' ' + textAfterCursor;
-    
+
     setMessage(newMessage);
     setShowAutocomplete(false);
-    
+
     // Set cursor position after the inserted emote
     setTimeout(() => {
       if (inputRef.current) {
@@ -196,7 +196,7 @@ export default function MessageInput({
       setMessage('');
       setError(null);
       onSendSuccess?.();
-      
+
       // Restore focus to input field after sending
       setTimeout(() => {
         inputRef.current?.focus();
@@ -214,7 +214,7 @@ export default function MessageInput({
   const isRateLimited = error?.type === 'RATE_LIMITED';
 
   return (
-    <div className="border-t border-gray-700 bg-gray-800 p-3 relative">
+    <div className="border-t border-border bg-surface p-3 relative">
       {error && (
         <ErrorDisplay
           error={error}
@@ -238,7 +238,7 @@ export default function MessageInput({
             placeholder={isRateLimited ? 'Rate limited - see error above' : 'Send a message...'}
             disabled={sending || isRateLimited}
             maxLength={MAX_MESSAGE_LENGTH}
-            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full px-3 py-2 bg-bg border border-border rounded text-sm text-text placeholder-[var(--color-text-dim)] focus:outline-hidden focus:border-[var(--color-text-dim)] disabled:opacity-50 disabled:cursor-not-allowed"
           />
           {showAutocomplete && (
             <Autocomplete
@@ -253,13 +253,13 @@ export default function MessageInput({
         <button
           type="submit"
           disabled={!message.trim() || sending || isRateLimited}
-          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-semibold rounded text-sm transition-colors"
+          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-surface-2 disabled:cursor-not-allowed text-text font-semibold rounded text-sm transition-colors"
         >
           {sending ? 'Sending...' : 'Send'}
         </button>
       </form>
 
-      <div className="mt-1 text-xs text-gray-500 text-right">
+      <div className="mt-1 text-xs text-[var(--color-text-dim)] text-right">
         {message.length}/{MAX_MESSAGE_LENGTH}
       </div>
     </div>

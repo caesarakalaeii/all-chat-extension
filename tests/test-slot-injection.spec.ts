@@ -35,7 +35,7 @@ test.describe('INJ-01: Twitch iframe mounts in .chat-shell', () => {
   test('allchat-container is a child of .chat-shell', async () => {
     const page = await context.newPage();
     const html = fs.readFileSync(path.resolve(__dirname, 'fixtures/twitch-mock.html'), 'utf8');
-    await context.route('https://allch.at/api/v1/auth/streamers/**', route =>
+    await context.route('http://localhost:8080/api/v1/auth/streamers/**', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: MOCK_STREAMER_TWITCH })
     );
     await page.route('https://www.twitch.tv/**', route =>
@@ -56,7 +56,7 @@ test.describe('INJ-02: No position:fixed container on Twitch page', () => {
   test('no element with position:fixed exists after injection', async () => {
     const page = await context.newPage();
     const html = fs.readFileSync(path.resolve(__dirname, 'fixtures/twitch-mock.html'), 'utf8');
-    await context.route('https://allch.at/api/v1/auth/streamers/**', route =>
+    await context.route('http://localhost:8080/api/v1/auth/streamers/**', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: MOCK_STREAMER_TWITCH })
     );
     await page.route('https://www.twitch.tv/**', route =>
@@ -80,7 +80,7 @@ test.describe('INJ-04: YouTube container inserted before ytd-live-chat-frame', (
   test('allchat-container precedes ytd-live-chat-frame in DOM', async () => {
     const page = await context.newPage();
     const html = fs.readFileSync(path.resolve(__dirname, 'fixtures/youtube-mock.html'), 'utf8');
-    await context.route('https://allch.at/api/v1/auth/streamers/**', route =>
+    await context.route('http://localhost:8080/api/v1/auth/streamers/**', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: MOCK_STREAMER_YOUTUBE })
     );
     await page.route('https://www.youtube.com/**', route =>
@@ -110,7 +110,7 @@ test.describe('INJ-06: YouTube native chat hidden via style tag', () => {
   test('ytd-live-chat-frame is hidden via injected style tag not inline style', async () => {
     const page = await context.newPage();
     const html = fs.readFileSync(path.resolve(__dirname, 'fixtures/youtube-mock.html'), 'utf8');
-    await context.route('https://allch.at/api/v1/auth/streamers/**', route =>
+    await context.route('http://localhost:8080/api/v1/auth/streamers/**', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: MOCK_STREAMER_YOUTUBE })
     );
     await page.route('https://www.youtube.com/**', route =>

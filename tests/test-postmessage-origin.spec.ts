@@ -83,7 +83,7 @@ test.describe('postMessage Origin Validation — KICK-05', () => {
       });
 
       // context.route() intercepts service worker fetches (allch.at API)
-      await context.route('https://allch.at/api/v1/auth/streamers/**', route =>
+      await context.route('http://localhost:8080/api/v1/auth/streamers/**', route =>
         route.fulfill({ status: 200, contentType: 'application/json', body: mockStreamer })
       );
       await page.route('https://www.twitch.tv/**', route =>

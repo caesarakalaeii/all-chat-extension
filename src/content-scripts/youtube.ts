@@ -182,22 +182,36 @@ class YouTubeDetector extends PlatformDetector {
   async createInjectionPoint(): Promise<HTMLElement | null> {
     try {
       const nativeChat = await this.waitForElement('ytd-live-chat-frame');
-      const parent = nativeChat.parentElement;
-      if (!parent) {
-        console.warn('[AllChat YouTube] ytd-live-chat-frame has no parent — native chat remains visible');
-        return null;
-      }
+
+      const watchFlexy = document.querySelector('ytd-watch-flexy');
+      const isTheaterMode = watchFlexy?.hasAttribute('theater') ?? false;
 
       const container = document.createElement('div');
       container.id = 'allchat-container';
-      // Position over the native chat frame absolutely so we fill the full
-      // column height regardless of how YouTube sizes #chat-container
-      container.style.cssText = 'position: absolute; inset: 0; z-index: 1;';
-      // Make parent a positioning context
-      if (parent.style.position === '' || parent.style.position === 'static') {
-        parent.style.position = 'relative';
+
+      if (isTheaterMode) {
+        // In theater mode #chat-container collapses to width:0 because YouTube
+        // removes the right-hand sidebar. Use a fixed overlay on the right side
+        // of the screen so the chat remains visible over the video.
+        container.style.cssText = 'position: fixed; top: 0; right: 0; width: 340px; height: 100vh; z-index: 9999;';
+        document.body.appendChild(container);
+        console.log('[AllChat YouTube] Injected in theater-mode (fixed overlay)');
+      } else {
+        const parent = nativeChat.parentElement;
+        if (!parent) {
+          console.warn('[AllChat YouTube] ytd-live-chat-frame has no parent — native chat remains visible');
+          return null;
+        }
+        // Position over the native chat frame absolutely so we fill the full
+        // column height regardless of how YouTube sizes #chat-container
+        container.style.cssText = 'position: absolute; inset: 0; z-index: 1;';
+        // Make parent a positioning context
+        if (parent.style.position === '' || parent.style.position === 'static') {
+          parent.style.position = 'relative';
+        }
+        parent.insertBefore(container, nativeChat);
       }
-      parent.insertBefore(container, nativeChat);
+
       return container;
     } catch {
       console.warn('[AllChat YouTube] ytd-live-chat-frame not found after timeout — native chat remains visible');

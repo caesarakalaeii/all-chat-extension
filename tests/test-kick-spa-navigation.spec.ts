@@ -35,8 +35,8 @@ test.describe('Kick SPA Navigation — KICK-06', () => {
 
   async function setupKickFixtureForAllRoutes(page: Parameters<Parameters<typeof test>[1]>[0]['page']) {
     const html = fs.readFileSync(path.resolve(__dirname, 'fixtures/kick-mock.html'), 'utf8');
-    // context.route() intercepts service worker fetches (allch.at API)
-    await context.route('https://allch.at/api/v1/auth/streamers/**', route =>
+    // context.route() intercepts service worker fetches (localhost:8080 — matches API_URL in test build)
+    await context.route('http://localhost:8080/api/v1/auth/streamers/**', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: MOCK_STREAMER_KICK })
     );
     await page.route('https://kick.com/**', route => {

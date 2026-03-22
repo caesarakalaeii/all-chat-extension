@@ -49,8 +49,8 @@ test.describe('Kick Selector Fallback Chain — KICK-07', () => {
 </body></html>`;
 
     const page = await context.newPage();
-    // context.route() intercepts service worker fetches (allch.at API)
-    await context.route('https://allch.at/api/v1/auth/streamers/**', route =>
+    // context.route() intercepts service worker fetches (localhost:8080 — matches API_URL in test build)
+    await context.route('http://localhost:8080/api/v1/auth/streamers/**', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: MOCK_STREAMER_KICK })
     );
     await page.route('https://kick.com/**', route => {
@@ -75,8 +75,8 @@ test.describe('Kick Selector Fallback Chain — KICK-07', () => {
 </body></html>`;
 
     const page = await context.newPage();
-    // context.route() intercepts service worker fetches (allch.at API)
-    await context.route('https://allch.at/api/v1/auth/streamers/**', route =>
+    // context.route() intercepts service worker fetches (localhost:8080 — matches API_URL in test build)
+    await context.route('http://localhost:8080/api/v1/auth/streamers/**', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: MOCK_STREAMER_KICK })
     );
     await page.route('https://kick.com/**', route => {

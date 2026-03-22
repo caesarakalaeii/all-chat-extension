@@ -30,8 +30,8 @@ test.describe('INJ-05: YouTube SPA navigation triggers teardown and re-init', ()
   test('navigating away removes allchat-container and style tag', async () => {
     const page = await context.newPage();
     const html = fs.readFileSync(path.resolve(__dirname, 'fixtures/youtube-mock.html'), 'utf8');
-    // context.route() intercepts service worker fetches (allch.at API)
-    await context.route('https://allch.at/api/v1/auth/streamers/**', route =>
+    // context.route() intercepts service worker fetches (localhost:8080 — matches API_URL in test build)
+    await context.route('http://localhost:8080/api/v1/auth/streamers/**', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: MOCK_STREAMER_YOUTUBE })
     );
     await page.route('https://www.youtube.com/**', route =>
@@ -57,8 +57,8 @@ test.describe('INJ-05: YouTube SPA navigation triggers teardown and re-init', ()
   test('yt-navigate-finish does not double-init when popstate also fires', async () => {
     const page = await context.newPage();
     const html = fs.readFileSync(path.resolve(__dirname, 'fixtures/youtube-mock.html'), 'utf8');
-    // context.route() intercepts service worker fetches (allch.at API)
-    await context.route('https://allch.at/api/v1/auth/streamers/**', route =>
+    // context.route() intercepts service worker fetches (localhost:8080 — matches API_URL in test build)
+    await context.route('http://localhost:8080/api/v1/auth/streamers/**', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: MOCK_STREAMER_YOUTUBE })
     );
     await page.route('https://www.youtube.com/**', route =>

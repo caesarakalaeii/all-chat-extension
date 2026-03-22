@@ -12,8 +12,8 @@ export { DEFAULT_SETTINGS };
  */
 export async function getSyncStorage(): Promise<SyncStorage> {
   return new Promise((resolve) => {
-    chrome.storage.sync.get(DEFAULT_SETTINGS, (items) => {
-      resolve(items as SyncStorage);
+    chrome.storage.sync.get(DEFAULT_SETTINGS as unknown as Record<string, unknown>, (items) => {
+      resolve(items as unknown as SyncStorage);
     });
   });
 }

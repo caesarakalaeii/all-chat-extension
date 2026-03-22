@@ -56,11 +56,24 @@ class YouTubeDetector extends PlatformDetector {
   }
 
   extractStreamerUsername(): string | null {
-    // Method 1: From URL (@username format)
+    // Method 1: From URL — fast path for /@channel/live pages
     const urlMatch = window.location.pathname.match(/@([^\/]+)/);
     if (urlMatch) return urlMatch[1];
 
-    // Method 2: From page metadata
+    // Method 2: From ytInitialData — tried early because it returns the channel_id
+    // (UC...) which is always the primary key stored in overlay_chat_sources.
+    // Handle-based methods (3-5) can return display-name strings that only match
+    // if channel_handle was also populated in the DB, which is not guaranteed.
+    try {
+      const scripts = Array.from(document.querySelectorAll('script'));
+      const dataScript = scripts.find(s => s.textContent?.includes('"channelId"'));
+      if (dataScript && dataScript.textContent) {
+        const match = dataScript.textContent.match(/"channelId":"(UC[^"]+)"/);
+        if (match) return match[1];
+      }
+    } catch { /* ignore */ }
+
+    // Method 3: From page metadata link
     const channelLink = document.querySelector('link[itemprop="url"]');
     if (channelLink) {
       const href = channelLink.getAttribute('href');
@@ -68,18 +81,17 @@ class YouTubeDetector extends PlatformDetector {
       if (match) return match[1];
     }
 
-    // Method 3: From channel link in header (extract handle from href)
+    // Method 4: From channel link in header
     const channelNameElement = document.querySelector('ytd-channel-name a');
     if (channelNameElement) {
       const href = channelNameElement.getAttribute('href');
       const match = href?.match(/@([^\/]+)/);
       if (match) return match[1];
-      // Also try /channel/UC... format for channels without a handle
       const idMatch = href?.match(/\/channel\/(UC[^\/]+)/);
       if (idMatch) return idMatch[1];
     }
 
-    // Method 4: From owner link in video page
+    // Method 5: From owner link in video page
     const ownerLink = document.querySelector('a.yt-simple-endpoint.ytd-video-owner-renderer');
     if (ownerLink) {
       const href = ownerLink.getAttribute('href');
@@ -88,16 +100,6 @@ class YouTubeDetector extends PlatformDetector {
       const idMatch = href?.match(/\/channel\/(UC[^\/]+)/);
       if (idMatch) return idMatch[1];
     }
-
-    // Method 5: From ytInitialData script — most reliable for channels without handles
-    try {
-      const scripts = Array.from(document.querySelectorAll('script'));
-      const dataScript = scripts.find(s => s.textContent?.includes('channelId'));
-      if (dataScript && dataScript.textContent) {
-        const match = dataScript.textContent.match(/"channelId":"(UC[^"]+)"/);
-        if (match) return match[1];
-      }
-    } catch { /* ignore */ }
 
     return null;
   }
@@ -364,5 +366,37 @@ function setupUrlWatcher(): void {
   window.addEventListener('popstate', handleNavigation);
 }
 
+/**
+ * Watch for YouTube theater/cinema mode toggles and reinitialise the UI.
+ * When the user enters or exits theater mode, YouTube reflowing the layout
+ * breaks the injected container's absolute positioning context. Tearing down
+ * and re-injecting after a short reflow delay restores correct rendering.
+ */
+function setupTheaterModeWatcher(): void {
+  const watchFlexy = document.querySelector('ytd-watch-flexy');
+  if (!watchFlexy) return;
+
+  let reinitTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const observer = new MutationObserver(() => {
+    if (!globalDetector) return;
+    // Debounce: YouTube may toggle multiple attributes in quick succession
+    if (reinitTimer) clearTimeout(reinitTimer);
+    reinitTimer = setTimeout(() => {
+      console.log('[AllChat YouTube] Theater/fullscreen mode changed, reinitialising...');
+      globalDetector?.removeAllChatUI();
+      globalDetector?.showNativeChat();
+      globalDetector?.init();
+    }, 300);
+  });
+
+  observer.observe(watchFlexy, {
+    attributes: true,
+    attributeFilter: ['theater', 'fullscreen'],
+  });
+}
+
 // Start initialization
-initialize();
+initialize().then(() => {
+  setupTheaterModeWatcher();
+});

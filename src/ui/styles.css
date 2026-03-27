@@ -189,3 +189,16 @@ html, body {
     opacity: 1;
   }
 }
+
+/* ============================================================
+   SEND SUCCESS FEEDBACK
+   ============================================================ */
+@keyframes fade-out {
+  0% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@utility animate-fade-out {
+  animation: fade-out 1s ease-out forwards;
+}

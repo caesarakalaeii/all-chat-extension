@@ -29,7 +29,9 @@ export default function MessageInput({
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<ChatError | null>(null);
+  const [sentSuccess, setSentSuccess] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Autocomplete state
   const [emotes, setEmotes] = useState<EmoteData[]>([]);
@@ -40,6 +42,15 @@ export default function MessageInput({
   // Auto-focus input
   useEffect(() => {
     inputRef.current?.focus();
+  }, []);
+
+  // Clean up success timer on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current !== null) {
+        clearTimeout(successTimerRef.current);
+      }
+    };
   }, []);
 
   // Fetch emotes from all providers on mount
@@ -197,6 +208,16 @@ export default function MessageInput({
       setError(null);
       onSendSuccess?.();
 
+      // Show inline success feedback
+      setSentSuccess(true);
+      if (successTimerRef.current !== null) {
+        clearTimeout(successTimerRef.current);
+      }
+      successTimerRef.current = setTimeout(() => {
+        setSentSuccess(false);
+        successTimerRef.current = null;
+      }, 1000);
+
       // Restore focus to input field after sending
       setTimeout(() => {
         inputRef.current?.focus();
@@ -238,7 +259,7 @@ export default function MessageInput({
             placeholder={isRateLimited ? 'Rate limited - see error above' : 'Send a message...'}
             disabled={sending || isRateLimited}
             maxLength={MAX_MESSAGE_LENGTH}
-            className="w-full px-3 py-2 bg-bg border border-border rounded text-sm text-text placeholder-[var(--color-text-dim)] focus:outline-hidden focus:border-[var(--color-text-dim)] disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`w-full px-3 py-2 bg-bg border rounded text-sm text-text placeholder-[var(--color-text-dim)] focus:outline-hidden focus:border-[var(--color-text-dim)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 ${sentSuccess ? 'border-green-500 pr-8' : 'border-border'}`}
           />
           {showAutocomplete && (
             <Autocomplete
@@ -248,6 +269,16 @@ export default function MessageInput({
               onClose={() => setShowAutocomplete(false)}
               inputElement={inputRef.current}
             />
+          )}
+          {sentSuccess && (
+            <svg
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500 animate-fade-out pointer-events-none"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
           )}
         </div>
         <button

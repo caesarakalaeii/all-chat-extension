@@ -15,6 +15,7 @@ module.exports = (env, argv) => {
     'content-scripts/twitch': './src/content-scripts/twitch.ts',
     'content-scripts/youtube': './src/content-scripts/youtube.ts',
     'content-scripts/kick': './src/content-scripts/kick.ts',
+    'content-scripts/youtube-studio': './src/content-scripts/youtube-studio.ts',
     'ui/chat-bundle': './src/ui/index.tsx',
     'popup/popup': './src/popup/popup.tsx'
   },

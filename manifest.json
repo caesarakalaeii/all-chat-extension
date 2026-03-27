@@ -21,6 +21,7 @@
   "host_permissions": [
     "https://www.twitch.tv/*",
     "https://www.youtube.com/*",
+    "https://studio.youtube.com/*",
     "https://kick.com/*",
     "http://localhost:8080/*",
     "https://allch.at/*"
@@ -50,6 +51,12 @@
       "js": ["content-scripts/kick.js"],
       "css": ["content-scripts/styles.css"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://studio.youtube.com/video/*/livestreaming*"],
+      "js": ["content-scripts/youtube-studio.js"],
+      "css": ["content-scripts/styles.css"],
+      "run_at": "document_idle"
     }
   ],
 
@@ -64,6 +71,7 @@
       "matches": [
         "https://www.twitch.tv/*",
         "https://www.youtube.com/*",
+        "https://studio.youtube.com/*",
         "https://kick.com/*"
       ]
     }

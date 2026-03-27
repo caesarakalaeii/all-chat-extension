@@ -318,7 +318,7 @@ export default function ChatContainer({ platform, streamer, displayName }: ChatC
 
   // Handle message sent successfully
   const handleMessageSent = () => {
-    addToast('Message sent', 'success', 2000);
+    // Inline feedback handled by MessageInput — no toast needed
   };
 
   // Toggle collapse state and persist it

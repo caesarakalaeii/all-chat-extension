@@ -1,13 +1,23 @@
 {
   "manifest_version": 3,
   "name": "All-Chat Extension",
-  "version": "1.3.4",
+  "version": "1.3.5",
   "description": "Replace native platform chat with unified All-Chat experience",
 
   "browser_specific_settings": {
     "gecko": {
       "id": "allchat@allch.at",
-      "strict_min_version": "109.0"
+      "strict_min_version": "115.0",
+      "data_collection_permissions": {
+        "personally_identifying_info": false,
+        "health_info": false,
+        "financial_info": false,
+        "location_info": false,
+        "communications_content": false,
+        "search_terms": false,
+        "browsing_activity": false,
+        "technical_and_interaction": true
+      }
     }
   },
 

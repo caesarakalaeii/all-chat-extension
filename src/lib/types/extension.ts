@@ -40,7 +40,8 @@ export type ExtensionMessage =
   | { type: 'LOGOUT' }
   | { type: 'STORE_VIEWER_TOKEN'; token: string }
   | { type: 'SAVE_NAME_COLOR'; color: string | null }
-  | { type: 'SAVE_NAME_GRADIENT'; gradient: string | null };
+  | { type: 'SAVE_NAME_GRADIENT'; gradient: string | null }
+  | { type: 'SET_CURRENT_PLATFORM'; platform: string };
 
 export type ExtensionResponse =
   | { success: true; data?: any }

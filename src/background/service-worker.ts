@@ -168,6 +168,11 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           sendResponse({ success: true });
           break;
 
+        case 'SET_CURRENT_PLATFORM':
+          await chrome.storage.session.set({ current_platform: message.platform });
+          sendResponse({ success: true });
+          break;
+
         case 'GET_CONNECTION_STATE':
           sendResponse({
             success: true,

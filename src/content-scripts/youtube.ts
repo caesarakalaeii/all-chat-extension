@@ -255,7 +255,7 @@ async function initialize() {
   globalDetector = new YouTubeDetector();
 
   // Signal to popup which platform page the user is on
-  chrome.storage.session.set({ current_platform: 'youtube' }).catch((err: unknown) => {
+  chrome.runtime.sendMessage({ type: 'SET_CURRENT_PLATFORM', platform: 'youtube' }).catch((err: unknown) => {
     console.warn('[AllChat YouTube] Failed to write current_platform to session:', err);
   });
 

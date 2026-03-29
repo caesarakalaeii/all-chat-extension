@@ -9,15 +9,8 @@
       "id": "allchat@allch.at",
       "strict_min_version": "115.0",
       "data_collection_permissions": {
-        "required": false,
-        "personally_identifying_info": false,
-        "health_info": false,
-        "financial_info": false,
-        "location_info": false,
-        "communications_content": false,
-        "search_terms": false,
-        "browsing_activity": false,
-        "technical_and_interaction": true
+        "required": ["none"],
+        "optional": ["technicalAndInteraction"]
       }
     }
   },

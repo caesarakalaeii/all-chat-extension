@@ -173,7 +173,6 @@ export default function ChatContainer({ platform, streamer, displayName }: ChatC
       // Messages come through parent window from content script
       if (event.data.type === 'WS_MESSAGE') {
         const wsMessage = event.data.data;
-
         if (wsMessage.type === 'connected') {
           console.log('[AllChat UI] Connected to chat stream');
         } else if (wsMessage.type === 'chat_message') {

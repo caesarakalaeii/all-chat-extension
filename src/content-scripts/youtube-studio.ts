@@ -186,7 +186,7 @@ async function initialize() {
 
   globalDetector = new YouTubeStudioDetector();
 
-  chrome.storage.session.set({ current_platform: 'youtube' }).catch((err: unknown) => {
+  chrome.runtime.sendMessage({ type: 'SET_CURRENT_PLATFORM', platform: 'youtube' }).catch((err: unknown) => {
     console.warn('[AllChat YTStudio] Failed to write current_platform to session:', err);
   });
 

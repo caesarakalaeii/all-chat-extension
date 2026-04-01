@@ -183,10 +183,21 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
           let processedMessage = wsMessage.data as ChatMessage;
           processedMessage = sortMessageBadges(processedMessage);
 
-          // Add the message immediately (deduplicated by ID), then update in-place when badge icons resolve
+          // Add the message (deduplicated by ID), replacing any optimistic version
           setMessages((prev) => {
             if (prev.some((m) => m.id === processedMessage.id)) {
               return prev; // Already present — discard duplicate delivery
+            }
+            // Replace optimistic message by matching client_message_id
+            if (processedMessage.client_message_id) {
+              const optimisticIdx = prev.findIndex(
+                (m) => m.client_message_id === processedMessage.client_message_id
+              );
+              if (optimisticIdx !== -1) {
+                const updated = [...prev];
+                updated[optimisticIdx] = processedMessage;
+                return updated;
+              }
             }
             return [...prev, processedMessage].slice(-50);
           });
@@ -315,9 +326,32 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
     addToast('Session expired. Please log in again.', 'warning');
   };
 
-  // Handle message sent successfully
-  const handleMessageSent = () => {
-    // Inline feedback handled by MessageInput — no toast needed
+  // Handle message sent successfully — add optimistic message for instant display
+  const handleMessageSent = (messageText: string, clientMessageId: string) => {
+    if (!viewerInfo) return;
+
+    const optimisticMessage: ChatMessage = {
+      id: `optimistic-${clientMessageId}`,
+      overlay_id: '',
+      platform,
+      channel_id: '',
+      channel_name: streamer,
+      user: {
+        id: viewerInfo.id || '',
+        username: viewerInfo.username,
+        display_name: viewerInfo.display_name || viewerInfo.username,
+        avatar_url: viewerInfo.avatar_url,
+        badges: [],
+        color: viewerNameColor || undefined,
+        name_gradient: viewerNameGradient || undefined,
+      },
+      message: { text: messageText, emotes: [] },
+      timestamp: new Date().toISOString(),
+      metadata: {},
+      client_message_id: clientMessageId,
+    };
+
+    setMessages((prev) => [...prev, optimisticMessage].slice(-50));
   };
 
   // Toggle collapse state and persist it

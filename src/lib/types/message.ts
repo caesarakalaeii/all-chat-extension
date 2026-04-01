@@ -15,6 +15,7 @@ export interface ChatMessage {
   message: MessageInfo;
   timestamp: string;
   metadata: Record<string, unknown>;
+  client_message_id?: string;
 }
 
 export interface UserInfo {

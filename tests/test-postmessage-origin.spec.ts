@@ -6,7 +6,9 @@ const EXTENSION_PATH = path.join(__dirname, '..', 'dist');
 
 test.describe('postMessage Origin Validation — KICK-05', () => {
 
-  test('KICK-05a: PlatformDetector.ts injectAllChatUI uses extensionOrigin not "*" as targetOrigin', () => {
+  test('KICK-05a: PlatformDetector.ts injectAllChatUI does not use postMessage with "*" targetOrigin', () => {
+    // PlatformDetector.injectAllChatUI creates the iframe via iframe.src (no postMessage).
+    // The extensionOrigin guard is enforced in the per-platform relay handlers (twitch.ts etc).
     const filePath = path.resolve(__dirname, '../src/content-scripts/base/PlatformDetector.ts');
     const source = fs.readFileSync(filePath, 'utf8');
 
@@ -14,9 +16,8 @@ test.describe('postMessage Origin Validation — KICK-05', () => {
     const wildcardMatches = source.match(/postMessage\([^)]*,\s*'\*'/g);
     expect(wildcardMatches, 'PlatformDetector.ts must not use "*" as postMessage targetOrigin').toBeNull();
 
-    // Must contain extensionOrigin as the targetOrigin
-    expect(source).toContain('extensionOrigin');
-    expect(source).toContain("chrome.runtime.getURL('').slice(0, -1)");
+    // Iframe src must be set via chrome.runtime.getURL (extension origin URL)
+    expect(source).toContain('chrome.runtime.getURL(`ui/chat-container.html');
   });
 
   test('KICK-05b: twitch.ts setupGlobalMessageRelay relay uses extensionOrigin not "*"', () => {
@@ -43,19 +44,20 @@ test.describe('postMessage Origin Validation — KICK-05', () => {
     expect(source).toContain('extensionOrigin');
   });
 
-  test('KICK-05d: src/ui/index.tsx message listener has origin guard before processing', () => {
+  test('KICK-05d: src/ui/index.tsx uses URL params for initialization (not postMessage)', () => {
+    // The original KICK-05d checked for an ALLCHAT_INIT postMessage handler with an origin guard.
+    // The architecture changed: initialization now uses URL search params instead of postMessage,
+    // removing the attack surface entirely (no message listener needed for init).
     const filePath = path.resolve(__dirname, '../src/ui/index.tsx');
     const source = fs.readFileSync(filePath, 'utf8');
 
-    // Must contain the origin guard
-    expect(source).toContain('event.origin !== extensionOrigin');
+    // Must use URLSearchParams to read platform and streamer from the URL
+    expect(source).toContain('new URLSearchParams(location.search)');
+    expect(source).toContain("params.get('platform')");
+    expect(source).toContain("params.get('streamer')");
 
-    // The guard must appear BEFORE the ALLCHAT_INIT check
-    const guardIndex = source.indexOf('event.origin !== extensionOrigin');
-    const initCheckIndex = source.indexOf("event.data.type === 'ALLCHAT_INIT'");
-    expect(guardIndex).toBeGreaterThan(-1);
-    expect(initCheckIndex).toBeGreaterThan(-1);
-    expect(guardIndex).toBeLessThan(initCheckIndex);
+    // Must NOT contain a postMessage-based ALLCHAT_INIT handler
+    expect(source).not.toContain("event.data.type === 'ALLCHAT_INIT'");
   });
 
   test.describe('KICK-05e: iframe rejects postMessage from non-extension origin', () => {

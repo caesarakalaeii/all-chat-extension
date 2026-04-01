@@ -399,8 +399,7 @@ function broadcastConnectionState(state: ConnectionState, details?: any): void {
 
   console.log('[AllChat] Broadcasting connection state:', state);
 
-  chrome.tabs.query({}, (tabs) => {
-    console.log(`[AllChat] Found ${tabs.length} tabs to broadcast to`);
+  chrome.tabs.query({ url: ['https://www.twitch.tv/*', 'https://www.youtube.com/*', 'https://kick.com/*'] }, (tabs) => {
     tabs.forEach((tab) => {
       if (tab.id) {
         chrome.tabs.sendMessage(tab.id, {
@@ -411,10 +410,8 @@ function broadcastConnectionState(state: ConnectionState, details?: any): void {
             maxAttempts: WS_MAX_RECONNECT_ATTEMPTS,
             ...details,
           },
-        }).then(() => {
-          console.log(`[AllChat] Sent CONNECTION_STATE to tab ${tab.id}`);
         }).catch((err) => {
-          console.log(`[AllChat] Failed to send to tab ${tab.id}:`, err.message);
+          console.warn(`[AllChat] Failed to send CONNECTION_STATE to tab ${tab.id}:`, err.message);
         });
       }
     });
@@ -427,18 +424,14 @@ function broadcastConnectionState(state: ConnectionState, details?: any): void {
 function handleWebSocketMessage(message: any): void {
   console.log('[AllChat] WebSocket message:', message.type);
 
-  // Broadcast to all active tabs
-  chrome.tabs.query({}, (tabs) => {
-    console.log(`[AllChat] Broadcasting WS_MESSAGE to ${tabs.length} tabs`);
+  chrome.tabs.query({ url: ['https://www.twitch.tv/*', 'https://www.youtube.com/*', 'https://kick.com/*'] }, (tabs) => {
     tabs.forEach((tab) => {
       if (tab.id) {
         chrome.tabs.sendMessage(tab.id, {
           type: 'WS_MESSAGE',
           data: message,
-        }).then(() => {
-          console.log(`[AllChat] Sent WS_MESSAGE to tab ${tab.id}`);
         }).catch((err) => {
-          console.log(`[AllChat] Failed to send WS_MESSAGE to tab ${tab.id}:`, err.message);
+          console.warn(`[AllChat] Failed to send WS_MESSAGE to tab ${tab.id}:`, err.message);
         });
       }
     });

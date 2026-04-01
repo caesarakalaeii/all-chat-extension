@@ -13,7 +13,7 @@ interface MessageInputProps {
   streamer: string;
   twitchChannel?: string;
   token: string;
-  onSendSuccess?: (messageText: string, clientMessageId: string) => void;
+  onSendSuccess?: () => void;
   onAuthError?: () => void;
 }
 
@@ -170,15 +170,11 @@ export default function MessageInput({
     setSending(true);
     setError(null);
 
-    // Generate a unique client message ID for optimistic UI deduplication
-    const clientMessageId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-
     try {
-      const requestBody: SendMessageRequest & { client_message_id: string } = {
+      const requestBody: SendMessageRequest = {
         streamer_username: streamer,
         message: trimmed,
         platform,
-        client_message_id: clientMessageId,
       };
 
       const response = await fetch(`${API_BASE}/api/v1/auth/viewer/chat/send`, {
@@ -217,7 +213,7 @@ export default function MessageInput({
       // Success!
       setMessage('');
       setError(null);
-      onSendSuccess?.(trimmed, clientMessageId);
+      onSendSuccess?.();
 
       // Show inline success feedback
       setSentSuccess(true);

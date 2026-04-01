@@ -69,6 +69,7 @@ interface ChatContainerProps {
   platform: Platform;
   streamer: string;
   displayName: string;
+  twitchChannel?: string;
 }
 
 type ConnectionState = 'connected' | 'connecting' | 'reconnecting' | 'disconnected' | 'failed';
@@ -82,7 +83,7 @@ interface ConnectionStatus {
   message?: string;
 }
 
-export default function ChatContainer({ platform, streamer, displayName }: ChatContainerProps) {
+export default function ChatContainer({ platform, streamer, displayName, twitchChannel }: ChatContainerProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
     state: 'connecting',
@@ -502,6 +503,7 @@ export default function ChatContainer({ platform, streamer, displayName }: ChatC
             <MessageInput
               platform={platform}
               streamer={streamer}
+              twitchChannel={twitchChannel}
               token={viewerToken}
               onAuthError={handleAuthError}
               onSendSuccess={handleMessageSent}

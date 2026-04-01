@@ -135,9 +135,16 @@ export abstract class PlatformDetector {
       }
 
       const displayName = displayNameResolver ? displayNameResolver(username) : username;
+
+      // Find the Twitch channel name for emote autocomplete (7TV/BTTV/FFZ are Twitch-only).
+      // streamerInfo.username is the All-Chat account owner, which may differ from the
+      // actual Twitch channel name (e.g. owner "caesarlp" → Twitch channel "etro").
+      const twitchPlatform = streamerInfo.platforms.find(p => p.platform === 'twitch');
+      const twitchChannelName = twitchPlatform?.channel_name || undefined;
+
       // Use streamerInfo.username (All-Chat account owner) for WebSocket + login,
       // not the raw channel ID / handle used for the API lookup.
-      this.injectAllChatUI(container, streamerInfo.username, displayName);
+      this.injectAllChatUI(container, streamerInfo.username, displayName, twitchChannelName);
 
       // Connect to viewer WebSocket using the overlay owner's username (not the channel name)
       // e.g. watching etro's Twitch channel → streamerInfo.username = caesarlp → ws/chat/caesarlp
@@ -177,9 +184,12 @@ export abstract class PlatformDetector {
   /**
    * Inject All-Chat UI into the page
    */
-  private injectAllChatUI(container: HTMLElement, streamer: string, displayName?: string): void {
+  private injectAllChatUI(container: HTMLElement, streamer: string, displayName?: string, twitchChannelName?: string): void {
     const iframe = document.createElement('iframe');
     const params = new URLSearchParams({ platform: this.platform, streamer, display_name: displayName || streamer });
+    if (twitchChannelName) {
+      params.set('twitch_channel', twitchChannelName);
+    }
     iframe.src = chrome.runtime.getURL(`ui/chat-container.html?${params}`);
     iframe.style.cssText = 'width: 100%; height: 100%; border: none; background: transparent;';
     iframe.setAttribute('data-streamer', streamer);

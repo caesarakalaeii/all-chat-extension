@@ -11,6 +11,7 @@ import ErrorDisplay from './ErrorDisplay';
 interface MessageInputProps {
   platform: 'twitch' | 'youtube' | 'kick' | 'tiktok';
   streamer: string;
+  twitchChannel?: string;
   token: string;
   onSendSuccess?: () => void;
   onAuthError?: () => void;
@@ -22,6 +23,7 @@ const MAX_MESSAGE_LENGTH = 500;
 export default function MessageInput({
   platform,
   streamer,
+  twitchChannel,
   token,
   onSendSuccess,
   onAuthError
@@ -53,20 +55,25 @@ export default function MessageInput({
     };
   }, []);
 
-  // Fetch emotes from all providers on mount
+  // Fetch emotes from all providers on mount (7TV/BTTV/FFZ are Twitch-only)
   useEffect(() => {
+    if (!twitchChannel) {
+      console.log('[AllChat Autocomplete] No Twitch channel available, skipping emote fetch');
+      return;
+    }
+
     const loadEmotes = async () => {
       try {
-        const fetchedEmotes = await fetchAllEmotes(streamer);
+        const fetchedEmotes = await fetchAllEmotes(twitchChannel);
         setEmotes(fetchedEmotes);
-        console.log(`[AllChat Autocomplete] Loaded ${fetchedEmotes.length} emotes for ${streamer}`);
+        console.log(`[AllChat Autocomplete] Loaded ${fetchedEmotes.length} emotes for Twitch channel ${twitchChannel}`);
       } catch (err) {
         console.error('[AllChat Autocomplete] Failed to load emotes:', err);
       }
     };
 
     loadEmotes();
-  }, [streamer]);
+  }, [twitchChannel]);
 
   // Handle autocomplete
   useEffect(() => {

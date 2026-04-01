@@ -63,6 +63,9 @@ interface FFZSet {
 }
 
 interface FFZRoomResponse {
+  room?: {
+    twitch_id?: number;
+  };
   sets: {
     [key: string]: FFZSet;
   };
@@ -79,14 +82,18 @@ interface FFZGlobalResponse {
 const emoteCache = new Map<string, EmoteData[]>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 const cacheTimestamps = new Map<string, number>();
+// Cache Twitch login → numeric user ID (resolved from FFZ, used for BTTV)
+const twitchUserIdCache = new Map<string, string>();
 
 /**
- * Fetch all emotes from all providers for a specific Twitch channel
+ * Fetch all emotes from all providers for a specific Twitch channel.
+ * 7TV and FFZ use the Twitch login name; BTTV requires the numeric Twitch user ID
+ * which we resolve from the FFZ room response.
  */
 export async function fetchAllEmotes(channelName: string): Promise<EmoteData[]> {
   const cacheKey = `all:${channelName}`;
   const now = Date.now();
-  
+
   // Check cache
   if (emoteCache.has(cacheKey)) {
     const timestamp = cacheTimestamps.get(cacheKey) || 0;
@@ -96,22 +103,25 @@ export async function fetchAllEmotes(channelName: string): Promise<EmoteData[]> 
   }
 
   try {
-    // Fetch emotes from all providers in parallel
-    const [sevenTVEmotes, bttvEmotes, ffzEmotes] = await Promise.all([
+    // Fetch 7TV and FFZ in parallel (both use Twitch login name).
+    // FFZ also gives us the numeric Twitch user ID needed for BTTV.
+    const [sevenTVEmotes, ffzResult] = await Promise.all([
       fetch7TVEmotes(channelName),
-      fetchBTTVEmotes(channelName),
-      fetchFFZEmotes(channelName),
+      fetchFFZEmotesWithUserId(channelName),
     ]);
 
+    // Fetch BTTV using the Twitch user ID resolved from FFZ
+    const bttvEmotes = await fetchBTTVEmotes(channelName, ffzResult.twitchUserId);
+
     // Combine all emotes
-    const allEmotes = [...sevenTVEmotes, ...bttvEmotes, ...ffzEmotes];
-    
+    const allEmotes = [...sevenTVEmotes, ...bttvEmotes, ...ffzResult.emotes];
+
     // Update cache
     emoteCache.set(cacheKey, allEmotes);
     cacheTimestamps.set(cacheKey, now);
-    
-    console.log(`[Emote Autocomplete] Loaded ${allEmotes.length} emotes (7TV: ${sevenTVEmotes.length}, BTTV: ${bttvEmotes.length}, FFZ: ${ffzEmotes.length})`);
-    
+
+    console.log(`[Emote Autocomplete] Loaded ${allEmotes.length} emotes (7TV: ${sevenTVEmotes.length}, BTTV: ${bttvEmotes.length}, FFZ: ${ffzResult.emotes.length})`);
+
     return allEmotes;
   } catch (err) {
     console.error('[Emote Autocomplete] Failed to fetch emotes:', err);
@@ -223,10 +233,10 @@ function parse7TVEmotes(emotes: SevenTVEmote[]): EmoteData[] {
 /**
  * Fetch BTTV emotes for a specific Twitch channel
  */
-async function fetchBTTVEmotes(channelName: string): Promise<EmoteData[]> {
+async function fetchBTTVEmotes(channelName: string, channelId?: string): Promise<EmoteData[]> {
   const cacheKey = `bttv:${channelName}`;
   const now = Date.now();
-  
+
   // Check cache
   if (emoteCache.has(cacheKey)) {
     const timestamp = cacheTimestamps.get(cacheKey) || 0;
@@ -238,20 +248,23 @@ async function fetchBTTVEmotes(channelName: string): Promise<EmoteData[]> {
   try {
     // First, get global emotes
     const globalEmotes = await fetchGlobalBTTVEmotes();
-    
+
     // Then try to fetch channel-specific emotes
+    // BTTV's cached API requires the numeric Twitch user ID, not the login name
     let channelEmotes: EmoteData[] = [];
-    try {
-      const encodedChannelName = encodeURIComponent(channelName);
-      const response = await fetch(`${BTTV_API_BASE}/users/twitch/${encodedChannelName}`);
-      if (response.ok) {
-        const data: BTTVChannelResponse = await response.json();
-        const channelBTTV = parseBTTVEmotes(data.channelEmotes || []);
-        const sharedBTTV = parseBTTVEmotes(data.sharedEmotes || []);
-        channelEmotes = [...channelBTTV, ...sharedBTTV];
+    if (channelId) {
+      try {
+        const encodedChannelId = encodeURIComponent(channelId);
+        const response = await fetch(`${BTTV_API_BASE}/users/twitch/${encodedChannelId}`);
+        if (response.ok) {
+          const data: BTTVChannelResponse = await response.json();
+          const channelBTTV = parseBTTVEmotes(data.channelEmotes || []);
+          const sharedBTTV = parseBTTVEmotes(data.sharedEmotes || []);
+          channelEmotes = [...channelBTTV, ...sharedBTTV];
+        }
+      } catch (err) {
+        console.warn('[BTTV] Failed to fetch channel emotes:', err);
       }
-    } catch (err) {
-      console.warn('[BTTV] Failed to fetch channel emotes:', err);
     }
 
     // Combine global and channel emotes
@@ -321,24 +334,28 @@ function parseBTTVEmotes(emotes: BTTVEmote[]): EmoteData[] {
 }
 
 /**
- * Fetch FFZ emotes for a specific Twitch channel
+ * Fetch FFZ emotes and also extract the Twitch user ID from the room response.
+ * The Twitch user ID is needed by BTTV's API which requires numeric IDs, not login names.
  */
-async function fetchFFZEmotes(channelName: string): Promise<EmoteData[]> {
+async function fetchFFZEmotesWithUserId(channelName: string): Promise<{ emotes: EmoteData[]; twitchUserId: string | undefined }> {
   const cacheKey = `ffz:${channelName}`;
   const now = Date.now();
-  
-  // Check cache
+
+  // Check cache (emotes only — twitchUserId is also cached separately)
   if (emoteCache.has(cacheKey)) {
     const timestamp = cacheTimestamps.get(cacheKey) || 0;
     if (now - timestamp < CACHE_DURATION) {
-      return emoteCache.get(cacheKey) || [];
+      const cachedUserId = twitchUserIdCache.get(channelName);
+      return { emotes: emoteCache.get(cacheKey) || [], twitchUserId: cachedUserId };
     }
   }
+
+  let twitchUserId: string | undefined;
 
   try {
     // First, get global emotes
     const globalEmotes = await fetchGlobalFFZEmotes();
-    
+
     // Then try to fetch channel-specific emotes
     let channelEmotes: EmoteData[] = [];
     try {
@@ -346,6 +363,11 @@ async function fetchFFZEmotes(channelName: string): Promise<EmoteData[]> {
       const response = await fetch(`${FFZ_API_BASE}/room/${encodedChannelName}`);
       if (response.ok) {
         const data: FFZRoomResponse = await response.json();
+        // Extract Twitch user ID from room data
+        if (data.room?.twitch_id) {
+          twitchUserId = data.room.twitch_id.toString();
+          twitchUserIdCache.set(channelName, twitchUserId);
+        }
         // FFZ returns sets, we need to extract emotes from all sets
         const allSets = Object.values(data.sets || {});
         channelEmotes = allSets.flatMap(set => parseFFZEmotes(set.emoticons || []));
@@ -356,15 +378,15 @@ async function fetchFFZEmotes(channelName: string): Promise<EmoteData[]> {
 
     // Combine global and channel emotes
     const allEmotes = [...globalEmotes, ...channelEmotes];
-    
+
     // Update cache
     emoteCache.set(cacheKey, allEmotes);
     cacheTimestamps.set(cacheKey, now);
-    
-    return allEmotes;
+
+    return { emotes: allEmotes, twitchUserId };
   } catch (err) {
     console.error('[FFZ] Failed to fetch emotes:', err);
-    return [];
+    return { emotes: [], twitchUserId: undefined };
   }
 }
 
@@ -458,4 +480,5 @@ export function filterEmotes(emotes: EmoteData[], query: string, limit: number =
 export function clearEmoteCache(): void {
   emoteCache.clear();
   cacheTimestamps.clear();
+  twitchUserIdCache.clear();
 }

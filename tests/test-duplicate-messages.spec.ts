@@ -20,12 +20,12 @@ test.describe('Duplicate message deduplication — static source checks', () => 
     );
     const source = fs.readFileSync(filePath, 'utf8');
 
-    // The guard must check whether a message with the same ID already exists
-    // before appending to the messages array.
-    expect(source).toContain('prev.some((m) => m.id === processedMessage.id)');
+    // The guard must be guarded by a truthy-ID check to avoid dropping messages
+    // with falsy IDs (undefined or empty string).
+    expect(source).toContain('processedMessage.id && prev.some((m) => m.id === processedMessage.id)');
 
     // The guard must return the previous state unchanged when a duplicate is found
-    const guardIndex = source.indexOf('prev.some((m) => m.id === processedMessage.id)');
+    const guardIndex = source.indexOf('processedMessage.id && prev.some((m) => m.id === processedMessage.id)');
     expect(guardIndex).toBeGreaterThan(-1);
 
     // Ensure the guard appears before the spread-append pattern in the same block
@@ -77,7 +77,7 @@ test.describe('Duplicate message deduplication — logic contract tests', () => 
 
     // Simulated state updater — mirrors the ChatContainer setMessages call
     const withDedup = (prev: any[]) => {
-      if (prev.some((m) => m.id === processedMessage.id)) {
+      if (processedMessage.id && prev.some((m) => m.id === processedMessage.id)) {
         return prev; // Duplicate — discard
       }
       return [...prev, processedMessage].slice(-50);
@@ -96,13 +96,64 @@ test.describe('Duplicate message deduplication — logic contract tests', () => 
     // A DIFFERENT message should still be added
     const differentMessage = { id: 'test-uuid-002', platform: 'twitch', message: { text: 'Other', emotes: [] } };
     const withDedup2 = (prev: any[]) => {
-      if (prev.some((m) => m.id === differentMessage.id)) {
+      if (differentMessage.id && prev.some((m) => m.id === differentMessage.id)) {
         return prev;
       }
       return [...prev, differentMessage].slice(-50);
     };
     const after3 = withDedup2(after1);
     expect(after3).toHaveLength(2);
+  });
+
+  test('deduplication guard does NOT drop messages when ID is falsy', () => {
+    // Regression test: guard must not drop subsequent messages when id is undefined or "".
+    // Before the fix, the guard used `prev.some((m) => m.id === processedMessage.id)` without
+    // checking that id is truthy first. With id=undefined, undefined===undefined is true,
+    // so every message after the first would be silently dropped.
+
+    const makeMsg = (id: string | undefined, text: string) => ({
+      id,
+      platform: 'twitch',
+      message: { text, emotes: [] },
+    }) as any;
+
+    // Test with id = undefined
+    const withDedupUndefined = (msg: any) => (prev: any[]) => {
+      if (msg.id && prev.some((m: any) => m.id === msg.id)) {
+        return prev;
+      }
+      return [...prev, msg].slice(-50);
+    };
+
+    const msg1 = makeMsg(undefined, 'first');
+    const msg2 = makeMsg(undefined, 'second');
+    const msg3 = makeMsg(undefined, 'third');
+
+    const after1 = withDedupUndefined(msg1)([]);
+    expect(after1).toHaveLength(1);
+
+    const after2 = withDedupUndefined(msg2)(after1);
+    expect(after2).toHaveLength(2); // Must NOT be dropped
+
+    const after3 = withDedupUndefined(msg3)(after2);
+    expect(after3).toHaveLength(3); // Must NOT be dropped
+
+    // Test with id = "" (empty string)
+    const msgEmpty1 = makeMsg('', 'first empty');
+    const msgEmpty2 = makeMsg('', 'second empty');
+
+    const withDedupEmpty = (msg: any) => (prev: any[]) => {
+      if (msg.id && prev.some((m: any) => m.id === msg.id)) {
+        return prev;
+      }
+      return [...prev, msg].slice(-50);
+    };
+
+    const afterE1 = withDedupEmpty(msgEmpty1)([]);
+    expect(afterE1).toHaveLength(1);
+
+    const afterE2 = withDedupEmpty(msgEmpty2)(afterE1);
+    expect(afterE2).toHaveLength(2); // Must NOT be dropped
   });
 
   test('update-in-place logic correctly replaces without adding a duplicate', () => {

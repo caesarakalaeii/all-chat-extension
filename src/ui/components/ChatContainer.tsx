@@ -185,7 +185,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
 
           // Add the message immediately (deduplicated by ID), then update in-place when badge icons resolve
           setMessages((prev) => {
-            if (prev.some((m) => m.id === processedMessage.id)) {
+            if (processedMessage.id && prev.some((m) => m.id === processedMessage.id)) {
               return prev; // Already present — discard duplicate delivery
             }
             return [...prev, processedMessage].slice(-50);

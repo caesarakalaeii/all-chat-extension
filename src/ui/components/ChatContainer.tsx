@@ -182,26 +182,20 @@ export default function ChatContainer({ platform, streamer, displayName }: ChatC
           let processedMessage = wsMessage.data as ChatMessage;
           processedMessage = sortMessageBadges(processedMessage);
 
-          // Resolve badge icons asynchronously (non-blocking)
+          // Add the message immediately, then update in-place when badge icons resolve
+          setMessages((prev) => [...prev, processedMessage].slice(-50));
+
           resolveTwitchBadgeIcons(processedMessage).then((enrichedMessage) => {
             setMessages((prev) => {
-              // Replace the message if it exists, or add it
               const existingIndex = prev.findIndex((m) => m.id === enrichedMessage.id);
               if (existingIndex !== -1) {
                 const updated = [...prev];
                 updated[existingIndex] = enrichedMessage;
                 return updated.slice(-50);
-              } else {
-                return [...prev, enrichedMessage].slice(-50);
               }
+              // Message was evicted from the 50-message window before badges resolved — discard
+              return prev;
             });
-          });
-
-          // Add the message immediately (badges will be updated when resolved)
-          setMessages((prev) => {
-            const newMessages = [...prev, processedMessage];
-            // Keep last 50 messages
-            return newMessages.slice(-50);
           });
         } else if (wsMessage.type === 'ping') {
           // Ignore pings

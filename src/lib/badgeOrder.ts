@@ -10,7 +10,7 @@ const BADGE_GROUP_ORDER: Record<BadgeGroup, number> = {
 
 const ROLE_PRIORITIES: Record<string, number> = {
   allchat: -2,
-  premium: -1,
+  'allchat-premium': -1,
   moderator: 0,
   mod: 0,
   vip: 1,

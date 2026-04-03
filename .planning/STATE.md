@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-00-PLAN.md
-last_updated: "2026-04-03T13:47:03.711Z"
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-04-03T13:51:27.354Z"
 last_activity: 2026-04-03
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 20
-  completed_plans: 16
+  completed_plans: 17
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-03-12)
 ## Current Position
 
 Phase: 05 (per-site-enable-disable) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-04-03
 
@@ -68,6 +68,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04-llm-test-infrastructure P03 | 3min | 2 tasks | 4 files |
 | Phase 04-llm-test-infrastructure P02 | 90min | 2 tasks | 11 files |
 | Phase 05-per-site-enable-disable P00 | 5min | 1 tasks | 2 files |
+| Phase 05-per-site-enable-disable P01 | 4min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -115,6 +116,9 @@ Recent decisions affecting current work:
 - [Phase 04-llm-test-infrastructure]: window.location.pathname assignment in fixture HTML causes infinite navigation loops — must not assign location properties in fixture scripts served via page.route()
 - [Phase 05-per-site-enable-disable]: test.skip() at individual test level so each stub shows as distinct skipped test in reporter
 - [Phase 05-per-site-enable-disable]: Tests placed in tests/ root (not tests/phase5/) to match existing project convention
+- [Phase 05-per-site-enable-disable]: Read-time migration in getSyncStorage: legacy extensionEnabled maps to all three platformEnabled values with fire-and-forget persistence
+- [Phase 05-per-site-enable-disable]: Pre-generated grayscale PNG icon assets chosen over OffscreenCanvas for disabled-platform icon state (D-07, D-08)
+- [Phase 05-per-site-enable-disable]: Popup handleToggle bridges to all-three platformEnabled toggle until per-platform UI redesign in plan 05-03
 
 ### Roadmap Evolution
 
@@ -138,6 +142,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-03T13:47:03.709Z
-Stopped at: Completed 05-00-PLAN.md
+Last session: 2026-04-03T13:51:27.352Z
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None

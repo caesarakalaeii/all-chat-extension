@@ -7,7 +7,8 @@ Replace native platform chat with All-Chat's unified chat experience.
 
 ## ✨ Features
 
-- 🎮 **Multi-platform support**: Works on Twitch, YouTube, Kick, TikTok
+- 🎮 **Multi-platform support**: Works on Twitch, YouTube, and Kick
+- 🔀 **Per-platform enable/disable**: Independently toggle AllChat on Twitch, YouTube, and Kick from the popup — native chat shown on disabled platforms
 - 💬 **Real-time messaging**: WebSocket connection for instant messages
 - 🔐 **OAuth authentication**: Log in with Twitch to send messages
 - 🎭 **Rich message display**: Emotes, badges, and user colors
@@ -84,7 +85,12 @@ Then follow step 2 above, but select the `dist/` folder.
    - Go to any Twitch channel where the streamer is using All-Chat
    - The native Twitch chat will be replaced with All-Chat
 
-3. **Login to Send Messages:**
+3. **Manage Platform Settings:**
+   - Click the extension icon to open the popup
+   - Three per-platform toggles let you independently enable or disable AllChat on Twitch, YouTube, and Kick
+   - Changes take effect immediately without reloading the page
+
+4. **Login to Send Messages:**
    - Click "Login with Twitch" at the bottom of the chat
    - Complete OAuth authentication in the popup
    - Your username will appear in the header

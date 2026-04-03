@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-03-13T18:02:49.496Z"
-last_activity: 2026-03-27 - Completed quick task 260327-kbw
+stopped_at: Phase 5 context gathered
+last_updated: "2026-04-03T12:40:47.691Z"
+last_activity: "2026-03-27 - Completed quick task 260327-kbw: Implement issue #20: Replace Message sent toast with inline input feedback"
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 4
   total_plans: 15
   completed_plans: 15
@@ -35,6 +35,7 @@ Progress: [░░░░░░░░░░] 0%
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0
 - Average duration: -
 - Total execution time: 0 hours
@@ -46,6 +47,7 @@ Progress: [░░░░░░░░░░] 0%
 | - | - | - | - |
 
 **Recent Trend:**
+
 - Last 5 plans: none yet
 - Trend: -
 
@@ -111,6 +113,10 @@ Recent decisions affecting current work:
 - [Phase 04-llm-test-infrastructure]: context.route() intercepts service worker fetches; page.route() only intercepts page-context requests — use context.route() for allch.at API mock
 - [Phase 04-llm-test-infrastructure]: window.location.pathname assignment in fixture HTML causes infinite navigation loops — must not assign location properties in fixture scripts served via page.route()
 
+### Roadmap Evolution
+
+- Phase 5 added: Per-site enable/disable — let users choose which sites have AllChat enabled instead of global on/off
+
 ### Pending Todos
 
 None yet.
@@ -129,6 +135,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-13T18:02:49.494Z
-Stopped at: Completed 04-02-PLAN.md
-Resume file: None
+Last session: 2026-04-03T12:40:47.688Z
+Stopped at: Phase 5 context gathered
+Resume file: .planning/phases/05-per-site-enable-disable/05-CONTEXT.md

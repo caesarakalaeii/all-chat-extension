@@ -21,12 +21,21 @@ function Popup() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [settings, local] = await Promise.all([getSyncStorage(), getLocalStorage()]);
-        setIsEnabled(settings.extensionEnabled);
+        const [settings, local, sessionData] = await Promise.all([
+          getSyncStorage(),
+          getLocalStorage(),
+          chrome.storage.session.get(['current_platform']) as Promise<{ current_platform?: string }>,
+        ]);
+        const platform = sessionData.current_platform;
+        // Derive global enabled state from current platform's setting (or any platform if no current platform)
+        if (platform && platform in settings.platformEnabled) {
+          setIsEnabled(settings.platformEnabled[platform as keyof typeof settings.platformEnabled]);
+        } else {
+          setIsEnabled(Object.values(settings.platformEnabled).some(Boolean));
+        }
         setViewerInfo(local.viewer_info || null);
         setNameColor(local.viewer_name_color || '#ffffff');
-        const sessionData = await chrome.storage.session.get(['current_platform']) as { current_platform?: string };
-        setCurrentPlatform(sessionData.current_platform ?? null);
+        setCurrentPlatform(platform ?? null);
       } catch (err) {
         console.error('Failed to load settings:', err);
       } finally {
@@ -40,12 +49,16 @@ function Popup() {
     const newState = !isEnabled;
     setIsEnabled(newState);
     try {
-      await setSyncStorage({ extensionEnabled: newState });
+      // Toggle all platforms together (temporary until per-platform popup redesign in plan 05-03)
+      const newPlatformEnabled = { twitch: newState, youtube: newState, kick: newState };
+      await setSyncStorage({ platformEnabled: newPlatformEnabled });
       const affectedTabs = await chrome.tabs.query({
         url: ['https://www.twitch.tv/*', 'https://www.youtube.com/*', 'https://kick.com/*'],
       });
       await Promise.allSettled(
-        affectedTabs.filter(tab => tab.id).map(tab => chrome.tabs.reload(tab.id!).catch(() => {}))
+        affectedTabs.filter(tab => tab.id).map(tab =>
+          chrome.tabs.sendMessage(tab.id!, { type: 'EXTENSION_STATE_CHANGED', enabled: newState }).catch(() => {})
+        )
       );
     } catch (err) {
       console.error('Failed to save settings:', err);

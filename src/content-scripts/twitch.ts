@@ -147,8 +147,8 @@ async function initialize() {
 
   // Check if extension is enabled
   const settings = await getSyncStorage();
-  if (!settings.extensionEnabled) {
-    console.log('[AllChat Twitch] Extension is disabled, not injecting');
+  if (!settings.platformEnabled.twitch) {
+    console.log('[AllChat Twitch] Extension disabled for Twitch, not injecting');
     return;
   }
 

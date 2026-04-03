@@ -247,8 +247,8 @@ async function initialize() {
 
   // Check if extension is enabled
   const settings = await getSyncStorage();
-  if (!settings.extensionEnabled) {
-    console.log('[AllChat YouTube] Extension is disabled, not injecting');
+  if (!settings.platformEnabled.youtube) {
+    console.log('[AllChat YouTube] Extension disabled for YouTube, not injecting');
     return;
   }
 

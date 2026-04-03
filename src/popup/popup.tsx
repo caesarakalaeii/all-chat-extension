@@ -1,16 +1,26 @@
 /**
  * Extension Popup UI
  *
- * Shows extension status, viewer identity (if logged in), and name color picker.
+ * Shows per-platform enable toggles, viewer identity (if logged in), and name color picker.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import { getSyncStorage, setSyncStorage, getLocalStorage, setLocalStorage } from '../lib/storage';
-import { ViewerInfo } from '../lib/types/extension';
+import { ViewerInfo, PlatformEnabled } from '../lib/types/extension';
+
+const PLATFORM_URLS: Record<string, string[]> = {
+  twitch: ['https://www.twitch.tv/*'],
+  youtube: ['https://www.youtube.com/*', 'https://studio.youtube.com/*'],
+  kick: ['https://kick.com/*'],
+};
 
 function Popup() {
-  const [isEnabled, setIsEnabled] = useState(true);
+  const [platformEnabled, setPlatformEnabled] = useState<PlatformEnabled>({
+    twitch: true,
+    youtube: true,
+    kick: true,
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [viewerInfo, setViewerInfo] = useState<ViewerInfo | null>(null);
   const [nameColor, setNameColor] = useState<string>('#ffffff');
@@ -26,16 +36,10 @@ function Popup() {
           getLocalStorage(),
           chrome.storage.session.get(['current_platform']) as Promise<{ current_platform?: string }>,
         ]);
-        const platform = sessionData.current_platform;
-        // Derive global enabled state from current platform's setting (or any platform if no current platform)
-        if (platform && platform in settings.platformEnabled) {
-          setIsEnabled(settings.platformEnabled[platform as keyof typeof settings.platformEnabled]);
-        } else {
-          setIsEnabled(Object.values(settings.platformEnabled).some(Boolean));
-        }
+        setPlatformEnabled(settings.platformEnabled);
         setViewerInfo(local.viewer_info || null);
         setNameColor(local.viewer_name_color || '#ffffff');
-        setCurrentPlatform(platform ?? null);
+        setCurrentPlatform(sessionData.current_platform ?? null);
       } catch (err) {
         console.error('Failed to load settings:', err);
       } finally {
@@ -45,24 +49,33 @@ function Popup() {
     load();
   }, []);
 
-  const handleToggle = async () => {
-    const newState = !isEnabled;
-    setIsEnabled(newState);
+  const handlePlatformToggle = async (platform: 'twitch' | 'youtube' | 'kick') => {
+    const newState: PlatformEnabled = { ...platformEnabled, [platform]: !platformEnabled[platform] };
+    setPlatformEnabled(newState);
     try {
-      // Toggle all platforms together (temporary until per-platform popup redesign in plan 05-03)
-      const newPlatformEnabled = { twitch: newState, youtube: newState, kick: newState };
-      await setSyncStorage({ platformEnabled: newPlatformEnabled });
-      const affectedTabs = await chrome.tabs.query({
-        url: ['https://www.twitch.tv/*', 'https://www.youtube.com/*', 'https://kick.com/*'],
-      });
+      await setSyncStorage({ platformEnabled: newState });
+      // Send EXTENSION_STATE_CHANGED to only affected platform's tabs (per D-04 — no reload)
+      const tabs = await chrome.tabs.query({ url: PLATFORM_URLS[platform] });
       await Promise.allSettled(
-        affectedTabs.filter(tab => tab.id).map(tab =>
-          chrome.tabs.sendMessage(tab.id!, { type: 'EXTENSION_STATE_CHANGED', enabled: newState }).catch(() => {})
+        tabs.filter(t => t.id).map(t =>
+          chrome.tabs.sendMessage(t.id!, {
+            type: 'EXTENSION_STATE_CHANGED',
+            enabled: newState[platform],
+          }).catch(() => {})
+        )
+      );
+      // Update icon for affected tabs
+      const iconPath = newState[platform]
+        ? { 16: 'assets/icon-16.png', 32: 'assets/icon-32.png' }
+        : { 16: 'assets/icon-16-gray.png', 32: 'assets/icon-32-gray.png' };
+      await Promise.allSettled(
+        tabs.filter(t => t.id).map(t =>
+          chrome.action.setIcon({ tabId: t.id!, path: iconPath })
         )
       );
     } catch (err) {
-      console.error('Failed to save settings:', err);
-      setIsEnabled(!newState);
+      console.error('Failed to save platform toggle:', err);
+      setPlatformEnabled(platformEnabled); // revert on error
     }
   };
 
@@ -151,19 +164,27 @@ function Popup() {
       <h1>All-Chat Extension</h1>
 
       <div className="status">
-        <div className="status-label">Extension Status</div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div className="status-value">
-            {isLoading ? '⏳ Loading...' : isEnabled ? '✓ Enabled' : '✕ Disabled'}
+        <div className="status-label">Platform Settings</div>
+        {(['twitch', 'youtube', 'kick'] as const).map((p) => (
+          <div key={p} className={`platform-row ${currentPlatform === p ? 'platform-row--active' : ''}`} data-platform={p}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <PlatformIcon platform={p} />
+              <span className="platform-name">{platformLabel[p]}</span>
+            </div>
+            <label className="toggle-switch" aria-label={`Enable AllChat on ${platformLabel[p]}`}>
+              <input
+                type="checkbox"
+                checked={platformEnabled[p]}
+                onChange={() => handlePlatformToggle(p)}
+                disabled={isLoading}
+              />
+              <span className="toggle-slider"></span>
+            </label>
           </div>
-          <label className="toggle-switch">
-            <input type="checkbox" checked={isEnabled} onChange={handleToggle} disabled={isLoading} />
-            <span className="toggle-slider"></span>
-          </label>
-        </div>
-        {!isEnabled && (
+        ))}
+        {Object.values(platformEnabled).some(v => !v) && (
           <p style={{ fontSize: '11px', color: '#adadb8', marginTop: '8px' }}>
-            Native chat will be shown. Re-enable to use All-Chat.
+            Native chat shown on disabled platforms.
           </p>
         )}
       </div>
@@ -221,11 +242,6 @@ function Popup() {
           )}
         </div>
       )}
-
-      <div className="status">
-        <div className="status-label">Supported Platforms</div>
-        <div className="status-value">Twitch • YouTube • Kick</div>
-      </div>
 
       <div className="footer">
         <a href="https://github.com/caesarakalaeii/all-chat" target="_blank" className="link">

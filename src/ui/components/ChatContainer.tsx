@@ -125,8 +125,21 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
       try {
         const storage = await getLocalStorage();
         if (storage.viewer_jwt_token && storage.viewer_info) {
-          setViewerToken(storage.viewer_jwt_token);
-          setViewerInfo(storage.viewer_info);
+          // Validate token expiry before accepting it (fixes stale expired tokens
+          // keeping the UI stuck on MessageInput instead of showing LoginPrompt)
+          try {
+            const payload = JSON.parse(atob(storage.viewer_jwt_token.split('.')[1]));
+            if (payload.exp && Date.now() >= payload.exp * 1000) {
+              console.log('[AllChat UI] Stored token expired, clearing auth');
+              await clearViewerAuth();
+            } else {
+              setViewerToken(storage.viewer_jwt_token);
+              setViewerInfo(storage.viewer_info);
+            }
+          } catch {
+            console.warn('[AllChat UI] Failed to decode stored token, clearing auth');
+            await clearViewerAuth();
+          }
         }
         const color = await getNameColor();
         setViewerNameColor(color);

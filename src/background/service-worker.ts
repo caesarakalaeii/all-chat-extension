@@ -88,6 +88,8 @@ chrome.runtime.onInstalled.addListener((details) => {
   } else if (details.reason === 'update') {
     console.log('[AllChat] Extension updated to', chrome.runtime.getManifest().version);
     setSyncStorage({ apiGatewayUrl: DEFAULT_SETTINGS.apiGatewayUrl });
+    // Trigger migration for existing users by reading storage (migration runs in getSyncStorage)
+    getSyncStorage();
   }
   // Always reset API URL on install/update to clear stale localhost values
   setSyncStorage({ apiGatewayUrl: DEFAULT_SETTINGS.apiGatewayUrl });
@@ -170,6 +172,18 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
 
         case 'SET_CURRENT_PLATFORM':
           await chrome.storage.session.set({ current_platform: message.platform });
+          // Update toolbar icon based on platform's enabled state (per D-07)
+          {
+            const settings = await getSyncStorage();
+            const platform = message.platform as keyof typeof settings.platformEnabled;
+            const enabled = settings.platformEnabled[platform] ?? true;
+            const iconPath = enabled
+              ? { 16: 'assets/icon-16.png', 32: 'assets/icon-32.png' }
+              : { 16: 'assets/icon-16-gray.png', 32: 'assets/icon-32-gray.png' };
+            if (sender.tab?.id) {
+              chrome.action.setIcon({ tabId: sender.tab.id, path: iconPath });
+            }
+          }
           sendResponse({ success: true });
           break;
 

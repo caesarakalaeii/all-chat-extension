@@ -99,7 +99,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Design System | 5/5 | Complete   | 2026-03-12 |
 | 3. Kick Platform | 3/4 | In Progress|  |
 | 4. LLM Test Infrastructure | 3/3 | Complete   | 2026-03-13 |
-| 5. Per-site enable/disable | 0/5 | Planning   |  |
+| 5. Per-site enable/disable | 1/5 | In Progress|  |
 
 ### Phase 5: Per-site enable/disable
 
@@ -113,10 +113,10 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
   4. Toolbar icon shows grayscale for tabs where the platform is disabled, color for enabled
   5. Existing users with `extensionEnabled` are seamlessly migrated to `platformEnabled` on first read
   6. All three platforms default to enabled on fresh install
-**Plans:** 5 plans
+**Plans:** 1/5 plans executed
 
 Plans:
-- [ ] 05-00-PLAN.md — Wave 0 test stubs: skip-stub specs for per-site-enable and storage-migration tests
+- [x] 05-00-PLAN.md — Wave 0 test stubs: skip-stub specs for per-site-enable and storage-migration tests
 - [ ] 05-01-PLAN.md — Storage schema: PlatformEnabled type, SyncStorage migration, grayscale icon assets
 - [ ] 05-02-PLAN.md — Content scripts: per-platform init check + re-enable path in all four scripts
 - [ ] 05-03-PLAN.md — Popup + service worker: three per-platform toggles, active row highlight, grayscale icon per-tab

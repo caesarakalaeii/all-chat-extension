@@ -22,6 +22,7 @@ export async function getSyncStorage(): Promise<SyncStorage> {
         result.platformEnabled = {
           twitch: legacyEnabled,
           youtube: legacyEnabled,
+          youtubeStudio: legacyEnabled,
           kick: legacyEnabled,
         };
         // Persist migration (fire-and-forget)
@@ -32,6 +33,7 @@ export async function getSyncStorage(): Promise<SyncStorage> {
         result.platformEnabled = {
           twitch: result.platformEnabled.twitch ?? true,
           youtube: result.platformEnabled.youtube ?? true,
+          youtubeStudio: result.platformEnabled.youtubeStudio ?? true,
           kick: result.platformEnabled.kick ?? true,
         };
       }

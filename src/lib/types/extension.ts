@@ -54,6 +54,7 @@ export type ExtensionResponse =
 export type PlatformEnabled = {
   twitch: boolean;
   youtube: boolean;
+  youtubeStudio: boolean;
   kick: boolean;
 };
 
@@ -83,6 +84,7 @@ export const DEFAULT_SETTINGS: SyncStorage = {
   platformEnabled: {
     twitch: true,
     youtube: true,
+    youtubeStudio: true,
     kick: true,
   },
   preferences: {

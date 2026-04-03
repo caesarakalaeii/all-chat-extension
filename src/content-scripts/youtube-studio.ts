@@ -158,6 +158,9 @@ class YouTubeStudioDetector extends PlatformDetector {
 // Store detector instance globally
 let globalDetector: YouTubeStudioDetector | null = null;
 
+// Guard against duplicate message relay registration
+let messageRelaySetup = false;
+
 /**
  * Handle extension enable/disable state changes
  */
@@ -166,10 +169,16 @@ function handleExtensionStateChange(enabled: boolean) {
 
   if (!enabled) {
     if (globalDetector) {
-      console.log('[AllChat YTStudio] Disabling extension');
       globalDetector.removeAllChatUI();
       globalDetector.showNativeChat();
       globalDetector = null;
+    }
+  } else {
+    // Re-enable: create detector and init without page reload (per D-04)
+    if (!globalDetector) {
+      globalDetector = new YouTubeStudioDetector();
+      setupGlobalMessageRelay(); // idempotent via guard
+      globalDetector.init();
     }
   }
 }
@@ -181,6 +190,7 @@ async function initialize() {
   const settings = await getSyncStorage();
   if (!settings.platformEnabled.youtube) {
     console.log('[AllChat YTStudio] Extension disabled for YouTube, not injecting');
+    setupGlobalMessageRelay(); // Listen for re-enable even when disabled
     return;
   }
 
@@ -204,6 +214,9 @@ async function initialize() {
  * Set up global message relay from service worker to iframe
  */
 function setupGlobalMessageRelay() {
+  if (messageRelaySetup) return;
+  messageRelaySetup = true;
+
   chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
     console.log('[AllChat YTStudio] Received from service worker:', message.type);
 

@@ -223,6 +223,9 @@ class YouTubeDetector extends PlatformDetector {
 // Store detector instance globally
 let globalDetector: YouTubeDetector | null = null;
 
+// Guard against duplicate message relay registration
+let messageRelaySetup = false;
+
 /**
  * Handle extension enable/disable state changes
  */
@@ -230,15 +233,19 @@ function handleExtensionStateChange(enabled: boolean) {
   console.log(`[AllChat YouTube] Extension state changed: ${enabled ? 'enabled' : 'disabled'}`);
 
   if (!enabled) {
-    // Disable extension: remove UI and restore native chat
     if (globalDetector) {
-      console.log('[AllChat YouTube] Disabling extension');
       globalDetector.removeAllChatUI();
       globalDetector.showNativeChat();
       globalDetector = null;
     }
+  } else {
+    // Re-enable: create detector and init without page reload (per D-04)
+    if (!globalDetector) {
+      globalDetector = new YouTubeDetector();
+      setupGlobalMessageRelay(); // idempotent via guard
+      globalDetector.init();
+    }
   }
-  // Note: Re-enabling is handled by page reload from popup
 }
 
 // Initialize detector
@@ -249,6 +256,7 @@ async function initialize() {
   const settings = await getSyncStorage();
   if (!settings.platformEnabled.youtube) {
     console.log('[AllChat YouTube] Extension disabled for YouTube, not injecting');
+    setupGlobalMessageRelay(); // Listen for re-enable even when disabled
     return;
   }
 
@@ -276,6 +284,9 @@ async function initialize() {
  * Set up global message relay from service worker to iframe
  */
 function setupGlobalMessageRelay() {
+  if (messageRelaySetup) return;
+  messageRelaySetup = true;
+
   // Listen for messages FROM service worker TO iframes
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log('[AllChat YouTube] Received from service worker:', message.type);

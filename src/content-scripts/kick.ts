@@ -155,6 +155,9 @@ class KickDetector extends PlatformDetector {
 // Store detector instance globally
 let globalDetector: KickDetector | null = null;
 
+// Guard against duplicate message relay registration
+let messageRelaySetup = false;
+
 /**
  * Handle extension enable/disable state changes
  */
@@ -163,12 +166,18 @@ function handleExtensionStateChange(enabled: boolean) {
 
   if (!enabled) {
     if (globalDetector) {
-      console.log('[AllChat Kick] Disabling extension');
       globalDetector.teardown();
       globalDetector = null;
     }
+  } else {
+    // Re-enable: create detector and init without page reload (per D-04)
+    if (!globalDetector) {
+      globalDetector = new KickDetector();
+      setupGlobalMessageRelay(); // idempotent via guard
+      globalDetector.init();
+      setupUrlWatcher();
+    }
   }
-  // Note: Re-enabling is handled by page reload from popup
 }
 
 // Initialize detector
@@ -179,6 +188,7 @@ async function initialize() {
   const settings = await getSyncStorage();
   if (!settings.platformEnabled.kick) {
     console.log('[AllChat Kick] Extension disabled for Kick, not injecting');
+    setupGlobalMessageRelay(); // Listen for re-enable even when disabled
     return;
   }
 
@@ -204,6 +214,9 @@ async function initialize() {
  * This is called immediately when content script loads to avoid missing messages
  */
 function setupGlobalMessageRelay() {
+  if (messageRelaySetup) return;
+  messageRelaySetup = true;
+
   // Listen for messages FROM service worker TO iframes
   chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
     console.log('[AllChat Kick] Received from service worker:', message.type);

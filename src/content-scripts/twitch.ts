@@ -140,6 +140,9 @@ let globalDetector: TwitchDetector | null = null;
 // Track last checked streamer to avoid redundant re-injections
 let lastCheckedStreamer: string | null = null;
 
+// Guard against duplicate message relay registration
+let messageRelaySetup = false;
+
 // Initialize detector
 async function initialize() {
   const manifest = chrome.runtime.getManifest();
@@ -149,6 +152,7 @@ async function initialize() {
   const settings = await getSyncStorage();
   if (!settings.platformEnabled.twitch) {
     console.log('[AllChat Twitch] Extension disabled for Twitch, not injecting');
+    setupGlobalMessageRelay(); // Listen for re-enable even when disabled
     return;
   }
 
@@ -185,14 +189,20 @@ function handleExtensionStateChange(enabled: boolean) {
   console.log(`[AllChat Twitch] Extension state changed: ${enabled ? 'enabled' : 'disabled'}`);
 
   if (!enabled) {
-    // Disable extension: remove UI and restore native chat
     if (globalDetector) {
-      console.log('[AllChat Twitch] Disabling extension');
       globalDetector.teardown();
       globalDetector = null;
     }
+  } else {
+    // Re-enable: create detector and init without page reload (per D-04)
+    if (!globalDetector) {
+      globalDetector = new TwitchDetector();
+      setupGlobalMessageRelay(); // idempotent via guard
+      globalDetector.init();
+      setupUrlWatcher();
+      setupChatTabWatcher();
+    }
   }
-  // Note: Re-enabling is handled by page reload from popup
 }
 
 /**
@@ -200,6 +210,9 @@ function handleExtensionStateChange(enabled: boolean) {
  * This is called immediately when content script loads to avoid missing messages
  */
 function setupGlobalMessageRelay() {
+  if (messageRelaySetup) return;
+  messageRelaySetup = true;
+
   // Listen for messages FROM service worker TO iframes
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log('[AllChat Twitch] Received from service worker:', message.type);

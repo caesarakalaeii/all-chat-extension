@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 5 context gathered
-last_updated: "2026-04-03T12:40:47.691Z"
-last_activity: "2026-03-27 - Completed quick task 260327-kbw: Implement issue #20: Replace Message sent toast with inline input feedback"
+status: executing
+stopped_at: Completed 05-00-PLAN.md
+last_updated: "2026-04-03T13:47:03.711Z"
+last_activity: 2026-04-03
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 15
-  completed_plans: 15
+  total_plans: 20
+  completed_plans: 16
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-12)
 
 **Core value:** The chat replacement must be visually seamless and feel native — users should not perceive any difference from the platform's own chat, except that it looks better and supports all platforms at once.
-**Current focus:** Phase 1 — DOM Slot Injection
+**Current focus:** Phase 05 — per-site-enable-disable
 
 ## Current Position
 
-Phase: 1 of 4 (DOM Slot Injection)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-03-27 - Completed quick task 260327-kbw: Implement issue #20: Replace Message sent toast with inline input feedback
+Phase: 05 (per-site-enable-disable) — EXECUTING
+Plan: 2 of 5
+Status: Ready to execute
+Last activity: 2026-04-03
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -67,6 +67,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04-llm-test-infrastructure P01 | 7min | 2 tasks | 5 files |
 | Phase 04-llm-test-infrastructure P03 | 3min | 2 tasks | 4 files |
 | Phase 04-llm-test-infrastructure P02 | 90min | 2 tasks | 11 files |
+| Phase 05-per-site-enable-disable P00 | 5min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -112,6 +113,8 @@ Recent decisions affecting current work:
 - [Phase 04-llm-test-infrastructure]: chromium.launchPersistentContext() required for Chrome extensions in Playwright — page fixture does not load extensions
 - [Phase 04-llm-test-infrastructure]: context.route() intercepts service worker fetches; page.route() only intercepts page-context requests — use context.route() for allch.at API mock
 - [Phase 04-llm-test-infrastructure]: window.location.pathname assignment in fixture HTML causes infinite navigation loops — must not assign location properties in fixture scripts served via page.route()
+- [Phase 05-per-site-enable-disable]: test.skip() at individual test level so each stub shows as distinct skipped test in reporter
+- [Phase 05-per-site-enable-disable]: Tests placed in tests/ root (not tests/phase5/) to match existing project convention
 
 ### Roadmap Evolution
 
@@ -135,6 +138,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-03T12:40:47.688Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-per-site-enable-disable/05-CONTEXT.md
+Last session: 2026-04-03T13:47:03.709Z
+Stopped at: Completed 05-00-PLAN.md
+Resume file: None

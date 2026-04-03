@@ -32,9 +32,10 @@ test.describe('Storage migration @phase5', () => {
       path.resolve(__dirname, '../src/lib/storage.ts'),
       'utf8'
     );
-    // Should contain the migration path assigning all three platforms from legacyEnabled
+    // Should contain the migration path assigning all four platforms from legacyEnabled
     expect(src).toContain('twitch: legacyEnabled');
     expect(src).toContain('youtube: legacyEnabled');
+    expect(src).toContain('youtubeStudio: legacyEnabled');
     expect(src).toContain('kick: legacyEnabled');
   });
 
@@ -59,9 +60,10 @@ test.describe('Storage migration @phase5', () => {
       path.resolve(__dirname, '../src/lib/storage.ts'),
       'utf8'
     );
-    // Should contain null-coalescing defaults for all three platforms
+    // Should contain null-coalescing defaults for all four platforms
     expect(src).toContain('result.platformEnabled.twitch ?? true');
     expect(src).toContain('result.platformEnabled.youtube ?? true');
+    expect(src).toContain('result.platformEnabled.youtubeStudio ?? true');
     expect(src).toContain('result.platformEnabled.kick ?? true');
   });
 
@@ -136,6 +138,7 @@ test.describe('Storage migration @phase5', () => {
               const migrated = {
                 twitch: legacyEnabled,
                 youtube: legacyEnabled,
+                youtubeStudio: legacyEnabled,
                 kick: legacyEnabled,
               };
               resolve(migrated);
@@ -144,7 +147,7 @@ test.describe('Storage migration @phase5', () => {
         });
       });
 
-      expect(result).toEqual({ twitch: true, youtube: true, kick: true });
+      expect(result).toEqual({ twitch: true, youtube: true, youtubeStudio: true, kick: true });
     });
 
     test('legacy extensionEnabled=false migrates to all platforms disabled', async () => {
@@ -161,6 +164,7 @@ test.describe('Storage migration @phase5', () => {
               const migrated = {
                 twitch: legacyEnabled,
                 youtube: legacyEnabled,
+                youtubeStudio: legacyEnabled,
                 kick: legacyEnabled,
               };
               resolve(migrated);
@@ -169,7 +173,7 @@ test.describe('Storage migration @phase5', () => {
         });
       });
 
-      expect(result).toEqual({ twitch: false, youtube: false, kick: false });
+      expect(result).toEqual({ twitch: false, youtube: false, youtubeStudio: false, kick: false });
     });
 
     test('partial platformEnabled is deep-merged with defaults', async () => {
@@ -177,7 +181,7 @@ test.describe('Storage migration @phase5', () => {
 
       const result = await sw.evaluate(async () => {
         await chrome.storage.sync.clear();
-        // Store only partial platformEnabled (missing youtube and kick)
+        // Store only partial platformEnabled (missing youtube, youtubeStudio, and kick)
         await chrome.storage.sync.set({ platformEnabled: { twitch: false } });
 
         return new Promise<any>((resolve) => {
@@ -186,6 +190,7 @@ test.describe('Storage migration @phase5', () => {
             const merged = {
               twitch: stored.twitch ?? true,
               youtube: stored.youtube ?? true,
+              youtubeStudio: stored.youtubeStudio ?? true,
               kick: stored.kick ?? true,
             };
             resolve(merged);
@@ -195,6 +200,7 @@ test.describe('Storage migration @phase5', () => {
 
       expect(result.twitch).toBe(false);
       expect(result.youtube).toBe(true);
+      expect(result.youtubeStudio).toBe(true);
       expect(result.kick).toBe(true);
     });
 
@@ -210,7 +216,7 @@ test.describe('Storage migration @phase5', () => {
           chrome.storage.sync.get(null, async (items) => {
             if ((items as any).extensionEnabled !== undefined && !(items as any).platformEnabled) {
               const legacyEnabled = (items as any).extensionEnabled;
-              const migrated = { twitch: legacyEnabled, youtube: legacyEnabled, kick: legacyEnabled };
+              const migrated = { twitch: legacyEnabled, youtube: legacyEnabled, youtubeStudio: legacyEnabled, kick: legacyEnabled };
               await chrome.storage.sync.set({ platformEnabled: migrated });
               chrome.storage.sync.remove('extensionEnabled');
 
@@ -229,7 +235,7 @@ test.describe('Storage migration @phase5', () => {
 
       expect(result.hasExtensionEnabled).toBe(false);
       expect(result.hasPlatformEnabled).toBe(true);
-      expect(result.platformEnabled).toEqual({ twitch: true, youtube: true, kick: true });
+      expect(result.platformEnabled).toEqual({ twitch: true, youtube: true, youtubeStudio: true, kick: true });
     });
   });
 });

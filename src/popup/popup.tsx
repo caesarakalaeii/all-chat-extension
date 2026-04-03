@@ -11,7 +11,8 @@ import { ViewerInfo, PlatformEnabled } from '../lib/types/extension';
 
 const PLATFORM_URLS: Record<string, string[]> = {
   twitch: ['https://www.twitch.tv/*'],
-  youtube: ['https://www.youtube.com/*', 'https://studio.youtube.com/*'],
+  youtube: ['https://www.youtube.com/*'],
+  youtubeStudio: ['https://studio.youtube.com/*'],
   kick: ['https://kick.com/*'],
 };
 
@@ -19,6 +20,7 @@ function Popup() {
   const [platformEnabled, setPlatformEnabled] = useState<PlatformEnabled>({
     twitch: true,
     youtube: true,
+    youtubeStudio: true,
     kick: true,
   });
   const [isLoading, setIsLoading] = useState(true);
@@ -49,7 +51,7 @@ function Popup() {
     load();
   }, []);
 
-  const handlePlatformToggle = async (platform: 'twitch' | 'youtube' | 'kick') => {
+  const handlePlatformToggle = async (platform: keyof PlatformEnabled) => {
     const newState: PlatformEnabled = { ...platformEnabled, [platform]: !platformEnabled[platform] };
     setPlatformEnabled(newState);
     try {
@@ -115,7 +117,7 @@ function Popup() {
     setNameColor('#ffffff');
   };
 
-  const handleSignIn = async (platform: 'twitch' | 'youtube' | 'kick') => {
+  const handleSignIn = async (platform: 'twitch' | 'youtube' | 'kick' | 'youtubeStudio') => {
     try {
       const { data } = await chrome.runtime.sendMessage({ type: 'START_AUTH', platform });
       const callbackUrl: string = await new Promise((resolve, reject) => {
@@ -144,13 +146,13 @@ function Popup() {
     chrome.tabs.create({ url: 'https://allch.at/settings/viewer' });
   };
 
-  const platformLabel: Record<string, string> = { twitch: 'Twitch', youtube: 'YouTube', kick: 'Kick' };
+  const platformLabel: Record<string, string> = { twitch: 'Twitch', youtube: 'YouTube', youtubeStudio: 'YT Studio', kick: 'Kick' };
 
   const PlatformIcon = ({ platform }: { platform: string }) => {
     if (platform === 'twitch') return (
       <svg className="platform-icon" viewBox="0 0 24 24" fill="#fff"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"/></svg>
     );
-    if (platform === 'youtube') return (
+    if (platform === 'youtube' || platform === 'youtubeStudio') return (
       <svg className="platform-icon" viewBox="0 0 24 24" fill="#fff"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
     );
     if (platform === 'kick') return (
@@ -165,7 +167,7 @@ function Popup() {
 
       <div className="status">
         <div className="status-label">Platform Settings</div>
-        {(['twitch', 'youtube', 'kick'] as const).map((p) => (
+        {(['twitch', 'youtube', 'youtubeStudio', 'kick'] as const).map((p) => (
           <div key={p} className={`platform-row ${currentPlatform === p ? 'platform-row--active' : ''}`} data-platform={p}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <PlatformIcon platform={p} />

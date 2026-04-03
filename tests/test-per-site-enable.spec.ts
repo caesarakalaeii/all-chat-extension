@@ -47,7 +47,7 @@ test.describe('Per-site enable/disable @phase5', () => {
     expect(src).not.toMatch(/extensionEnabled:\s*boolean/);
   });
 
-  test('PlatformEnabled type is exported with twitch, youtube, kick booleans', () => {
+  test('PlatformEnabled type is exported with twitch, youtube, youtubeStudio, kick booleans', () => {
     const src = fs.readFileSync(
       path.resolve(__dirname, '../src/lib/types/extension.ts'),
       'utf8'
@@ -55,19 +55,20 @@ test.describe('Per-site enable/disable @phase5', () => {
     expect(src).toContain('export type PlatformEnabled');
     expect(src).toContain('twitch: boolean');
     expect(src).toContain('youtube: boolean');
+    expect(src).toContain('youtubeStudio: boolean');
     expect(src).toContain('kick: boolean');
   });
 
-  test('DEFAULT_SETTINGS has platformEnabled with all three platforms true', () => {
+  test('DEFAULT_SETTINGS has platformEnabled with all four platforms true', () => {
     const src = fs.readFileSync(
       path.resolve(__dirname, '../src/lib/types/extension.ts'),
       'utf8'
     );
     expect(src).toContain('platformEnabled');
-    // All three platforms default to true
     const defaultSection = src.slice(src.indexOf('DEFAULT_SETTINGS'));
     expect(defaultSection).toContain('twitch: true');
     expect(defaultSection).toContain('youtube: true');
+    expect(defaultSection).toContain('youtubeStudio: true');
     expect(defaultSection).toContain('kick: true');
   });
 
@@ -99,7 +100,7 @@ test.describe('Per-site enable/disable @phase5', () => {
       await context.close();
     });
 
-    test('popup shows three platform toggle rows', async () => {
+    test('popup shows four platform toggle rows', async () => {
       const sw = context.serviceWorkers()[0];
       const extensionId = sw?.url()?.match(/chrome-extension:\/\/([^/]+)/)?.[1];
       expect(extensionId).toBeTruthy();
@@ -109,11 +110,11 @@ test.describe('Per-site enable/disable @phase5', () => {
       await popupPage.waitForLoadState('domcontentloaded');
 
       const platformRows = popupPage.locator('.platform-row');
-      await expect(platformRows).toHaveCount(3);
+      await expect(platformRows).toHaveCount(4);
 
       // Verify each row has a checkbox toggle
       const checkboxes = popupPage.locator('.platform-row input[type="checkbox"]');
-      await expect(checkboxes).toHaveCount(3);
+      await expect(checkboxes).toHaveCount(4);
 
       await popupPage.close();
     });
@@ -122,7 +123,7 @@ test.describe('Per-site enable/disable @phase5', () => {
       // Set Twitch disabled via service worker
       const sw = context.serviceWorkers()[0];
       await sw.evaluate(() => {
-        chrome.storage.sync.set({ platformEnabled: { twitch: false, youtube: true, kick: true } });
+        chrome.storage.sync.set({ platformEnabled: { twitch: false, youtube: true, youtubeStudio: true, kick: true } });
       });
 
       // Mock API and navigate to Twitch
@@ -154,7 +155,7 @@ test.describe('Per-site enable/disable @phase5', () => {
       // Start with Twitch disabled
       const sw = context.serviceWorkers()[0];
       await sw.evaluate(() => {
-        chrome.storage.sync.set({ platformEnabled: { twitch: false, youtube: true, kick: true } });
+        chrome.storage.sync.set({ platformEnabled: { twitch: false, youtube: true, youtubeStudio: true, kick: true } });
       });
 
       await context.route('**/api/v1/auth/streamers/**', route =>
@@ -198,7 +199,7 @@ test.describe('Per-site enable/disable @phase5', () => {
       // Disable Twitch but keep YouTube enabled
       const sw = context.serviceWorkers()[0];
       await sw.evaluate(() => {
-        chrome.storage.sync.set({ platformEnabled: { twitch: false, youtube: true, kick: true } });
+        chrome.storage.sync.set({ platformEnabled: { twitch: false, youtube: true, youtubeStudio: true, kick: true } });
       });
 
       await context.route('**/api/v1/auth/streamers/**', route =>
@@ -236,7 +237,7 @@ test.describe('Per-site enable/disable @phase5', () => {
             // Simulate getSyncStorage default logic
             const stored = (items as any).platformEnabled;
             if (!stored) {
-              resolve({ twitch: true, youtube: true, kick: true });
+              resolve({ twitch: true, youtube: true, youtubeStudio: true, kick: true });
             } else {
               resolve(stored);
             }
@@ -244,7 +245,7 @@ test.describe('Per-site enable/disable @phase5', () => {
         });
       });
 
-      expect(result).toEqual({ twitch: true, youtube: true, kick: true });
+      expect(result).toEqual({ twitch: true, youtube: true, youtubeStudio: true, kick: true });
     });
   });
 });

@@ -188,15 +188,15 @@ async function initialize() {
   console.log('[AllChat YTStudio] Content script loaded');
 
   const settings = await getSyncStorage();
-  if (!settings.platformEnabled.youtube) {
-    console.log('[AllChat YTStudio] Extension disabled for YouTube, not injecting');
+  if (!settings.platformEnabled.youtubeStudio) {
+    console.log('[AllChat YTStudio] Extension disabled for YouTube Studio, not injecting');
     setupGlobalMessageRelay(); // Listen for re-enable even when disabled
     return;
   }
 
   globalDetector = new YouTubeStudioDetector();
 
-  chrome.runtime.sendMessage({ type: 'SET_CURRENT_PLATFORM', platform: 'youtube' }).catch((err: unknown) => {
+  chrome.runtime.sendMessage({ type: 'SET_CURRENT_PLATFORM', platform: 'youtubeStudio' }).catch((err: unknown) => {
     console.warn('[AllChat YTStudio] Failed to write current_platform to session:', err);
   });
 

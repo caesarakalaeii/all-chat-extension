@@ -172,10 +172,7 @@ function Popup() {
         <div className="status-label">Platform Settings</div>
         {(['twitch', 'youtube', 'youtubeStudio', 'kick'] as const).map((p) => (
           <div key={p} className={`platform-row ${currentPlatform === p ? 'platform-row--active' : ''}`} data-platform={p}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <PlatformIcon platform={p} />
-              <span className="platform-name">{platformLabel[p]}</span>
-            </div>
+            <span className="platform-name">{platformLabel[p]}</span>
             <label className="toggle-switch" aria-label={`Enable AllChat on ${platformLabel[p]}`}>
               <input
                 type="checkbox"

@@ -91,7 +91,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -99,3 +99,24 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 2. Design System | 5/5 | Complete   | 2026-03-12 |
 | 3. Kick Platform | 3/4 | In Progress|  |
 | 4. LLM Test Infrastructure | 3/3 | Complete   | 2026-03-13 |
+| 5. Per-site enable/disable | 0/4 | Planning   |  |
+
+### Phase 5: Per-site enable/disable
+
+**Goal**: The single global enable/disable toggle is replaced by three per-platform toggles (Twitch, YouTube, Kick) — users can independently control which platforms have AllChat active, with immediate effect via messaging (no page reload), grayscale toolbar icon for disabled platforms, and seamless migration from the legacy `extensionEnabled` boolean
+**Requirements**: D-01, D-02, D-03, D-04, D-05, D-06, D-07, D-08
+**Depends on:** Phase 4
+**Success Criteria** (what must be TRUE):
+  1. Popup shows three independent platform toggles (Twitch, YouTube, Kick) — no global toggle exists
+  2. Toggling a platform takes effect immediately without page reload — content scripts handle re-enable via `EXTENSION_STATE_CHANGED` message
+  3. Current tab's platform row is highlighted in the popup with a platform-colored left border
+  4. Toolbar icon shows grayscale for tabs where the platform is disabled, color for enabled
+  5. Existing users with `extensionEnabled` are seamlessly migrated to `platformEnabled` on first read
+  6. All three platforms default to enabled on fresh install
+**Plans:** 4 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — Storage schema: PlatformEnabled type, SyncStorage migration, grayscale icon assets
+- [ ] 05-02-PLAN.md — Content scripts: per-platform init check + re-enable path in all four scripts
+- [ ] 05-03-PLAN.md — Popup + service worker: three per-platform toggles, active row highlight, grayscale icon per-tab
+- [ ] 05-04-PLAN.md — E2E tests + README: Playwright test suite for toggle flows, documentation update

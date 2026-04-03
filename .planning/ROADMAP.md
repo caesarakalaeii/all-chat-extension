@@ -118,6 +118,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 Plans:
 - [x] 05-00-PLAN.md — Wave 0 test stubs: skip-stub specs for per-site-enable and storage-migration tests
 - [x] 05-01-PLAN.md — Storage schema: PlatformEnabled type, SyncStorage migration, grayscale icon assets
-- [ ] 05-02-PLAN.md — Content scripts: per-platform init check + re-enable path in all four scripts
+- [x] 05-02-PLAN.md — Content scripts: per-platform init check + re-enable path in all four scripts
 - [ ] 05-03-PLAN.md — Popup + service worker: three per-platform toggles, active row highlight, grayscale icon per-tab
 - [ ] 05-04-PLAN.md — E2E tests + README: Playwright test suite for toggle flows, documentation update

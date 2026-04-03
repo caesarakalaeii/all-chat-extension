@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-04-03T13:55:32.295Z"
+stopped_at: Completed 05-04-PLAN.md
+last_updated: "2026-04-03T14:01:03.004Z"
 last_activity: 2026-04-03
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 20
-  completed_plans: 18
+  completed_plans: 20
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-03-12)
 ## Current Position
 
 Phase: 05 (per-site-enable-disable) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-04-03
 
@@ -70,6 +70,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 05-per-site-enable-disable P00 | 5min | 1 tasks | 2 files |
 | Phase 05-per-site-enable-disable P01 | 4min | 2 tasks | 9 files |
 | Phase 05-per-site-enable-disable P02 | 10min | 2 tasks | 4 files |
+| Phase 05-per-site-enable-disable P04 | 5min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,8 @@ Recent decisions affecting current work:
 - [Phase 05-per-site-enable-disable]: Popup handleToggle bridges to all-three platformEnabled toggle until per-platform UI redesign in plan 05-03
 - [Phase 05-per-site-enable-disable]: setupGlobalMessageRelay() called before early return when disabled — ensures re-enable messages are received even when extension starts disabled for that platform
 - [Phase 05-per-site-enable-disable]: messageRelaySetup boolean guard prevents duplicate chrome.runtime.onMessage listeners when re-enable path calls setupGlobalMessageRelay() again
+- [Phase 05-per-site-enable-disable]: E2E tests use nested test.describe to separate browser context lifecycle from fs-based tests — avoids launching extension for type-level checks
+- [Phase 05-per-site-enable-disable]: Storage migration E2E tests simulate migration logic inline via sw.evaluate rather than calling getSyncStorage directly — avoids ES module import issues in extension context
 
 ### Roadmap Evolution
 
@@ -145,6 +148,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-03T13:55:32.293Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-04-03T14:01:03.002Z
+Stopped at: Completed 05-04-PLAN.md
 Resume file: None

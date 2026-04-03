@@ -24,15 +24,25 @@ The chat replacement must be visually seamless and feel native — users should 
 
 ### Active
 
-- [ ] Apply all-chat design system (OkLCh color tokens, typography scale, spacing, component patterns)
-- [ ] Integrate InfinityLogo component (animated SVG infinity sign in chat bubble)
-- [ ] Replace fixed-position overlay with iframe mounted in the native chat DOM slot — Twitch
-- [ ] Replace fixed-position overlay with iframe mounted in the native chat DOM slot — YouTube
-- [ ] Complete YouTube chat replacement (currently stubs out at detection)
-- [ ] Add Kick platform support (detection, injection, chat rendering)
-- [ ] Build LLM-agent testing infrastructure (Playwright + AI agent drives browser end-to-end)
 - [ ] Resizable chat panel (drag to resize width)
-- [ ] Popup redesign to match new design system
+
+### Validated in Phase 5: Per-site enable/disable
+
+- ✓ Per-platform enable/disable toggles (Twitch, YouTube, Kick) replace global toggle
+- ✓ Immediate toggle effect via messaging (no page reload)
+- ✓ Grayscale toolbar icon for disabled platforms
+- ✓ Seamless migration from legacy `extensionEnabled` boolean
+
+### Validated in Phases 1-4
+
+- ✓ Apply all-chat design system (OkLCh color tokens, typography scale, spacing, component patterns) — Phase 2
+- ✓ Integrate InfinityLogo component — Phase 2
+- ✓ Replace fixed-position overlay with iframe in native DOM slot — Twitch — Phase 1
+- ✓ Replace fixed-position overlay with iframe in native DOM slot — YouTube — Phase 1
+- ✓ Complete YouTube chat replacement — Phase 1
+- ✓ Add Kick platform support — Phase 3
+- ✓ Build LLM-agent testing infrastructure — Phase 4
+- ✓ Popup redesign to match new design system — Phase 5
 
 ### Out of Scope
 
@@ -70,4 +80,4 @@ Existing Playwright test setup is in place. Goal is to add LLM-agent-driven test
 | Playwright + LLM agent for testing | Brittle selector-based tests break on platform DOM changes; AI-driven tests are resilient and test what users actually see | — Pending |
 
 ---
-*Last updated: 2026-03-12 after initialization*
+*Last updated: 2026-04-03 after Phase 5 completion*

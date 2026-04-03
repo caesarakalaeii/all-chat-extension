@@ -9,11 +9,41 @@ export { DEFAULT_SETTINGS };
 
 /**
  * Get all sync storage (settings)
+ * Includes migration logic for legacy extensionEnabled -> platformEnabled schema change.
  */
 export async function getSyncStorage(): Promise<SyncStorage> {
   return new Promise((resolve) => {
     chrome.storage.sync.get(DEFAULT_SETTINGS as unknown as Record<string, unknown>, (items) => {
-      resolve(items as unknown as SyncStorage);
+      const result = items as unknown as SyncStorage & { extensionEnabled?: boolean };
+
+      // Migration: legacy extensionEnabled -> platformEnabled
+      if (!result.platformEnabled) {
+        const legacyEnabled = result.extensionEnabled ?? true;
+        result.platformEnabled = {
+          twitch: legacyEnabled,
+          youtube: legacyEnabled,
+          kick: legacyEnabled,
+        };
+        // Persist migration (fire-and-forget)
+        chrome.storage.sync.set({ platformEnabled: result.platformEnabled });
+      } else {
+        // Deep-merge: chrome.storage.sync.get only shallow-merges nested objects.
+        // If user stored { twitch: false } without youtube/kick keys, fill in defaults.
+        result.platformEnabled = {
+          twitch: result.platformEnabled.twitch ?? true,
+          youtube: result.platformEnabled.youtube ?? true,
+          kick: result.platformEnabled.kick ?? true,
+        };
+      }
+
+      // Remove legacy key from returned object
+      delete (result as any).extensionEnabled;
+      // Also remove from storage if it still exists (fire-and-forget)
+      if ((items as any).extensionEnabled !== undefined) {
+        chrome.storage.sync.remove('extensionEnabled');
+      }
+
+      resolve(result as SyncStorage);
     });
   });
 }

@@ -113,6 +113,40 @@
       cursor: not-allowed;
     }
 
+    /* Platform toggle rows */
+    .platform-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0;
+      height: 36px;
+      border-left: 3px solid transparent;
+      padding-left: 8px;
+    }
+
+    .platform-row--active {
+      font-weight: 500;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .platform-row--active[data-platform="twitch"] {
+      border-left-color: #9147ff;
+    }
+
+    .platform-row--active[data-platform="youtube"] {
+      border-left-color: #FF4444;
+    }
+
+    .platform-row--active[data-platform="kick"] {
+      border-left-color: #53FC18;
+    }
+
+    .platform-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: #ffffff;
+    }
+
     /* Platform sign-in buttons */
     .btn-platform {
       display: flex;

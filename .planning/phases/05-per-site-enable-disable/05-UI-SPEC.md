@@ -38,7 +38,6 @@ Declared values (multiples of 4):
 |-------|-------|-------|
 | xs | 4px | Icon gaps, inline spacing within rows |
 | sm | 8px | Gap between platform icon and label, row gaps |
-| md | 12px | Card/section internal padding (matches existing `.status` padding: 12px) |
 | lg | 16px | Body padding, section separation |
 | xl | 24px | Toggle switch touch target height |
 | 2xl | 32px | — (not used in popup at this scale) |
@@ -47,6 +46,7 @@ Declared values (multiples of 4):
 Exceptions:
 - Toggle switch: 44px wide × 24px tall (matches existing `.toggle-switch` dimensions — touch target compliance)
 - Popup body width: 320px fixed (matches existing `body { width: 320px }`)
+- `.status` card padding: 12px — existing value carried forward unchanged, not part of design scale.
 
 Source: `src/popup/popup.html` (existing spacing confirmed by code inspection)
 
@@ -109,7 +109,7 @@ Border/divider color: `#3a3a3d`
 | Component | Description |
 |-----------|-------------|
 | `.platform-row` | Flex row: `PlatformIcon` + platform name label + `toggle-switch`. Height: 36px. Padding: 4px 0. |
-| `.platform-row--active` | Modifier for current-tab platform row. Left border 3px solid platform color. Font-weight: 600. Background: `rgba(255,255,255,0.04)` to subtly highlight. |
+| `.platform-row--active` | Modifier for current-tab platform row. Left border 3px solid platform color. Font-weight: 500 (medium). Background: `rgba(255,255,255,0.04)` to subtly highlight. |
 | Grayscale icon assets | `assets/icon-16-gray.png`, `icon-32-gray.png`, `icon-48-gray.png`, `icon-128-gray.png` — pre-generated desaturated versions of existing icons |
 
 ---

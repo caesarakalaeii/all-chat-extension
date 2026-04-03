@@ -26,8 +26,19 @@ export type Platform = 'twitch' | 'youtube' | 'kick' | 'tiktok';
  * Converts a parsed NameGradient object to a CSS linear-gradient() string.
  * Inlined here because the extension is a separate repo without @/lib/utils/gradient.
  */
-function buildGradientCSS(g: { type: string; colors: string[]; angle: number }): string {
+type NameGradient = { type: string; colors: string[]; angle: number };
+
+function buildGradientCSS(g: NameGradient): string {
   return `linear-gradient(${g.angle}deg, ${g.colors.join(', ')})`;
+}
+
+function parseNameGradient(raw: string | undefined): NameGradient | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as NameGradient;
+  } catch {
+    return null;
+  }
 }
 
 function PlatformIcon({ platform }: { platform: Platform }) {
@@ -98,14 +109,10 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   const [viewerNameGradient, setViewerNameGradient] = useState<string | null>(null);
 
   // Parse gradient JSON string for use in style — null when absent or invalid
-  const parsedGradient = useMemo((): { type: string; colors: string[]; angle: number } | null => {
-    if (!viewerNameGradient) return null;
-    try {
-      return JSON.parse(viewerNameGradient) as { type: string; colors: string[]; angle: number };
-    } catch {
-      return null;
-    }
-  }, [viewerNameGradient]);
+  const parsedGradient = useMemo(
+    () => parseNameGradient(viewerNameGradient ?? undefined),
+    [viewerNameGradient],
+  );
 
   // Debug: Log connection status changes
   useEffect(() => {
@@ -455,7 +462,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                     {message.user.badges?.map((badge, idx) => (
                       badge.name === 'allchat' ? (
                         <AllChatBadge key={idx} size={18} title={badge.name} />
-                      ) : badge.name === 'premium' ? (
+                      ) : badge.name === 'allchat-premium' ? (
                         <PremiumBadge key={idx} size={18} title={badge.name} />
                       ) : badge.icon_url ? (
                         <img
@@ -465,29 +472,66 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                           style={{ height: '1em', width: 'auto', objectFit: 'contain', display: 'inline-block' }}
                           title={`${badge.name} (${badge.version})`}
                         />
-                      ) : null
+                      ) : (
+                        <span
+                          key={idx}
+                          title={badge.version ? `${badge.name} (${badge.version})` : badge.name}
+                          style={{
+                            display: 'inline-block',
+                            fontSize: '0.65em',
+                            lineHeight: '1',
+                            padding: '1px 4px',
+                            borderRadius: '3px',
+                            backgroundColor: 'var(--color-surface-2, #333)',
+                            color: 'var(--color-text-sub, #aaa)',
+                            fontWeight: 600,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.02em',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {badge.version || badge.name}
+                        </span>
+                      )
                     ))}
 
                     {/* Username */}
-                    {(viewerInfo && message.user.username === viewerInfo.username && parsedGradient) ? (
-                      <span
-                        className="font-semibold text-sm bg-clip-text text-transparent"
-                        style={{ backgroundImage: buildGradientCSS(parsedGradient) }}
-                      >
-                        {message.user.display_name || message.user.username}
-                      </span>
-                    ) : (
-                      <span
-                        className="font-semibold text-sm"
-                        style={{
-                          color: (viewerInfo && message.user.username === viewerInfo.username && viewerNameColor)
-                            ? viewerNameColor
-                            : (message.user.color || '#fff')
-                        }}
-                      >
-                        {message.user.display_name || message.user.username}
-                      </span>
-                    )}
+                    {(() => {
+                      const isOwnMessage = viewerInfo && message.user.username === viewerInfo.username;
+                      // For the viewer's own messages, prefer the locally-stored gradient/color
+                      // (which may differ from what the backend cached).
+                      // For everyone else, use the gradient/color carried in the message itself.
+                      const messageGradient = parseNameGradient(message.user.name_gradient);
+                      const activeGradient: NameGradient | null = isOwnMessage
+                        ? (parsedGradient ?? messageGradient)
+                        : messageGradient;
+                      const activeColor: string = isOwnMessage && viewerNameColor
+                        ? viewerNameColor
+                        : (message.user.color || '#fff');
+
+                      if (activeGradient) {
+                        return (
+                          <span
+                            className="font-semibold text-sm text-transparent"
+                            style={{
+                              backgroundImage: buildGradientCSS(activeGradient),
+                              backgroundClip: 'text',
+                              WebkitBackgroundClip: 'text',
+                            }}
+                          >
+                            {message.user.display_name || message.user.username}
+                          </span>
+                        );
+                      }
+                      return (
+                        <span
+                          className="font-semibold text-sm"
+                          style={{ color: activeColor }}
+                        >
+                          {message.user.display_name || message.user.username}
+                        </span>
+                      );
+                    })()}
                   </div>
 
                   {/* Message text with emotes */}

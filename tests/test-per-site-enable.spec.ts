@@ -1,4 +1,5 @@
 import { test, expect, chromium, BrowserContext } from '@playwright/test';
+import fs from 'fs';
 import path from 'path';
 
 const EXTENSION_PATH = path.resolve(__dirname, '../dist');
@@ -16,6 +17,65 @@ async function launchExtensionContext(): Promise<BrowserContext> {
 }
 
 test.describe('Per-site enable/disable @phase5', () => {
+  // Task 1: Type-level tests (fs-based, no browser needed)
+  test('SyncStorage type has platformEnabled field', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../src/lib/types/extension.ts'),
+      'utf8'
+    );
+    expect(src).toContain('platformEnabled: PlatformEnabled');
+  });
+
+  test('SyncStorage type does NOT have extensionEnabled field', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../src/lib/types/extension.ts'),
+      'utf8'
+    );
+    // Should not contain extensionEnabled as a type field
+    expect(src).not.toMatch(/extensionEnabled:\s*boolean/);
+  });
+
+  test('PlatformEnabled type is exported with twitch, youtube, kick booleans', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../src/lib/types/extension.ts'),
+      'utf8'
+    );
+    expect(src).toContain('export type PlatformEnabled');
+    expect(src).toContain('twitch: boolean');
+    expect(src).toContain('youtube: boolean');
+    expect(src).toContain('kick: boolean');
+  });
+
+  test('DEFAULT_SETTINGS has platformEnabled with all three platforms true', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../src/lib/types/extension.ts'),
+      'utf8'
+    );
+    expect(src).toContain('platformEnabled');
+    // All three platforms default to true
+    const defaultSection = src.slice(src.indexOf('DEFAULT_SETTINGS'));
+    expect(defaultSection).toContain('twitch: true');
+    expect(defaultSection).toContain('youtube: true');
+    expect(defaultSection).toContain('kick: true');
+  });
+
+  test('DEFAULT_SETTINGS does NOT have extensionEnabled key', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../src/lib/types/extension.ts'),
+      'utf8'
+    );
+    const defaultSection = src.slice(src.indexOf('DEFAULT_SETTINGS'));
+    expect(defaultSection).not.toContain('extensionEnabled');
+  });
+
+  test('ExtensionMessage union includes EXTENSION_STATE_CHANGED', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../src/lib/types/extension.ts'),
+      'utf8'
+    );
+    expect(src).toContain('EXTENSION_STATE_CHANGED');
+  });
+
   test.skip('popup shows three platform toggle rows', async () => {
     // D-03: Three per-platform toggles in popup
   });

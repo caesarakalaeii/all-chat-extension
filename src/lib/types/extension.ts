@@ -41,11 +41,21 @@ export type ExtensionMessage =
   | { type: 'STORE_VIEWER_TOKEN'; token: string }
   | { type: 'SAVE_NAME_COLOR'; color: string | null }
   | { type: 'SAVE_NAME_GRADIENT'; gradient: string | null }
-  | { type: 'SET_CURRENT_PLATFORM'; platform: string };
+  | { type: 'SET_CURRENT_PLATFORM'; platform: string }
+  | { type: 'EXTENSION_STATE_CHANGED'; enabled: boolean };
 
 export type ExtensionResponse =
   | { success: true; data?: any }
   | { success: false; error: string; data?: any };
+
+/**
+ * Per-platform enable state
+ */
+export type PlatformEnabled = {
+  twitch: boolean;
+  youtube: boolean;
+  kick: boolean;
+};
 
 /**
  * Storage schemas
@@ -60,7 +70,7 @@ export interface LocalStorage {
 
 export interface SyncStorage {
   apiGatewayUrl: string;
-  extensionEnabled: boolean;
+  platformEnabled: PlatformEnabled;
   preferences: {
     autoDetectEnabled: boolean;
     replaceNativeChat: boolean;
@@ -70,7 +80,11 @@ export interface SyncStorage {
 
 export const DEFAULT_SETTINGS: SyncStorage = {
   apiGatewayUrl: API_BASE_URL,
-  extensionEnabled: true,
+  platformEnabled: {
+    twitch: true,
+    youtube: true,
+    kick: true,
+  },
   preferences: {
     autoDetectEnabled: true,
     replaceNativeChat: true,

@@ -179,8 +179,8 @@ async function initialize() {
   console.log('[AllChat YTStudio] Content script loaded');
 
   const settings = await getSyncStorage();
-  if (!settings.extensionEnabled) {
-    console.log('[AllChat YTStudio] Extension is disabled, not injecting');
+  if (!settings.platformEnabled.youtube) {
+    console.log('[AllChat YTStudio] Extension disabled for YouTube, not injecting');
     return;
   }
 

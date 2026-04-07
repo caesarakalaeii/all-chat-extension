@@ -152,6 +152,46 @@ let lastCheckedStreamer: string | null = null;
 // Guard against duplicate message relay registration
 let messageRelaySetup = false;
 
+/**
+ * Inject "Switch to AllChat" button into native platform pop-out chat (D-11).
+ * Clicking navigates the pop-out window to AllChat's chat-container.html (D-12).
+ */
+function injectNativePopoutSwitchButton(platform: string, streamer: string, displayName: string) {
+  if (document.getElementById('allchat-native-popout-btn')) return;
+
+  const btn = document.createElement('div');
+  btn.id = 'allchat-native-popout-btn';
+  btn.style.cssText = `
+    position: fixed; bottom: 16px; right: 16px; z-index: 9999;
+    background: oklch(0.11 0.009 270); border: 1px solid oklch(0.22 0.008 270);
+    border-radius: 6px; padding: 8px 12px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    color: #fff; font-family: Inter, -apple-system, sans-serif; font-size: 13px;
+    transition: background 150ms;
+  `;
+  btn.innerHTML = `
+    <svg viewBox="0 0 100 60" width="24" height="14" fill="none" stroke="currentColor" stroke-width="6">
+      <path d="M25 50C25 28 40 10 50 10S75 28 75 50" />
+      <path d="M75 10C75 32 60 50 50 50S25 32 25 10" />
+    </svg>
+    <span>Switch to AllChat</span>
+  `;
+  btn.setAttribute('aria-label', 'Open AllChat in this window');
+  btn.addEventListener('mouseenter', () => { btn.style.background = 'oklch(0.14 0.008 270)'; });
+  btn.addEventListener('mouseleave', () => { btn.style.background = 'oklch(0.11 0.009 270)'; });
+  btn.addEventListener('click', () => {
+    const params = new URLSearchParams({ platform, streamer, display_name: displayName, popout: '1' });
+    if (platform === 'twitch') params.set('twitch_channel', streamer);
+    window.location.href = chrome.runtime.getURL(`ui/chat-container.html?${params}`);
+  });
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => document.body.appendChild(btn));
+  } else {
+    document.body.appendChild(btn);
+  }
+}
+
 // Initialize detector
 async function initialize() {
   const manifest = chrome.runtime.getManifest();
@@ -163,6 +203,15 @@ async function initialize() {
     console.log('[AllChat Twitch] Extension disabled for Twitch, not injecting');
     setupGlobalMessageRelay(); // Listen for re-enable even when disabled
     return;
+  }
+
+  // Detect Twitch native pop-out chat: /popout/{channel}/chat
+  const popoutMatch = window.location.pathname.match(/^\/popout\/([^/]+)\/chat/);
+  if (popoutMatch) {
+    const channel = popoutMatch[1];
+    console.log(`[AllChat Twitch] Native pop-out detected for channel: ${channel}`);
+    injectNativePopoutSwitchButton('twitch', channel, channel);
+    return; // Do not inject full AllChat UI in native pop-out
   }
 
   globalDetector = new TwitchDetector();

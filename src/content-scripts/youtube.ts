@@ -220,6 +220,45 @@ class YouTubeDetector extends PlatformDetector {
   }
 }
 
+/**
+ * Inject "Switch to AllChat" button into native platform pop-out chat (D-11).
+ * Clicking navigates the pop-out window to AllChat's chat-container.html (D-12).
+ */
+function injectNativePopoutSwitchButton(platform: string, streamer: string, displayName: string) {
+  if (document.getElementById('allchat-native-popout-btn')) return;
+
+  const btn = document.createElement('div');
+  btn.id = 'allchat-native-popout-btn';
+  btn.style.cssText = `
+    position: fixed; bottom: 16px; right: 16px; z-index: 9999;
+    background: oklch(0.11 0.009 270); border: 1px solid oklch(0.22 0.008 270);
+    border-radius: 6px; padding: 8px 12px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    color: #fff; font-family: Inter, -apple-system, sans-serif; font-size: 13px;
+    transition: background 150ms;
+  `;
+  btn.innerHTML = `
+    <svg viewBox="0 0 100 60" width="24" height="14" fill="none" stroke="currentColor" stroke-width="6">
+      <path d="M25 50C25 28 40 10 50 10S75 28 75 50" />
+      <path d="M75 10C75 32 60 50 50 50S25 32 25 10" />
+    </svg>
+    <span>Switch to AllChat</span>
+  `;
+  btn.setAttribute('aria-label', 'Open AllChat in this window');
+  btn.addEventListener('mouseenter', () => { btn.style.background = 'oklch(0.14 0.008 270)'; });
+  btn.addEventListener('mouseleave', () => { btn.style.background = 'oklch(0.11 0.009 270)'; });
+  btn.addEventListener('click', () => {
+    const params = new URLSearchParams({ platform, streamer, display_name: displayName, popout: '1' });
+    window.location.href = chrome.runtime.getURL(`ui/chat-container.html?${params}`);
+  });
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => document.body.appendChild(btn));
+  } else {
+    document.body.appendChild(btn);
+  }
+}
+
 // Store detector instance globally
 let globalDetector: YouTubeDetector | null = null;
 
@@ -257,6 +296,18 @@ async function initialize() {
   if (!settings.platformEnabled.youtube) {
     console.log('[AllChat YouTube] Extension disabled for YouTube, not injecting');
     setupGlobalMessageRelay(); // Listen for re-enable even when disabled
+    return;
+  }
+
+  // Detect YouTube native pop-out chat: /live_chat or /live_chat_replay
+  const isNativePopout = window.location.pathname === '/live_chat' || window.location.pathname === '/live_chat_replay';
+  if (isNativePopout) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const videoId = urlParams.get('v') || '';
+    console.log(`[AllChat YouTube] Native pop-out detected for video: ${videoId}`);
+    if (videoId) {
+      injectNativePopoutSwitchButton('youtube', videoId, videoId);
+    }
     return;
   }
 

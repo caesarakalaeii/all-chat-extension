@@ -184,6 +184,11 @@ function handleExtensionStateChange(enabled: boolean) {
 async function initialize() {
   console.log('[AllChat Kick] Content script loaded');
 
+  // D-16: Research finding — Kick has no known native pop-out chat URL (06-RESEARCH.md, Open Question Q1).
+  // D-16 scope for Kick is deferred per research outcome, not skipped. AllChat pop-out button
+  // works on Kick in-page (D-15), but native pop-out "Switch to AllChat" injection (D-11) cannot
+  // be implemented without a discoverable pop-out URL. Re-evaluate if Kick adds pop-out support.
+
   // Check if extension is enabled
   const settings = await getSyncStorage();
   if (!settings.platformEnabled.kick) {

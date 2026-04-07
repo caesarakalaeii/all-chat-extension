@@ -14,6 +14,7 @@ import {
   StreamerInfo,
   ViewerInfo,
 } from '../lib/types/extension';
+import { POPOUT_PORT_NAME } from '../lib/types/popout';
 import {
   getApiGatewayUrl,
   getViewerToken,
@@ -30,6 +31,9 @@ import {
 function getExtensionRedirectURI(): string {
   return chrome.identity.getRedirectURL('oauth');
 }
+
+// Registry of connected pop-out window ports
+const popoutPorts: Set<chrome.runtime.Port> = new Set();
 
 // WebSocket connection
 let wsConnection: WebSocket | null = null;
@@ -49,6 +53,19 @@ const KEEPALIVE_ALARM = 'allchat-ws-keepalive';
 // chrome.storage.session key for persisting the active streamer across
 // service worker restarts. Session storage is cleared when the browser closes.
 const SESSION_STREAMER_KEY = 'ws_active_streamer';
+
+// Handle pop-out window port connections
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== POPOUT_PORT_NAME) return;
+
+  console.log('[AllChat] Pop-out window connected via port');
+  popoutPorts.add(port);
+
+  port.onDisconnect.addListener(() => {
+    console.log('[AllChat] Pop-out window disconnected');
+    popoutPorts.delete(port);
+  });
+});
 
 // Restore WebSocket connection if the service worker was restarted while a
 // session was active (e.g. due to MV3 30-second idle eviction).
@@ -406,6 +423,21 @@ function stopWebSocketHeartbeat(): void {
 }
 
 /**
+ * Broadcast a message to all connected pop-out window ports.
+ * Called alongside tab-based broadcast in broadcastConnectionState and handleWebSocketMessage.
+ */
+function broadcastToPorts(message: Record<string, unknown>): void {
+  popoutPorts.forEach((port) => {
+    try {
+      port.postMessage(message);
+    } catch (err) {
+      console.warn('[AllChat] Failed to send to pop-out port, removing:', err);
+      popoutPorts.delete(port);
+    }
+  });
+}
+
+/**
  * Broadcast connection state to all tabs
  */
 function broadcastConnectionState(state: ConnectionState, details?: any): void {
@@ -430,6 +462,17 @@ function broadcastConnectionState(state: ConnectionState, details?: any): void {
       }
     });
   });
+
+  // Also broadcast to pop-out windows via ports
+  broadcastToPorts({
+    type: 'CONNECTION_STATE',
+    data: {
+      state,
+      attempts: wsReconnectAttempts,
+      maxAttempts: WS_MAX_RECONNECT_ATTEMPTS,
+      ...details,
+    },
+  });
 }
 
 /**
@@ -450,6 +493,9 @@ function handleWebSocketMessage(message: any): void {
       }
     });
   });
+
+  // Also broadcast to pop-out windows via ports
+  broadcastToPorts({ type: 'WS_MESSAGE', data: message });
 }
 
 /**

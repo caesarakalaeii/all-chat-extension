@@ -170,6 +170,9 @@ export default function MessageInput({
     setSending(true);
     setError(null);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
     try {
       const requestBody: SendMessageRequest = {
         streamer_username: streamer,
@@ -184,6 +187,7 @@ export default function MessageInput({
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(requestBody),
+        signal: controller.signal,
       });
 
       // Try to parse JSON response first (for all status codes)
@@ -234,6 +238,7 @@ export default function MessageInput({
       const parsedError = parseFetchError(err);
       setError(parsedError);
     } finally {
+      clearTimeout(timeoutId);
       setSending(false);
     }
   };

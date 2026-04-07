@@ -20,13 +20,14 @@ const platform = params.get('platform');
 const streamer = params.get('streamer');
 const displayName = params.get('display_name') || streamer;
 const twitchChannel = params.get('twitch_channel') || undefined;
+const videoId = params.get('video_id') || undefined;
 
 if (platform && streamer) {
-  console.log('[AllChat UI] Initializing with:', { platform, streamer, displayName, twitchChannel });
+  console.log('[AllChat UI] Initializing with:', { platform, streamer, displayName, twitchChannel, videoId });
   const root = ReactDOM.createRoot(document.getElementById('root')!);
   root.render(
     <ErrorBoundary>
-      <ChatContainer platform={platform as Platform} streamer={streamer} displayName={displayName!} twitchChannel={twitchChannel} />
+      <ChatContainer platform={platform as Platform} streamer={streamer} displayName={displayName!} twitchChannel={twitchChannel} videoId={videoId} />
     </ErrorBoundary>
   );
 } else {

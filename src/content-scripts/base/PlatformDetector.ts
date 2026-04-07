@@ -166,6 +166,9 @@ export abstract class PlatformDetector {
     if (data.twitchChannel) {
       params.set('twitch_channel', data.twitchChannel);
     }
+    if (data.videoId) {
+      params.set('video_id', data.videoId);
+    }
     const popoutUrl = chrome.runtime.getURL(`ui/chat-container.html?${params}`);
 
     // D-04: Open pop-out window via window.open (no new permissions needed)
@@ -418,11 +421,23 @@ export abstract class PlatformDetector {
   /**
    * Inject All-Chat UI into the page
    */
+  /**
+   * Return extra URL params to include in the AllChat iframe src.
+   * Subclasses can override to inject platform-specific data (e.g. YouTube video_id).
+   */
+  protected getExtraIframeParams(): Record<string, string> {
+    return {};
+  }
+
   private injectAllChatUI(container: HTMLElement, streamer: string, displayName?: string, twitchChannelName?: string): void {
     const iframe = document.createElement('iframe');
     const params = new URLSearchParams({ platform: this.platform, streamer, display_name: displayName || streamer });
     if (twitchChannelName) {
       params.set('twitch_channel', twitchChannelName);
+    }
+    const extra = this.getExtraIframeParams();
+    for (const [key, value] of Object.entries(extra)) {
+      if (value) params.set(key, value);
     }
     iframe.src = chrome.runtime.getURL(`ui/chat-container.html?${params}`);
     iframe.style.cssText = 'width: 100%; height: 100%; border: none; background: transparent;';

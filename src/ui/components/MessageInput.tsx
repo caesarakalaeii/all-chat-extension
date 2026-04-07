@@ -12,6 +12,7 @@ interface MessageInputProps {
   platform: 'twitch' | 'youtube' | 'kick' | 'tiktok';
   streamer: string;
   twitchChannel?: string;
+  videoId?: string;
   token: string;
   onSendSuccess?: () => void;
   onAuthError?: () => void;
@@ -24,6 +25,7 @@ export default function MessageInput({
   platform,
   streamer,
   twitchChannel,
+  videoId,
   token,
   onSendSuccess,
   onAuthError
@@ -178,6 +180,7 @@ export default function MessageInput({
         streamer_username: streamer,
         message: trimmed,
         platform,
+        ...(videoId ? { video_id: videoId } : {}),
       };
 
       const response = await fetch(`${API_BASE}/api/v1/auth/viewer/chat/send`, {

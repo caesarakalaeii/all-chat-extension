@@ -95,6 +95,7 @@ interface ChatContainerProps {
   streamer: string;
   displayName: string;
   twitchChannel?: string;
+  videoId?: string;
 }
 
 type ConnectionState = 'connected' | 'connecting' | 'reconnecting' | 'disconnected' | 'failed';
@@ -108,7 +109,7 @@ interface ConnectionStatus {
   message?: string;
 }
 
-export default function ChatContainer({ platform, streamer, displayName, twitchChannel }: ChatContainerProps) {
+export default function ChatContainer({ platform, streamer, displayName, twitchChannel, videoId }: ChatContainerProps) {
   // Detect pop-out mode via URL param (set by content script when opening pop-out window)
   const urlParams = new URLSearchParams(window.location.search);
   const isPopOut = urlParams.get('popout') === '1';
@@ -470,6 +471,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
       streamer,
       displayName,
       twitchChannel,
+      videoId,
       messages: messagesToTransfer,
     });
   };
@@ -736,6 +738,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                   platform={platform}
                   streamer={streamer}
                   twitchChannel={twitchChannel}
+                  videoId={videoId}
                   token={viewerToken}
                   onAuthError={handleAuthError}
                   onSendSuccess={handleMessageSent}

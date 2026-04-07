@@ -361,6 +361,31 @@ function setupGlobalMessageRelay() {
         source.postMessage({ type: 'LOGIN_ERROR', error: err.message }, extensionOrigin);
       }
     }
+
+    // Guard: only handle pop-out messages from the AllChat extension origin (T-06-09)
+    if (event.origin !== extensionOrigin) return;
+
+    // Handle pop-out request from AllChat iframe
+    if (event.data.type === 'POPOUT_REQUEST' && globalDetector) {
+      globalDetector.handlePopoutRequest(event.data);
+    }
+
+    // Handle "Switch to native" from AllChat iframe (D-14)
+    if (event.data.type === 'SWITCH_TO_NATIVE' && globalDetector) {
+      globalDetector.handleSwitchToNative();
+    }
+
+    // Handle "Bring back chat" / close pop-out from AllChat iframe
+    if (event.data.type === 'CLOSE_POPOUT' && globalDetector) {
+      globalDetector.closePopout();
+      const iframes = document.querySelectorAll('iframe[data-platform="youtube"]');
+      iframes.forEach((iframe) => {
+        const el = iframe as HTMLIFrameElement;
+        if (el.contentWindow) {
+          el.contentWindow.postMessage({ type: 'POPOUT_CLOSED' }, extensionOrigin);
+        }
+      });
+    }
   });
 
   console.log('[AllChat YouTube] Global message relay set up');

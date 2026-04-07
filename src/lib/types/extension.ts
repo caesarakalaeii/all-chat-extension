@@ -32,8 +32,6 @@ export type ExtensionMessage =
   | { type: 'CONNECT_WEBSOCKET'; streamerUsername: string }
   | { type: 'DISCONNECT_WEBSOCKET' }
   | { type: 'SEND_CHAT_MESSAGE'; streamerUsername: string; message: string }
-  | { type: 'START_AUTH'; platform: 'twitch' | 'youtube' | 'kick'; streamerUsername?: string }
-  | { type: 'EXCHANGE_CODE'; platform: 'twitch' | 'youtube' | 'kick'; code: string; state: string }
   | { type: 'DO_LOGIN'; platform: 'twitch' | 'youtube' | 'kick'; streamerUsername?: string }
   | { type: 'OPEN_AUTH_TAB'; platform: 'twitch' | 'youtube' | 'kick'; streamerUsername?: string }
   | { type: 'GET_AUTH_STATUS' }

@@ -26,12 +26,6 @@ import {
   DEFAULT_SETTINGS,
 } from '../lib/storage';
 
-// Extension OAuth redirect URI — computed lazily to avoid crashing at module load
-// if the identity permission is missing
-function getExtensionRedirectURI(): string {
-  return chrome.identity.getRedirectURL('oauth');
-}
-
 // Registry of connected pop-out window ports
 const popoutPorts: Set<chrome.runtime.Port> = new Set();
 
@@ -136,16 +130,6 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
 
         case 'SEND_CHAT_MESSAGE':
           await sendChatMessage(message.streamerUsername, message.message);
-          sendResponse({ success: true });
-          break;
-
-        case 'START_AUTH':
-          const authUrl = await initiateAuth(message.platform, message.streamerUsername);
-          sendResponse({ success: true, data: { authUrl } });
-          break;
-
-        case 'EXCHANGE_CODE':
-          await exchangeCodeForToken(message.platform, message.code, message.state);
           sendResponse({ success: true });
           break;
 
@@ -505,35 +489,6 @@ function handleWebSocketMessage(message: any): void {
 }
 
 /**
- * Initiate OAuth flow — returns auth_url with extension redirect_uri substituted
- */
-async function initiateAuth(platform: string, streamerUsername?: string): Promise<string> {
-  const apiUrl = await getApiGatewayUrl();
-
-  const platformEndpoints: Record<string, string> = {
-    twitch: '/api/v1/auth/viewer/twitch/login',
-    youtube: '/api/v1/auth/viewer/youtube/login',
-    kick: '/api/v1/auth/viewer/kick/login',
-  };
-
-  const endpoint = platformEndpoints[platform];
-  if (!endpoint) throw new Error('Unsupported platform');
-
-  const url = new URL(`${apiUrl}${endpoint}`);
-  if (streamerUsername) {
-    url.searchParams.set('streamer', streamerUsername);
-  }
-
-  const response = await fetch(url.toString());
-  const data = await response.json();
-
-  // Swap the backend redirect_uri for the extension redirect URI
-  const authUrl = new URL(data.auth_url);
-  authUrl.searchParams.set('redirect_uri', getExtensionRedirectURI());
-  return authUrl.toString();
-}
-
-/**
  * Get the OAuth login URL for the given platform without modifying the redirect_uri.
  * The content script opens a popup to this URL and the allch.at callback posts the token back.
  */
@@ -551,25 +506,6 @@ async function initiateAuthUrl(platform: string, streamerUsername?: string): Pro
   const response = await fetch(url.toString());
   const data = await response.json();
   return data.auth_url;
-}
-
-/**
- * Exchange OAuth code for viewer JWT via extension-mode endpoint
- */
-async function exchangeCodeForToken(platform: string, code: string, state: string): Promise<void> {
-  const apiUrl = await getApiGatewayUrl();
-  const response = await fetch(`${apiUrl}/api/v1/auth/viewer/${platform}/exchange`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code, state }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Exchange failed: ${response.status}`);
-  }
-
-  const { token } = await response.json();
-  await storeViewerToken(token);
 }
 
 /**

@@ -118,61 +118,30 @@ function Popup() {
   };
 
   const handleSignIn = async (platform: 'twitch' | 'youtube' | 'kick' | 'youtubeStudio') => {
-    // Twitch supports the extension's chrome.identity redirect URI — use the fast
-    // in-process launchWebAuthFlow path.
-    // YouTube and Kick use Google/Kick OAuth which does NOT accept extension redirect
-    // URIs. Route those through a backend-managed tab so the registered backend
-    // redirect URI (allch.at/api/v1/auth/viewer/<platform>/callback) is used.
-    if (platform === 'youtube' || platform === 'kick') {
-      try {
-        // Open a browser tab; the service worker monitors for allch.at/chat/auth-success
-        // and broadcasts AUTH_COMPLETE when the token is available.
-        await chrome.runtime.sendMessage({ type: 'OPEN_AUTH_TAB', platform });
-
-        // Listen for the result broadcast from the service worker
-        await new Promise<void>((resolve, reject) => {
-          const listener = (msg: any) => {
-            if (msg.type !== 'AUTH_COMPLETE') return;
-            chrome.runtime.onMessage.removeListener(listener);
-            if (msg.success) resolve();
-            else reject(new Error(msg.error || 'Authentication failed'));
-          };
-          chrome.runtime.onMessage.addListener(listener);
-
-          // Timeout after 5 minutes
-          setTimeout(() => {
-            chrome.runtime.onMessage.removeListener(listener);
-            reject(new Error('Login timed out'));
-          }, 300_000);
-        });
-
-        // Reload viewer info from storage (service worker already stored it)
-        const local = await getLocalStorage();
-        setViewerInfo(local.viewer_info || null);
-      } catch (err) {
-        console.error('[AllChat] Sign-in error:', err);
-      }
-      return;
-    }
-
-    // Twitch: use chrome.identity.launchWebAuthFlow (extension redirect URI is registered)
+    // All providers go through the backend tab-based OAuth flow so we never need
+    // to manage extension redirect URIs or register them with each OAuth provider.
+    // The service worker opens a tab, monitors for allch.at/chat/auth-success, and
+    // broadcasts AUTH_COMPLETE when the token is stored.
     try {
-      const { data } = await chrome.runtime.sendMessage({ type: 'START_AUTH', platform });
-      const callbackUrl: string = await new Promise((resolve, reject) => {
-        chrome.identity.launchWebAuthFlow({ url: data.authUrl, interactive: true }, (url) => {
-          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-          else resolve(url!);
-        });
+      await chrome.runtime.sendMessage({ type: 'OPEN_AUTH_TAB', platform });
+
+      await new Promise<void>((resolve, reject) => {
+        const listener = (msg: any) => {
+          if (msg.type !== 'AUTH_COMPLETE') return;
+          chrome.runtime.onMessage.removeListener(listener);
+          if (msg.success) resolve();
+          else reject(new Error(msg.error || 'Authentication failed'));
+        };
+        chrome.runtime.onMessage.addListener(listener);
+
+        // Timeout after 5 minutes
+        setTimeout(() => {
+          chrome.runtime.onMessage.removeListener(listener);
+          reject(new Error('Login timed out'));
+        }, 300_000);
       });
 
-      const params = new URL(callbackUrl).searchParams;
-      const code = params.get('code');
-      const state = params.get('state');
-      if (!code || !state) throw new Error('Missing code or state');
-
-      await chrome.runtime.sendMessage({ type: 'EXCHANGE_CODE', platform, code, state });
-
-      // Reload viewer info
+      // Reload viewer info from storage (service worker already stored it)
       const local = await getLocalStorage();
       setViewerInfo(local.viewer_info || null);
     } catch (err) {

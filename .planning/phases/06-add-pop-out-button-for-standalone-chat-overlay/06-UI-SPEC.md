@@ -5,6 +5,7 @@ status: draft
 shadcn_initialized: false
 preset: none
 created: 2026-04-07
+revised: 2026-04-07
 ---
 
 # Phase 6 — UI Design Contract
@@ -43,8 +44,9 @@ Declared values from existing `@theme` block in `src/ui/styles.css`:
 | 3xl | 64px (`--spacing-16`) | Page-level spacing |
 
 Exceptions:
-- Header buttons: 6px (`py-1.5`) vertical padding matching existing collapse button — preserves existing header height
-- Pop-out and "Switch" buttons in header: minimum 28px touch target height (existing header height constraint)
+
+- **Header button vertical padding — `py-1.5` (6px):** This value is NOT declared in the project's custom `@theme` block. It is part of Tailwind 4's built-in default fractional spacing scale (`--spacing: 0.25rem` base, `1.5` step = `0.375rem` = 6px), which is available via `@import "tailwindcss"`. The existing collapse button already uses `px-2 py-1.5` (documented in CONTEXT.md code context). The new pop-out button and "Switch to native" button inherit this same existing class without introducing a new 6px layout value anywhere in this phase. No `--spacing-1.5` custom token is added to `styles.css`; the executor uses `py-1.5` as a Tailwind utility class referencing the framework's default scale, identical to current collapse button usage. This is a Tailwind fractional scale inheritance, not a new design system exception.
+- Pop-out and "Switch to native" buttons in header: minimum 28px touch target height (existing header height constraint)
 - "Chat popped out" indicator banner: 8px (`--spacing-2`) vertical padding, 12px (`--spacing-3`) horizontal padding — matches existing connection-failed banner pattern
 - "Switch to AllChat" injected button in native pop-out: 8px vertical, 12px horizontal — must not expand native chat chrome
 
@@ -54,14 +56,16 @@ Source: existing header layout `px-2 py-1.5` from `ChatContainer.tsx`.
 
 ## Typography
 
-All roles use Inter (variable font stack). DM Mono reserved for monospace/code content only. No new type sizes are introduced — only the existing 4 sizes from the token set are used.
+All roles use Inter (variable font stack). DM Mono reserved for monospace/code content only. No new type sizes are introduced — only the existing sizes from the token set are used.
 
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
 | Body (messages, banner text) | 14px (`--text-base: 0.875rem`) | 400 | 1.5 |
-| Label (buttons, badges, small status text) | 13px (`--text-sm: 0.8125rem`) | 400 | 1.2 |
+| Label (buttons, badges, small status text) | 12px (`text-xs` from Tailwind default, maps to `0.75rem`) | 400 | 1.2 |
 | Emphasis (usernames, action labels) | 13px (`--text-sm: 0.8125rem`) | 600 | 1.2 |
 | Caption (xs status, empty state sub-text) | 11px (`--text-xs: 0.6875rem`) | 400 | 1.4 |
+
+Note: Label stepped down to 12px (`text-xs` Tailwind default, `0.75rem`) from the prior 13px draft value to achieve a perceptible 2px separation from Body (14px). 12px is distinguishable at a glance; 13px was too close. The project's custom `--text-xs` token maps to 11px (0.6875rem) which is reserved for Caption. For Label, use Tailwind's built-in `text-xs` class (0.75rem = 12px) — this is a pre-existing utility available from `@import "tailwindcss"` and does not require a new token declaration.
 
 Source: pre-populated from existing `@theme` typography tokens and `ChatContainer.tsx` usage patterns.
 
@@ -107,7 +111,7 @@ Source: pre-populated from `ChatContainer.tsx` existing patterns and `src/ui/sty
 |-----------|----------|-------------|
 | Pop-out button | `ChatContainer.tsx` header, rightmost after platform badge | Icon button (⇗ external-link SVG, 16×16px). Triggers `window.open()` via postMessage to content script. |
 | "Switch to native" button | `ChatContainer.tsx` header, between connection dot group and pop-out button | Icon button or compact text link. Swaps AllChat for native chat. Visible in both in-page and pop-out modes. |
-| "Chat popped out" indicator | In-page iframe body (replaces normal chat UI when popped out) | Surface-colored banner with text and "Bring back" button. |
+| "Chat popped out" indicator | In-page iframe body (replaces normal chat UI when popped out) | Surface-colored banner with text and "Bring back chat" button. |
 | "Switch to AllChat" injected button | Injected into native pop-out chat DOM on Twitch, YouTube, Kick | Branded button with InfinityLogo (24px) + label. Injected by content script. |
 
 ### Existing elements unchanged
@@ -144,7 +148,7 @@ Source: pre-populated from `ChatContainer.tsx` existing patterns and `src/ui/sty
 | State | Visual |
 |-------|--------|
 | Visible | Fills full iframe area. Surface background. Centered content. |
-| "Bring back" button | `bg-[var(--color-surface-2)] hover:bg-[var(--color-neutral-700)] text-text text-sm px-3 py-1.5 rounded transition-colors` |
+| "Bring back chat" button | `bg-[var(--color-surface-2)] hover:bg-[var(--color-neutral-700)] text-text text-xs px-3 py-1.5 rounded transition-colors` |
 
 ### "Switch to AllChat" injected button
 
@@ -168,9 +172,9 @@ Source: pre-populated from `ChatContainer.tsx` existing patterns and `src/ui/sty
 | "Switch to AllChat" button `aria-label` | `Open AllChat in this window` |
 | "Chat popped out" heading | `Chat is open in a separate window` |
 | "Chat popped out" body | `Your chat is running in the pop-out window.` |
-| "Bring back" button label | `Bring back` |
+| "Bring back chat" button label | `Bring back chat` |
 | Empty state (pop-out window, no messages yet) | Heading: `Waiting for messages...` / Body: `Messages from {displayName} will appear here` — identical to existing empty state in ChatContainer |
-| Error state (pop-out window fails to connect) | `Connection failed after {N} attempts` + `Retry` button — reuse existing connection-failed banner pattern |
+| Error state (pop-out window fails to connect) | `Connection failed after {N} attempts` + `Retry connection` button — reuse existing connection-failed banner pattern |
 | Destructive actions | None in this phase — no confirmation dialogs required |
 
 Source: heading/body/error patterns pre-populated from existing `ChatContainer.tsx` copy. New copy defined above for new elements.
@@ -184,9 +188,9 @@ All icons are inline SVG at 16×16px (`w-4 h-4`). No external icon library.
 | Icon | Element | SVG shape |
 |------|---------|-----------|
 | Pop-out (external link arrow ⇗) | Pop-out button | `<path d="M10 6L18 6M18 6L18 14M18 6L8 16M4 4h6v2H6v10h10v-4h2v6H4V4z" .../>` at 24×24 viewBox, scaled to `w-4 h-4`. Use a standard external-link path: square with arrow pointing out of top-right corner. |
-| Left chevron or X | "Switch to native" button | Use minimal text label instead of icon if icon would add visual noise: `< Native` in 11px (`text-xs`) caps. Or use a left-arrow SVG (`←`) at `w-3 h-3`. |
+| Left chevron or X | "Switch to native" button | Use minimal text label instead of icon if icon would add visual noise: `< Native` in 12px (`text-xs`) caps. Or use a left-arrow SVG (`←`) at `w-3 h-3`. |
 
-Decision for "Switch to native": use text label `Native` with a leading `←` SVG (12×12px, `w-3 h-3`) placed left of text. Label is 11px (`text-xs`) weight 400. This matches the compact header space and is self-explanatory without hover tooltip dependency.
+Decision for "Switch to native": use text label `Native` with a leading `←` SVG (12×12px, `w-3 h-3`) placed left of text. Label is 12px (`text-xs` Tailwind utility) weight 400. This matches the compact header space and is self-explanatory without hover tooltip dependency.
 
 ---
 
@@ -209,7 +213,7 @@ Decision for "Switch to native": use text label `Native` with a leading `←` SV
   InfinityLogo (32px)
   "Chat is open in a separate window"  (14px, --color-text-sub)
   "Your chat is running in the pop-out window."  (13px, --color-text-dim)
-  [Bring back] button
+  [Bring back chat] button
 ```
 
 - Container: `flex flex-col items-center justify-center h-full gap-3`

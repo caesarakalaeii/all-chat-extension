@@ -19,6 +19,7 @@ import { InfinityLogo } from './InfinityLogo';
 import { UserAvatar } from './UserAvatar';
 import { AllChatBadge } from './AllChatBadge';
 import { PremiumBadge } from './PremiumBadge';
+import { POPOUT_PORT_NAME, POPOUT_MESSAGE_BUFFER_KEY, POPOUT_MAX_MESSAGES } from '../../lib/types/popout';
 
 export type Platform = 'twitch' | 'youtube' | 'kick' | 'tiktok';
 
@@ -95,6 +96,10 @@ interface ConnectionStatus {
 }
 
 export default function ChatContainer({ platform, streamer, displayName, twitchChannel }: ChatContainerProps) {
+  // Detect pop-out mode via URL param (set by content script when opening pop-out window)
+  const urlParams = new URLSearchParams(window.location.search);
+  const isPopOut = urlParams.get('popout') === '1';
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
     state: 'connecting',
@@ -107,12 +112,24 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [viewerNameColor, setViewerNameColor] = useState<string | null>(null);
   const [viewerNameGradient, setViewerNameGradient] = useState<string | null>(null);
+  const [isPoppedOut, setIsPoppedOut] = useState(false); // in-page: true when pop-out window is open
 
   // Parse gradient JSON string for use in style — null when absent or invalid
   const parsedGradient = useMemo(
     () => parseNameGradient(viewerNameGradient ?? undefined),
     [viewerNameGradient],
   );
+
+  // Mode-aware helper: send messages to content script or service worker
+  const sendToContentScript = (message: Record<string, unknown>) => {
+    if (isPopOut) {
+      chrome.runtime.sendMessage(message).catch((err) => {
+        console.warn('[AllChat UI] sendMessage error:', err);
+      });
+    } else {
+      window.parent.postMessage(message, '*');
+    }
+  };
 
   // Debug: Log connection status changes
   useEffect(() => {
@@ -145,8 +162,26 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
         setViewerNameColor(color);
         const gradient = await getNameGradient();
         setViewerNameGradient(gradient);
-        // Load collapse state from localStorage
-        if (storage.ui_collapsed !== undefined) {
+
+        // In pop-out mode: load message history from chrome.storage.local buffer
+        if (isPopOut) {
+          try {
+            const result = await chrome.storage.local.get(POPOUT_MESSAGE_BUFFER_KEY);
+            const buffer = result[POPOUT_MESSAGE_BUFFER_KEY];
+            if (buffer) {
+              const parsed = JSON.parse(buffer as string) as ChatMessage[];
+              setMessages(parsed);
+              // Clean up the buffer after reading
+              await chrome.storage.local.remove(POPOUT_MESSAGE_BUFFER_KEY);
+              console.log(`[AllChat UI] Loaded ${parsed.length} messages from pop-out buffer`);
+            }
+          } catch (err) {
+            console.error('[AllChat UI] Failed to load pop-out message buffer:', err);
+          }
+        }
+
+        // Load collapse state from localStorage (only relevant in in-page mode)
+        if (!isPopOut && storage.ui_collapsed !== undefined) {
           setIsCollapsed(storage.ui_collapsed);
           // Notify parent window of initial collapsed state
           window.parent.postMessage({
@@ -162,79 +197,133 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
     };
 
     loadAuth();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Handle incoming messages from either postMessage or chrome.runtime.Port
+  const handleIncomingMessage = (data: Record<string, unknown>) => {
+    if (!data || !data.type) return;
+
+    console.log('[AllChat UI] Received message:', data.type, data);
+
+    // Handle connection state updates
+    if (data.type === 'CONNECTION_STATE') {
+      const status = data.data as ConnectionStatus;
+      console.log('[AllChat UI] Connection state:', status.state, 'Full status:', status);
+      setConnectionStatus(status);
+      console.log('[AllChat UI] setConnectionStatus called with:', status);
+
+      // Start countdown if reconnecting
+      if (status.state === 'reconnecting' && status.reconnectIn) {
+        setReconnectCountdown(Math.ceil(status.reconnectIn / 1000));
+      } else {
+        setReconnectCountdown(null);
+      }
+      return;
+    }
+
+    // Messages come through parent window from content script
+    if (data.type === 'WS_MESSAGE') {
+      const wsMessage = data.data as { type: string; data?: ChatMessage };
+      if (wsMessage.type === 'connected') {
+        console.log('[AllChat UI] Connected to chat stream');
+      } else if (wsMessage.type === 'chat_message') {
+        console.log('[AllChat UI] Received chat message');
+
+        // Process the message: sort badges and resolve badge icons
+        let processedMessage = wsMessage.data as ChatMessage;
+        processedMessage = sortMessageBadges(processedMessage);
+
+        // Add the message immediately (deduplicated by ID), then update in-place when badge icons resolve
+        setMessages((prev) => {
+          if (processedMessage.id && prev.some((m) => m.id === processedMessage.id)) {
+            return prev; // Already present — discard duplicate delivery
+          }
+          return [...prev, processedMessage].slice(-50);
+        });
+
+        resolveTwitchBadgeIcons(processedMessage).then((enrichedMessage) => {
+          setMessages((prev) => {
+            const existingIndex = prev.findIndex((m) => m.id === enrichedMessage.id);
+            if (existingIndex !== -1) {
+              const updated = [...prev];
+              updated[existingIndex] = enrichedMessage;
+              return updated.slice(-50);
+            }
+            // Message was evicted from the 50-message window before badges resolved — discard
+            return prev;
+          });
+        });
+      } else if (wsMessage.type === 'ping') {
+        // Ignore pings
+      }
+    }
+
+    // Pop-out state changes
+    if (data.type === 'POPOUT_OPENED') {
+      setIsPoppedOut(true);
+    }
+    if (data.type === 'POPOUT_CLOSED') {
+      setIsPoppedOut(false);
+    }
+  };
 
   useEffect(() => {
     console.log('[AllChat UI] Listening for WebSocket messages...');
 
-    // Request current connection state from parent window (content script will relay to service worker)
-    window.parent.postMessage({ type: 'GET_CONNECTION_STATE' }, '*');
-    console.log('[AllChat UI] Requested current connection state');
+    if (isPopOut) {
+      // Pop-out mode: use chrome.runtime.Port for direct SW communication
+      const port = chrome.runtime.connect({ name: POPOUT_PORT_NAME });
 
-    // Listen for WebSocket messages from service worker
-    const handleMessage = async (event: MessageEvent) => {
-      console.log('[AllChat UI] Received message:', event.data.type, event.data);
+      port.onMessage.addListener((message: Record<string, unknown>) => {
+        handleIncomingMessage(message);
+      });
 
-      // Handle connection state updates
-      if (event.data.type === 'CONNECTION_STATE') {
-        const status: ConnectionStatus = event.data.data;
-        console.log('[AllChat UI] Connection state:', status.state, 'Full status:', status);
-        setConnectionStatus(status);
-        console.log('[AllChat UI] setConnectionStatus called with:', status);
-
-        // Start countdown if reconnecting
-        if (status.state === 'reconnecting' && status.reconnectIn) {
-          setReconnectCountdown(Math.ceil(status.reconnectIn / 1000));
-        } else {
-          setReconnectCountdown(null);
-        }
-        return;
-      }
-
-      // Messages come through parent window from content script
-      if (event.data.type === 'WS_MESSAGE') {
-        const wsMessage = event.data.data;
-        if (wsMessage.type === 'connected') {
-          console.log('[AllChat UI] Connected to chat stream');
-        } else if (wsMessage.type === 'chat_message') {
-          console.log('[AllChat UI] Received chat message');
-
-          // Process the message: sort badges and resolve badge icons
-          let processedMessage = wsMessage.data as ChatMessage;
-          processedMessage = sortMessageBadges(processedMessage);
-
-          // Add the message immediately (deduplicated by ID), then update in-place when badge icons resolve
-          setMessages((prev) => {
-            if (processedMessage.id && prev.some((m) => m.id === processedMessage.id)) {
-              return prev; // Already present — discard duplicate delivery
+      // Handle port disconnect (SW restart) — reconnect with backoff
+      port.onDisconnect.addListener(() => {
+        console.warn('[AllChat UI PopOut] Port disconnected, reconnecting...');
+        // Retry connection after 1s
+        setTimeout(() => {
+          const newPort = chrome.runtime.connect({ name: POPOUT_PORT_NAME });
+          newPort.onMessage.addListener((message: Record<string, unknown>) => {
+            handleIncomingMessage(message);
+          });
+          // Re-request connection state
+          chrome.runtime.sendMessage({ type: 'GET_CONNECTION_STATE' }).then((response) => {
+            if (response?.success) {
+              handleIncomingMessage({ type: 'CONNECTION_STATE', data: response.data });
             }
-            return [...prev, processedMessage].slice(-50);
+          }).catch((err) => {
+            console.warn('[AllChat UI PopOut] GET_CONNECTION_STATE error:', err);
           });
+        }, 1000);
+      });
 
-          resolveTwitchBadgeIcons(processedMessage).then((enrichedMessage) => {
-            setMessages((prev) => {
-              const existingIndex = prev.findIndex((m) => m.id === enrichedMessage.id);
-              if (existingIndex !== -1) {
-                const updated = [...prev];
-                updated[existingIndex] = enrichedMessage;
-                return updated.slice(-50);
-              }
-              // Message was evicted from the 50-message window before badges resolved — discard
-              return prev;
-            });
-          });
-        } else if (wsMessage.type === 'ping') {
-          // Ignore pings
+      // Connect websocket via direct sendMessage (not postMessage)
+      chrome.runtime.sendMessage({ type: 'CONNECT_WEBSOCKET', streamerUsername: streamer }).catch((err) => {
+        console.warn('[AllChat UI PopOut] CONNECT_WEBSOCKET error:', err);
+      });
+      chrome.runtime.sendMessage({ type: 'GET_CONNECTION_STATE' }).then((response) => {
+        if (response?.success) {
+          handleIncomingMessage({ type: 'CONNECTION_STATE', data: response.data });
         }
-      }
-    };
+      }).catch((err) => {
+        console.warn('[AllChat UI PopOut] GET_CONNECTION_STATE error:', err);
+      });
 
-    window.addEventListener('message', handleMessage);
+      return () => port.disconnect();
+    } else {
+      // In-page iframe mode: use existing window.parent.postMessage relay
+      window.parent.postMessage({ type: 'GET_CONNECTION_STATE' }, '*');
+      console.log('[AllChat UI] Requested current connection state');
 
-    return () => {
-      window.removeEventListener('message', handleMessage);
-    };
-  }, []);
+      const messageHandler = (event: MessageEvent) => {
+        handleIncomingMessage(event.data as Record<string, unknown>);
+      };
+      window.addEventListener('message', messageHandler);
+
+      return () => window.removeEventListener('message', messageHandler);
+    }
+  }, [isPopOut, streamer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Countdown timer for reconnection
   useEffect(() => {
@@ -340,16 +429,16 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
     // Inline feedback handled by MessageInput — no toast needed
   };
 
-  // Toggle collapse state and persist it
+  // Toggle collapse state and persist it (in-page only)
   const toggleCollapse = async () => {
     const newCollapsedState = !isCollapsed;
     setIsCollapsed(newCollapsedState);
 
     // Notify parent window to resize container
-    window.parent.postMessage({
+    sendToContentScript({
       type: 'UI_COLLAPSED',
       collapsed: newCollapsedState
-    }, '*');
+    });
 
     try {
       await setLocalStorage({ ui_collapsed: newCollapsedState });
@@ -358,34 +447,55 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
     }
   };
 
+  // Handle pop-out button click — sends POPOUT_REQUEST to content script
+  const handlePopOut = () => {
+    // Send pop-out request to content script with current message buffer (T-06-03: cap at POPOUT_MAX_MESSAGES)
+    const messagesToTransfer = messages.slice(-POPOUT_MAX_MESSAGES);
+    sendToContentScript({
+      type: 'POPOUT_REQUEST',
+      platform,
+      streamer,
+      displayName,
+      twitchChannel,
+      messages: messagesToTransfer,
+    });
+  };
+
+  // Handle "Switch to native" button click
+  const handleSwitchToNative = () => {
+    sendToContentScript({ type: 'SWITCH_TO_NATIVE' });
+  };
+
   return (
     <div className="h-full flex flex-col bg-bg">
       {/* Header */}
       <div className="px-2 py-1.5 bg-surface border-b border-border flex items-center">
-        {/* Left: collapse button */}
-        <button
-          onClick={toggleCollapse}
-          className="text-[var(--color-text-dim)] hover:text-text transition-colors"
-          title={isCollapsed ? 'Expand' : 'Collapse'}
-          aria-label={isCollapsed ? 'Expand' : 'Collapse'}
-        >
-          <svg
-            className="w-4 h-4 transition-transform"
-            style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+        {/* Left: collapse button (hidden in pop-out mode — standalone window has its own close) */}
+        {!isPopOut && (
+          <button
+            onClick={toggleCollapse}
+            className="text-[var(--color-text-dim)] hover:text-text transition-colors"
+            title={isCollapsed ? 'Expand' : 'Collapse'}
+            aria-label={isCollapsed ? 'Expand' : 'Collapse'}
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
+            <svg
+              className="w-4 h-4 transition-transform"
+              style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+        )}
 
         {/* Center: InfinityLogo */}
         <div className="flex-1 flex justify-center">
           <InfinityLogo size={24} />
         </div>
 
-        {/* Right: connection dot + platform badge */}
+        {/* Right: connection dot + platform badge + switch to native + pop-out */}
         <div className="flex items-center gap-1.5">
           {/* Connection dot */}
           <span className={`w-2 h-2 rounded-full ${
@@ -401,183 +511,225 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
             style={{ backgroundColor: `var(--color-${platform})` }}
             title={platform}
           />
+          {/* Switch to native button (per D-03) */}
+          <button
+            onClick={handleSwitchToNative}
+            className="text-[var(--color-text-dim)] hover:text-text transition-colors flex items-center gap-0.5"
+            title="Switch to native chat"
+            aria-label="Switch to native chat"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            <span className="text-xs">Native</span>
+          </button>
+          {/* Pop-out button (per D-01, D-02) — rightmost in header; hidden when chat is already popped out */}
+          {!isPoppedOut && (
+            <button
+              onClick={handlePopOut}
+              className="text-[var(--color-text-dim)] hover:text-text transition-colors"
+              title="Open in new window"
+              aria-label="Open chat in new window"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 
       {!isCollapsed && (
         <>
-          {/* Connection Failed Banner */}
-          {connectionStatus.state === 'failed' && (
-            <div className={`px-3 py-2 border-b flex flex-col gap-2 ${
-              connectionStatus.error === 'OVERLAY_NOT_PUBLIC'
-                ? 'bg-orange-900/50 border-orange-700'
-                : 'bg-red-900/50 border-red-700'
-            }`}>
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  {connectionStatus.error === 'OVERLAY_NOT_PUBLIC' ? (
-                    <>
-                      <div className="text-sm font-medium text-orange-200">Overlay Not Public</div>
-                      <div className="text-xs text-orange-300 mt-1">
-                        {connectionStatus.message || `${streamer} needs to enable "Public for Viewers" in their overlay settings`}
-                      </div>
-                      <div className="text-xs text-orange-400 mt-1">
-                        They can do this at <a href="https://allch.at" target="_blank" rel="noopener noreferrer" className="underline">allch.at</a>
-                      </div>
-                    </>
-                  ) : (
-                    <span className="text-sm text-red-200">Connection failed after {connectionStatus.maxAttempts} attempts</span>
-                  )}
-                </div>
-                <button
-                  onClick={() => window.location.reload()}
-                  className={`px-3 py-1 text-text text-xs rounded transition-colors ${
-                    connectionStatus.error === 'OVERLAY_NOT_PUBLIC'
-                      ? 'bg-orange-700 hover:bg-orange-600'
-                      : 'bg-red-700 hover:bg-red-600'
-                  }`}
-                >
-                  Retry
-                </button>
-              </div>
+          {isPoppedOut ? (
+            /* "Chat popped out" indicator banner (D-05) */
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 bg-bg">
+              <InfinityLogo size={32} />
+              <div className="text-sm text-[var(--color-text-sub)]">Chat is open in a separate window</div>
+              <div className="text-[13px] text-[var(--color-text-dim)]">Your chat is running in the pop-out window.</div>
+              <button
+                onClick={() => sendToContentScript({ type: 'CLOSE_POPOUT' })}
+                className="bg-[var(--color-surface-2)] hover:bg-[var(--color-neutral-700)] text-text text-xs px-3 py-1.5 rounded transition-colors"
+              >
+                Bring back chat
+              </button>
             </div>
-          )}
-
-          {/* Messages */}
-          <div id="messages-container" className="flex-1 overflow-y-auto p-3 space-y-2">
-            {messages.length === 0 ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center text-[var(--color-text-dim)]">
-                  <p className="text-sm">Waiting for messages...</p>
-                  <p className="text-xs mt-1">Messages from {displayName} will appear here</p>
-                </div>
-              </div>
-            ) : (
-              messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`message-enter p-2 rounded bg-surface/50 platform-${message.platform}`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    {/* Avatar (with optional frame and flair) */}
-                    <UserAvatar
-                      avatarUrl={message.user.avatar_url}
-                      frameUrl={message.user.avatar_frame_url}
-                      flairUrl={message.user.avatar_flair_url}
-                      size={32}
-                      displayName={message.user.display_name}
-                    />
-
-                    {/* Platform icon */}
-                    <PlatformIcon platform={message.platform as Platform} />
-
-                    {/* Badges */}
-                    {message.user.badges?.map((badge, idx) => (
-                      badge.name === 'allchat' ? (
-                        <AllChatBadge key={idx} size={18} title={badge.name} />
-                      ) : badge.name === 'allchat-premium' ? (
-                        <PremiumBadge key={idx} size={18} title={badge.name} />
-                      ) : badge.icon_url ? (
-                        <img
-                          key={idx}
-                          src={badge.icon_url}
-                          alt={badge.name}
-                          style={{ height: '1em', width: 'auto', objectFit: 'contain', display: 'inline-block' }}
-                          title={`${badge.name} (${badge.version})`}
-                        />
-                      ) : (
-                        <span
-                          key={idx}
-                          title={badge.version ? `${badge.name} (${badge.version})` : badge.name}
-                          style={{
-                            display: 'inline-block',
-                            fontSize: '0.65em',
-                            lineHeight: '1',
-                            padding: '1px 4px',
-                            borderRadius: '3px',
-                            backgroundColor: 'var(--color-surface-2, #333)',
-                            color: 'var(--color-text-sub, #aaa)',
-                            fontWeight: 600,
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.02em',
-                            flexShrink: 0,
-                          }}
-                        >
-                          {badge.version || badge.name}
-                        </span>
-                      )
-                    ))}
-
-                    {/* Username */}
-                    {(() => {
-                      const isOwnMessage = viewerInfo && message.user.username === viewerInfo.username;
-                      // For the viewer's own messages, prefer the locally-stored gradient/color
-                      // (which may differ from what the backend cached).
-                      // For everyone else, use the gradient/color carried in the message itself.
-                      const messageGradient = parseNameGradient(message.user.name_gradient);
-                      const activeGradient: NameGradient | null = isOwnMessage
-                        ? (parsedGradient ?? messageGradient)
-                        : messageGradient;
-                      const activeColor: string = isOwnMessage && viewerNameColor
-                        ? viewerNameColor
-                        : (message.user.color || '#fff');
-
-                      if (activeGradient) {
-                        return (
-                          <span
-                            className="font-semibold text-sm text-transparent"
-                            style={{
-                              backgroundImage: buildGradientCSS(activeGradient),
-                              backgroundClip: 'text',
-                              WebkitBackgroundClip: 'text',
-                            }}
-                          >
-                            {message.user.display_name || message.user.username}
-                          </span>
-                        );
-                      }
-                      return (
-                        <span
-                          className="font-semibold text-sm"
-                          style={{ color: activeColor }}
-                        >
-                          {message.user.display_name || message.user.username}
-                        </span>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Message text with emotes */}
-                  <div className="text-sm text-text">
-                    {renderMessageContent(message)}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Footer / Message Input */}
-          {loadingAuth ? (
-            <div className="px-3 py-3 bg-surface border-t border-border text-center">
-              <p className="text-xs text-[var(--color-text-dim)]">Loading...</p>
-            </div>
-          ) : viewerToken ? (
-            <MessageInput
-              platform={platform}
-              streamer={streamer}
-              twitchChannel={twitchChannel}
-              token={viewerToken}
-              onAuthError={handleAuthError}
-              onSendSuccess={handleMessageSent}
-            />
           ) : (
-            <div className="border-t border-border">
-              <LoginPrompt
-                platform={platform}
-                streamer={displayName}
-                onLogin={handleLogin}
-              />
-            </div>
+            <>
+              {/* Connection Failed Banner */}
+              {connectionStatus.state === 'failed' && (
+                <div className={`px-3 py-2 border-b flex flex-col gap-2 ${
+                  connectionStatus.error === 'OVERLAY_NOT_PUBLIC'
+                    ? 'bg-orange-900/50 border-orange-700'
+                    : 'bg-red-900/50 border-red-700'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      {connectionStatus.error === 'OVERLAY_NOT_PUBLIC' ? (
+                        <>
+                          <div className="text-sm font-medium text-orange-200">Overlay Not Public</div>
+                          <div className="text-xs text-orange-300 mt-1">
+                            {connectionStatus.message || `${streamer} needs to enable "Public for Viewers" in their overlay settings`}
+                          </div>
+                          <div className="text-xs text-orange-400 mt-1">
+                            They can do this at <a href="https://allch.at" target="_blank" rel="noopener noreferrer" className="underline">allch.at</a>
+                          </div>
+                        </>
+                      ) : (
+                        <span className="text-sm text-red-200">Connection failed after {connectionStatus.maxAttempts} attempts</span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => window.location.reload()}
+                      className={`px-3 py-1 text-text text-xs rounded transition-colors ${
+                        connectionStatus.error === 'OVERLAY_NOT_PUBLIC'
+                          ? 'bg-orange-700 hover:bg-orange-600'
+                          : 'bg-red-700 hover:bg-red-600'
+                      }`}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Messages */}
+              <div id="messages-container" className="flex-1 overflow-y-auto p-3 space-y-2">
+                {messages.length === 0 ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center text-[var(--color-text-dim)]">
+                      <p className="text-sm">Waiting for messages...</p>
+                      <p className="text-xs mt-1">Messages from {displayName} will appear here</p>
+                    </div>
+                  </div>
+                ) : (
+                  messages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`message-enter p-2 rounded bg-surface/50 platform-${message.platform}`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        {/* Avatar (with optional frame and flair) */}
+                        <UserAvatar
+                          avatarUrl={message.user.avatar_url}
+                          frameUrl={message.user.avatar_frame_url}
+                          flairUrl={message.user.avatar_flair_url}
+                          size={32}
+                          displayName={message.user.display_name}
+                        />
+
+                        {/* Platform icon */}
+                        <PlatformIcon platform={message.platform as Platform} />
+
+                        {/* Badges */}
+                        {message.user.badges?.map((badge, idx) => (
+                          badge.name === 'allchat' ? (
+                            <AllChatBadge key={idx} size={18} title={badge.name} />
+                          ) : badge.name === 'allchat-premium' ? (
+                            <PremiumBadge key={idx} size={18} title={badge.name} />
+                          ) : badge.icon_url ? (
+                            <img
+                              key={idx}
+                              src={badge.icon_url}
+                              alt={badge.name}
+                              style={{ height: '1em', width: 'auto', objectFit: 'contain', display: 'inline-block' }}
+                              title={`${badge.name} (${badge.version})`}
+                            />
+                          ) : (
+                            <span
+                              key={idx}
+                              title={badge.version ? `${badge.name} (${badge.version})` : badge.name}
+                              style={{
+                                display: 'inline-block',
+                                fontSize: '0.65em',
+                                lineHeight: '1',
+                                padding: '1px 4px',
+                                borderRadius: '3px',
+                                backgroundColor: 'var(--color-surface-2, #333)',
+                                color: 'var(--color-text-sub, #aaa)',
+                                fontWeight: 600,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.02em',
+                                flexShrink: 0,
+                              }}
+                            >
+                              {badge.version || badge.name}
+                            </span>
+                          )
+                        ))}
+
+                        {/* Username */}
+                        {(() => {
+                          const isOwnMessage = viewerInfo && message.user.username === viewerInfo.username;
+                          // For the viewer's own messages, prefer the locally-stored gradient/color
+                          // (which may differ from what the backend cached).
+                          // For everyone else, use the gradient/color carried in the message itself.
+                          const messageGradient = parseNameGradient(message.user.name_gradient);
+                          const activeGradient: NameGradient | null = isOwnMessage
+                            ? (parsedGradient ?? messageGradient)
+                            : messageGradient;
+                          const activeColor: string = isOwnMessage && viewerNameColor
+                            ? viewerNameColor
+                            : (message.user.color || '#fff');
+
+                          if (activeGradient) {
+                            return (
+                              <span
+                                className="font-semibold text-sm text-transparent"
+                                style={{
+                                  backgroundImage: buildGradientCSS(activeGradient),
+                                  backgroundClip: 'text',
+                                  WebkitBackgroundClip: 'text',
+                                }}
+                              >
+                                {message.user.display_name || message.user.username}
+                              </span>
+                            );
+                          }
+                          return (
+                            <span
+                              className="font-semibold text-sm"
+                              style={{ color: activeColor }}
+                            >
+                              {message.user.display_name || message.user.username}
+                            </span>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Message text with emotes */}
+                      <div className="text-sm text-text">
+                        {renderMessageContent(message)}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Footer / Message Input */}
+              {loadingAuth ? (
+                <div className="px-3 py-3 bg-surface border-t border-border text-center">
+                  <p className="text-xs text-[var(--color-text-dim)]">Loading...</p>
+                </div>
+              ) : viewerToken ? (
+                <MessageInput
+                  platform={platform}
+                  streamer={streamer}
+                  twitchChannel={twitchChannel}
+                  token={viewerToken}
+                  onAuthError={handleAuthError}
+                  onSendSuccess={handleMessageSent}
+                />
+              ) : (
+                <div className="border-t border-border">
+                  <LoginPrompt
+                    platform={platform}
+                    streamer={displayName}
+                    onLogin={handleLogin}
+                  />
+                </div>
+              )}
+            </>
           )}
         </>
       )}

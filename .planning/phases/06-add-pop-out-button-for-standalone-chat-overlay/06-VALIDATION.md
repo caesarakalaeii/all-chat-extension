@@ -2,7 +2,7 @@
 phase: 6
 slug: add-pop-out-button-for-standalone-chat-overlay
 status: draft
-nyquist_compliant: false
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-04-07
 ---
@@ -46,6 +46,9 @@ created: 2026-04-07
 | 06-02-03 | 02 | 1 | POP-05 | — | N/A | E2E | `npx playwright test tests/test-popout-button.spec.ts -x` | ❌ W0 | ⬜ pending |
 | 06-03-01 | 03 | 2 | POP-06 | — | N/A | E2E | `npx playwright test tests/test-switch-native.spec.ts -x` | ❌ W0 | ⬜ pending |
 | 06-03-02 | 03 | 2 | POP-07 | — | N/A | E2E | `npx playwright test tests/test-switch-native.spec.ts -x` | ❌ W0 | ⬜ pending |
+| 06-04-01 | 04 | 3 | D-15 | — | N/A | Static | `npx tsc --noEmit` | N/A | ⬜ pending |
+| 06-04-02 | 04 | 3 | D-15 | — | N/A | E2E | `npx tsc --noEmit && npm test -- --grep-invert @agent` | N/A | ⬜ pending |
+| 06-05-01 | 05 | 3 | D-11,D-16 | — | Extension-origin URLs only | E2E | `npx tsc --noEmit` | N/A | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 

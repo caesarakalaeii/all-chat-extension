@@ -642,7 +642,7 @@ async function openAuthTab(platform: string, streamerUsername?: string): Promise
 
   const listener = async (
     updatedTabId: number,
-    changeInfo: chrome.tabs.TabChangeInfo,
+    changeInfo: chrome.tabs.OnUpdatedInfo,
     updatedTab: chrome.tabs.Tab,
   ) => {
     if (updatedTabId !== tabId) return;

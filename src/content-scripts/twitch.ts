@@ -15,14 +15,23 @@ class TwitchDetector extends PlatformDetector {
   platform = 'twitch' as const;
 
   extractStreamerUsername(): string | null {
-    // Extract from URL: twitch.tv/username or twitch.tv/username/video/123
-    const match = window.location.pathname.match(/^\/([^/]+)/);
+    const pathname = window.location.pathname;
+
+    // Handle Twitch pop-out chat URL: /popout/{channel}/chat
+    // extractStreamerUsername returns "popout" without this fix (RESEARCH Pitfall 4)
+    const popoutMatch = pathname.match(/^\/popout\/([^/]+)\/chat/);
+    if (popoutMatch) {
+      return popoutMatch[1];
+    }
+
+    // Standard: twitch.tv/username or twitch.tv/username/video/123
+    const match = pathname.match(/^\/([^/]+)/);
     if (!match) return null;
 
     const username = match[1];
 
     // Exclude special pages
-    const excluded = ['directory', 'downloads', 'jobs', 'turbo', 'settings', 'subscriptions', 'inventory', 'wallet', 'drops'];
+    const excluded = ['directory', 'downloads', 'jobs', 'turbo', 'settings', 'subscriptions', 'inventory', 'wallet', 'drops', 'popout'];
     if (excluded.includes(username.toLowerCase())) {
       return null;
     }
@@ -287,6 +296,32 @@ function setupGlobalMessageRelay() {
       } catch (err: any) {
         source.postMessage({ type: 'LOGIN_ERROR', error: err.message }, extensionOrigin);
       }
+    }
+
+    // Guard: only handle pop-out messages from the AllChat extension origin (T-06-09)
+    if (event.origin !== extensionOrigin) return;
+
+    // Handle pop-out request from AllChat iframe
+    if (event.data.type === 'POPOUT_REQUEST' && globalDetector) {
+      globalDetector.handlePopoutRequest(event.data);
+    }
+
+    // Handle "Switch to native" from AllChat iframe (D-14)
+    if (event.data.type === 'SWITCH_TO_NATIVE' && globalDetector) {
+      globalDetector.handleSwitchToNative();
+    }
+
+    // Handle "Bring back chat" / close pop-out from AllChat iframe
+    if (event.data.type === 'CLOSE_POPOUT' && globalDetector) {
+      globalDetector.closePopout();
+      // Also notify iframe that popout is closed
+      const iframes = document.querySelectorAll('iframe[data-platform="twitch"]');
+      iframes.forEach((iframe) => {
+        const el = iframe as HTMLIFrameElement;
+        if (el.contentWindow) {
+          el.contentWindow.postMessage({ type: 'POPOUT_CLOSED' }, extensionOrigin);
+        }
+      });
     }
   });
 

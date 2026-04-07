@@ -45,7 +45,7 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://www.youtube.com/watch*", "https://www.youtube.com/live/*"],
+      "matches": ["https://www.youtube.com/watch*", "https://www.youtube.com/live/*", "https://www.youtube.com/live_chat*"],
       "js": ["content-scripts/youtube.js"],
       "css": ["content-scripts/styles.css"],
       "run_at": "document_idle"

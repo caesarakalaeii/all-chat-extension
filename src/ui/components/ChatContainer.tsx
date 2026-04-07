@@ -23,6 +23,19 @@ import { POPOUT_PORT_NAME, POPOUT_MESSAGE_BUFFER_KEY, POPOUT_MAX_MESSAGES } from
 
 export type Platform = 'twitch' | 'youtube' | 'kick' | 'tiktok';
 
+function getNativePopoutUrl(platform: Platform, streamer: string, twitchChannel?: string): string | null {
+  switch (platform) {
+    case 'twitch':
+      return `https://www.twitch.tv/popout/${twitchChannel || streamer}/chat`;
+    case 'youtube':
+      return `https://www.youtube.com/live_chat?v=${streamer}&is_popout=1`;
+    case 'kick':
+      return null;
+    default:
+      return null;
+  }
+}
+
 /**
  * Converts a parsed NameGradient object to a CSS linear-gradient() string.
  * Inlined here because the extension is a separate repo without @/lib/utils/gradient.
@@ -463,7 +476,14 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
 
   // Handle "Switch to native" button click
   const handleSwitchToNative = () => {
-    sendToContentScript({ type: 'SWITCH_TO_NATIVE' });
+    if (isPopOut) {
+      const nativeUrl = getNativePopoutUrl(platform, streamer, twitchChannel);
+      if (nativeUrl) {
+        window.location.href = nativeUrl;
+      }
+    } else {
+      sendToContentScript({ type: 'SWITCH_TO_NATIVE' });
+    }
   };
 
   return (

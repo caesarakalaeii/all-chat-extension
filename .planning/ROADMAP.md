@@ -121,3 +121,17 @@ Plans:
 - [x] 05-02-PLAN.md — Content scripts: per-platform init check + re-enable path in all four scripts
 - [x] 05-03-PLAN.md — Popup + service worker: three per-platform toggles, active row highlight, grayscale icon per-tab
 - [x] 05-04-PLAN.md — E2E tests + README: Playwright test suite for toggle flows, documentation update
+
+### Phase 6: Add pop-out button for standalone chat overlay
+
+**Goal:** The AllChat header has a pop-out button that opens chat in a standalone browser window, with bidirectional switching between AllChat and native platform chat in both in-page and pop-out contexts — message history transfers to the pop-out, window dimensions persist, and closing the pop-out restores in-page chat automatically
+**Requirements**: D-01, D-02, D-03, D-04, D-05, D-06, D-07, D-08, D-09, D-10, D-11, D-12, D-13, D-14, D-15, D-16, D-17
+**Depends on:** Phase 5
+**Plans:** 5 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Types, storage schema, and Wave 0 test stubs for pop-out and native switch
+- [ ] 06-02-PLAN.md — ChatContainer UI: pop-out mode detection, header buttons, popped-out banner, Port communication
+- [ ] 06-03-PLAN.md — Service worker port broadcast + PlatformDetector pop-out lifecycle methods
+- [ ] 06-04-PLAN.md — Wire pop-out and native-switch messages into all four content scripts
+- [ ] 06-05-PLAN.md — Native pop-out injection (Twitch/YouTube), manifest update, bidirectional navigation + human verify

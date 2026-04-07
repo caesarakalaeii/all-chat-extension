@@ -9,9 +9,22 @@
  */
 
 import { ExtensionMessage, ExtensionResponse, StreamerInfo } from '../../lib/types/extension';
+import {
+  PopoutRequestMessage,
+  POPOUT_DEFAULTS,
+  POPOUT_MESSAGE_BUFFER_KEY,
+  POPOUT_CLOSE_POLL_MS,
+} from '../../lib/types/popout';
 
 export abstract class PlatformDetector {
   abstract platform: 'twitch' | 'youtube' | 'kick' | 'tiktok';
+
+  /** Reference to the open pop-out window (null if none open) */
+  protected popoutWindow: Window | null = null;
+  /** Interval ID for polling pop-out window.closed */
+  private popoutPollInterval: ReturnType<typeof setInterval> | null = null;
+  /** Whether AllChat is currently hidden in favor of native chat (D-14) */
+  protected allchatHidden = false;
 
   /**
    * Extract streamer username from current page URL
@@ -82,6 +95,15 @@ export abstract class PlatformDetector {
    * Subclasses may override and call super.teardown() for extra cleanup.
    */
   teardown(): void {
+    // Clean up pop-out polling
+    if (this.popoutPollInterval) {
+      clearInterval(this.popoutPollInterval);
+      this.popoutPollInterval = null;
+    }
+    // Remove switch button if present
+    this.removeSwitchToAllChatButton();
+    this.allchatHidden = false;
+
     const container = document.getElementById('allchat-container');
     if (container) {
       container.remove();
@@ -94,6 +116,218 @@ export abstract class PlatformDetector {
 
     this.showNativeChat();
     console.log(`[AllChat ${this.platform}] Teardown complete`);
+  }
+
+  /**
+   * Handle POPOUT_REQUEST from the AllChat iframe.
+   * Writes message buffer to chrome.storage.local (D-08), reads persisted
+   * window dimensions (D-07), opens the pop-out window (D-04), and starts
+   * close polling (D-10).
+   */
+  async handlePopoutRequest(data: PopoutRequestMessage): Promise<void> {
+    // Prevent opening multiple pop-outs
+    if (this.popoutWindow && !this.popoutWindow.closed) {
+      this.popoutWindow.focus();
+      return;
+    }
+
+    // D-08: Write message buffer to storage before opening window
+    if (data.messages && data.messages.length > 0) {
+      try {
+        await chrome.storage.local.set({
+          [POPOUT_MESSAGE_BUFFER_KEY]: JSON.stringify(data.messages),
+        });
+        console.log(`[AllChat ${this.platform}] Wrote ${data.messages.length} messages to pop-out buffer`);
+      } catch (err) {
+        console.error(`[AllChat ${this.platform}] Failed to write pop-out buffer:`, err);
+      }
+    }
+
+    // D-07: Read persisted window dimensions
+    const storage = await chrome.storage.local.get([
+      'popout_window_width', 'popout_window_height', 'popout_window_x', 'popout_window_y',
+    ]);
+    const w = (storage.popout_window_width as number | undefined) ?? POPOUT_DEFAULTS.width;
+    const h = (storage.popout_window_height as number | undefined) ?? POPOUT_DEFAULTS.height;
+    const x = (storage.popout_window_x as number | undefined) ?? POPOUT_DEFAULTS.x;
+    const y = (storage.popout_window_y as number | undefined) ?? POPOUT_DEFAULTS.y;
+
+    // Clamp to screen bounds (prevents off-screen placement after display config change)
+    const clampedX = Math.max(0, Math.min(x, screen.width - w));
+    const clampedY = Math.max(0, Math.min(y, screen.height - h));
+
+    // Build pop-out URL with params
+    const params = new URLSearchParams({
+      platform: data.platform,
+      streamer: data.streamer,
+      display_name: data.displayName,
+      popout: '1',
+    });
+    if (data.twitchChannel) {
+      params.set('twitch_channel', data.twitchChannel);
+    }
+    const popoutUrl = chrome.runtime.getURL(`ui/chat-container.html?${params}`);
+
+    // D-04: Open pop-out window via window.open (no new permissions needed)
+    // D-06: Standard window (no always-on-top)
+    this.popoutWindow = window.open(
+      popoutUrl,
+      'AllChatPopOut',
+      `width=${w},height=${h},left=${clampedX},top=${clampedY}`,
+    );
+
+    if (!this.popoutWindow) {
+      console.error(`[AllChat ${this.platform}] Failed to open pop-out window (popup blocked?)`);
+      return;
+    }
+
+    // Notify iframe that pop-out is open (D-05 triggers banner)
+    const iframe = document.querySelector('iframe[data-platform]') as HTMLIFrameElement | null;
+    const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
+    if (iframe?.contentWindow) {
+      iframe.contentWindow.postMessage({ type: 'POPOUT_OPENED' }, extensionOrigin);
+    }
+
+    // D-07: Save dimensions periodically while pop-out is open (beforeunload unreliable)
+    // D-10: Poll for pop-out window close
+    this.startPopoutPolling(iframe, extensionOrigin);
+  }
+
+  /**
+   * Poll the pop-out window to:
+   * - Save dimensions every 2s (D-07)
+   * - Detect close and restore in-page AllChat (D-10)
+   */
+  private startPopoutPolling(iframe: HTMLIFrameElement | null, extensionOrigin: string): void {
+    if (this.popoutPollInterval) {
+      clearInterval(this.popoutPollInterval);
+    }
+
+    let dimensionSaveCounter = 0;
+
+    this.popoutPollInterval = setInterval(() => {
+      if (!this.popoutWindow || this.popoutWindow.closed) {
+        // D-10: Pop-out closed — restore in-page AllChat
+        clearInterval(this.popoutPollInterval!);
+        this.popoutPollInterval = null;
+        this.popoutWindow = null;
+
+        if (iframe?.contentWindow) {
+          iframe.contentWindow.postMessage({ type: 'POPOUT_CLOSED' }, extensionOrigin);
+        }
+        console.log(`[AllChat ${this.platform}] Pop-out window closed, restored in-page chat`);
+        return;
+      }
+
+      // D-07: Save dimensions every 2s (4 polls at 500ms interval)
+      dimensionSaveCounter++;
+      if (dimensionSaveCounter >= 4) {
+        dimensionSaveCounter = 0;
+        try {
+          chrome.storage.local.set({
+            popout_window_width: this.popoutWindow.outerWidth,
+            popout_window_height: this.popoutWindow.outerHeight,
+            popout_window_x: this.popoutWindow.screenX,
+            popout_window_y: this.popoutWindow.screenY,
+          });
+        } catch {
+          // Cross-origin access may fail if window navigated away — ignore
+        }
+      }
+    }, POPOUT_CLOSE_POLL_MS);
+  }
+
+  /**
+   * Close the pop-out window programmatically (e.g., "Bring back chat" button).
+   */
+  closePopout(): void {
+    if (this.popoutWindow && !this.popoutWindow.closed) {
+      // Save final dimensions before closing
+      try {
+        chrome.storage.local.set({
+          popout_window_width: this.popoutWindow.outerWidth,
+          popout_window_height: this.popoutWindow.outerHeight,
+          popout_window_x: this.popoutWindow.screenX,
+          popout_window_y: this.popoutWindow.screenY,
+        });
+      } catch { /* ignore */ }
+      this.popoutWindow.close();
+    }
+    this.popoutWindow = null;
+    if (this.popoutPollInterval) {
+      clearInterval(this.popoutPollInterval);
+      this.popoutPollInterval = null;
+    }
+  }
+
+  /**
+   * Handle "Switch to native" request from in-page AllChat iframe (D-14).
+   * Hides AllChat and shows native chat. Injects "Switch to AllChat" button into native chat.
+   */
+  handleSwitchToNative(): void {
+    const container = document.getElementById('allchat-container');
+    if (container) {
+      container.style.display = 'none';
+      this.allchatHidden = true;
+    }
+    this.showNativeChat();
+    this.injectSwitchToAllChatButton();
+    console.log(`[AllChat ${this.platform}] Switched to native chat (AllChat hidden)`);
+  }
+
+  /**
+   * Handle "Switch to AllChat" — restore AllChat iframe and hide native chat (D-14 reverse).
+   */
+  handleSwitchToAllChat(): void {
+    const container = document.getElementById('allchat-container');
+    if (container) {
+      container.style.display = '';
+      this.allchatHidden = false;
+    }
+    this.hideNativeChat();
+    this.removeSwitchToAllChatButton();
+    console.log(`[AllChat ${this.platform}] Switched back to AllChat`);
+  }
+
+  /**
+   * Inject a "Switch to AllChat" button into the native chat area (D-14).
+   * Content scripts can override for platform-specific DOM targets.
+   */
+  protected injectSwitchToAllChatButton(): void {
+    if (document.getElementById('allchat-switch-btn')) return;
+
+    const btn = document.createElement('div');
+    btn.id = 'allchat-switch-btn';
+    btn.style.cssText = `
+      position: fixed; bottom: 16px; right: 16px; z-index: 9999;
+      background: oklch(0.11 0.009 270); border: 1px solid oklch(0.22 0.008 270);
+      border-radius: 6px; padding: 8px 12px; cursor: pointer;
+      display: flex; align-items: center; gap: 8px;
+      color: #fff; font-family: Inter, -apple-system, sans-serif; font-size: 13px;
+      transition: background 150ms;
+    `;
+    btn.innerHTML = `
+      <svg viewBox="0 0 100 60" width="24" height="14" fill="none" stroke="currentColor" stroke-width="6">
+        <path d="M25 50C25 28 40 10 50 10S75 28 75 50" />
+        <path d="M75 10C75 32 60 50 50 50S25 32 25 10" />
+      </svg>
+      <span>Switch to AllChat</span>
+    `;
+    btn.setAttribute('aria-label', 'Open AllChat in this window');
+    btn.addEventListener('mouseenter', () => { btn.style.background = 'oklch(0.14 0.008 270)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.background = 'oklch(0.11 0.009 270)'; });
+    btn.addEventListener('click', () => {
+      this.handleSwitchToAllChat();
+    });
+    document.body.appendChild(btn);
+  }
+
+  /**
+   * Remove the "Switch to AllChat" button from native chat.
+   */
+  protected removeSwitchToAllChatButton(): void {
+    const btn = document.getElementById('allchat-switch-btn');
+    if (btn) btn.remove();
   }
 
   /**

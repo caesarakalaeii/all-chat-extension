@@ -133,6 +133,32 @@ class YouTubeDetector extends PlatformDetector {
     return super.init(this.extractDisplayName.bind(this));
   }
 
+  /**
+   * Extract YouTube video ID from the current page URL.
+   * Supports /watch?v=VIDEO_ID and /live/VIDEO_ID formats.
+   */
+  private extractVideoId(): string | null {
+    // /watch?v=VIDEO_ID
+    const vParam = new URLSearchParams(window.location.search).get('v');
+    if (vParam) return vParam;
+
+    // /live/VIDEO_ID
+    const liveMatch = window.location.pathname.match(/\/live\/([^/?]+)/);
+    if (liveMatch) return liveMatch[1];
+
+    return null;
+  }
+
+  /**
+   * Pass the YouTube video ID to the AllChat iframe so the backend can use
+   * the cheap videos.list API (1 quota unit) instead of the unreliable
+   * search.list API (100 quota units) to discover the liveChatId.
+   */
+  protected override getExtraIframeParams(): Record<string, string> {
+    const videoId = this.extractVideoId();
+    return videoId ? { video_id: videoId } : {};
+  }
+
   getChatContainerSelector(): string[] {
     // Multi-level fallback selectors for YouTube live chat
     return [

@@ -20,6 +20,7 @@ export interface SendMessageRequest {
   streamer_username: string;
   message: string;
   platform?: string;
+  video_id?: string; // YouTube video ID from extension — enables cheap liveChatId lookup
 }
 
 export interface SendMessageResponse {

@@ -12,6 +12,7 @@ export interface PopoutRequestMessage {
   streamer: string;
   displayName: string;
   twitchChannel?: string;
+  videoId?: string;
   messages: ChatMessage[];
 }
 

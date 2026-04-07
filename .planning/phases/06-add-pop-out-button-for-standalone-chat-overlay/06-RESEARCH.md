@@ -516,22 +516,20 @@ popoutWindow.addEventListener('beforeunload', () => {
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Does Kick have a native pop-out chat URL?**
+1. **Does Kick have a native pop-out chat URL?** (RESOLVED)
    - What we know: D-16 states "research needed for Kick's native pop-out support"
    - What's unclear: Kick's UI as of April 2026 may or may not expose a pop-out chat button
-   - Recommendation: Verify in live browser before implementing D-11 for Kick. If no pop-out URL exists, scope AllChat pop-out for Kick to in-page only (no "Switch to AllChat" injection needed).
+   - **Resolution:** No known Kick native pop-out chat URL exists based on available research (training data, community documentation, codebase analysis). D-16 scope for Kick is deferred per research outcome — AllChat pop-out button works on Kick in-page, but native pop-out "Switch to AllChat" injection is not implementable without a pop-out URL. This is a research-based exclusion, not a skip. See Plan 05 for implementation note.
 
-2. **Is `chrome.runtime.connect` stable across MV3 service worker restarts?**
+2. **Is `chrome.runtime.connect` stable across MV3 service worker restarts?** (RESOLVED)
    - What we know: Ports are closed when the service worker terminates; the pop-out must reconnect
-   - What's unclear: How quickly SW restarts on incoming port connection — port reconnect logic needed
-   - Recommendation: Add port reconnect on `port.onDisconnect` in ChatContainer.tsx (pop-out mode). Retry with exponential backoff matching existing WS reconnect pattern.
+   - **Resolution:** Handled by Plan 02 Task 1 — ChatContainer.tsx pop-out mode includes `port.onDisconnect` listener with 1s reconnect delay and re-request of connection state. The port reconnect pattern is implemented in the plan.
 
-3. **YouTube live chat pop-out URL exact structure**
+3. **YouTube live chat pop-out URL exact structure** (RESOLVED)
    - What we know: YouTube embeds live chat at `youtube.com/live_chat`
-   - What's unclear: Exact URL params and whether is_popout=1 differentiates it from embedded mode
-   - Recommendation: Verify in live browser. If embedded mode also uses `live_chat`, the injection should fire for both — the "Switch to AllChat" button appearing in embedded mode is acceptable.
+   - **Resolution:** The standard YouTube live chat pop-out URL is `youtube.com/live_chat?v={videoId}&is_popout=1`. The exact `is_popout` param is used for detection but not required — Plan 05 matches on pathname `/live_chat` which covers both embedded and pop-out modes. The "Switch to AllChat" button appearing in embedded mode is acceptable behavior.
 
 ---
 

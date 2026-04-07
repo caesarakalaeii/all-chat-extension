@@ -155,6 +155,12 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           break;
         }
 
+        case 'OPEN_AUTH_TAB': {
+          await openAuthTab(message.platform, message.streamerUsername);
+          sendResponse({ success: true });
+          break;
+        }
+
         case 'SAVE_NAME_COLOR':
           await saveNameColor(message.color);
           sendResponse({ success: true });
@@ -682,6 +688,59 @@ async function ensureValidToken(): Promise<string | null> {
     await clearViewerAuth();
     return null;
   }
+}
+
+/**
+ * Open a browser tab for OAuth and monitor it for the auth-success redirect.
+ * Used for platforms (YouTube, Kick) whose OAuth providers do not accept the
+ * extension's chrome.identity redirect URI. The backend handles the OAuth
+ * callback and redirects to allch.at/chat/auth-success?token=... — we watch
+ * for that URL, extract the token, store it, and broadcast AUTH_COMPLETE.
+ */
+async function openAuthTab(platform: string, streamerUsername?: string): Promise<void> {
+  const loginUrl = await initiateAuthUrl(platform, streamerUsername);
+
+  const tab = await chrome.tabs.create({ url: loginUrl, active: true });
+  const tabId = tab.id;
+  if (!tabId) return;
+
+  const listener = async (
+    updatedTabId: number,
+    changeInfo: chrome.tabs.TabChangeInfo,
+    updatedTab: chrome.tabs.Tab,
+  ) => {
+    if (updatedTabId !== tabId) return;
+    if (changeInfo.status !== 'complete') return;
+
+    const url = updatedTab.url ?? '';
+    if (!url.includes('allch.at/chat/auth-success')) return;
+
+    // Stop watching immediately to avoid duplicate handling
+    chrome.tabs.onUpdated.removeListener(listener);
+    chrome.tabs.remove(tabId).catch(() => {});
+
+    const params = new URL(url).searchParams;
+    const token = params.get('token');
+    if (!token) {
+      broadcastToAllExtensionContexts({ type: 'AUTH_COMPLETE', success: false, error: 'No token in callback URL' });
+      return;
+    }
+
+    await storeViewerToken(token);
+    broadcastToAllExtensionContexts({ type: 'AUTH_COMPLETE', success: true });
+  };
+
+  chrome.tabs.onUpdated.addListener(listener);
+}
+
+/**
+ * Broadcast a message to all extension contexts (popup, content scripts, pop-out ports).
+ */
+function broadcastToAllExtensionContexts(message: Record<string, unknown>): void {
+  // Popup / other extension pages
+  chrome.runtime.sendMessage(message).catch(() => {});
+  // Pop-out windows connected via ports
+  broadcastToPorts(message);
 }
 
 console.log('[AllChat] Service worker initialized');

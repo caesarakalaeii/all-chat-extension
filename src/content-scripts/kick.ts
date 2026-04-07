@@ -246,19 +246,45 @@ function setupGlobalMessageRelay() {
 
   // Listen for messages FROM iframes requesting current state
   window.addEventListener('message', async (event) => {
+    const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
+
     if (event.data.type === 'GET_CONNECTION_STATE') {
       console.log('[AllChat Kick] iframe requested connection state');
       // Request from service worker
       const response = await chrome.runtime.sendMessage({ type: 'GET_CONNECTION_STATE' });
       if (response.success && event.source) {
         // Send back to the iframe that requested it
-        const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
         (event.source as Window).postMessage({
           type: 'CONNECTION_STATE',
           data: response.data
         }, extensionOrigin);
         console.log('[AllChat Kick] Sent current connection state to iframe:', response.data);
       }
+    }
+
+    // Guard: only handle pop-out messages from the AllChat extension origin (T-06-09)
+    if (event.origin !== extensionOrigin) return;
+
+    // Handle pop-out request from AllChat iframe
+    if (event.data.type === 'POPOUT_REQUEST' && globalDetector) {
+      globalDetector.handlePopoutRequest(event.data);
+    }
+
+    // Handle "Switch to native" from AllChat iframe (D-14)
+    if (event.data.type === 'SWITCH_TO_NATIVE' && globalDetector) {
+      globalDetector.handleSwitchToNative();
+    }
+
+    // Handle "Bring back chat" / close pop-out from AllChat iframe
+    if (event.data.type === 'CLOSE_POPOUT' && globalDetector) {
+      globalDetector.closePopout();
+      const iframes = document.querySelectorAll('iframe[data-platform="kick"]');
+      iframes.forEach((iframe) => {
+        const el = iframe as HTMLIFrameElement;
+        if (el.contentWindow) {
+          el.contentWindow.postMessage({ type: 'POPOUT_CLOSED' }, extensionOrigin);
+        }
+      });
     }
   });
 

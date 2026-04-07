@@ -67,6 +67,13 @@ export interface LocalStorage {
   viewer_name_color?: string;
   viewer_name_gradient?: string; // JSON-serialized NameGradient, e.g. '{"type":"linear","colors":["#9146ff","#00b5ad"],"angle":90}'
   ui_collapsed?: boolean;
+  // Pop-out window dimension persistence (D-07)
+  popout_window_width?: number;
+  popout_window_height?: number;
+  popout_window_x?: number;
+  popout_window_y?: number;
+  // Pop-out message buffer for history transfer (D-08)
+  popout_message_buffer?: string;
 }
 
 export interface SyncStorage {

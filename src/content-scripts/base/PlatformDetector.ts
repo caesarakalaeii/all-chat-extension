@@ -371,7 +371,13 @@ export abstract class PlatformDetector {
         return;
       }
 
-      const displayName = displayNameResolver ? displayNameResolver(username) : username;
+      // Use the display name from the backend API (streamerInfo.display_name) as the
+      // primary source; fall back to the platform-specific displayNameResolver (e.g.
+      // YouTube DOM scraping) or the raw username. The backend display_name is the most
+      // reliable because it doesn't depend on DOM load timing.
+      const displayName = streamerInfo.display_name
+        || (displayNameResolver ? displayNameResolver(username) : null)
+        || username;
 
       // Find the Twitch channel name for emote autocomplete (7TV/BTTV/FFZ are Twitch-only).
       // streamerInfo.username is the All-Chat account owner, which may differ from the

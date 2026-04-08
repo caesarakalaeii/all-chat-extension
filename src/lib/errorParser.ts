@@ -32,9 +32,12 @@ export function parseApiError(response: Response, data?: any): ChatError {
   let errorDetails = '';
   let platform = '';
 
+  let description = '';
+
   if (data) {
     errorMessage = data.error || data.message || '';
     errorDetails = data.details || '';
+    description = data.description || '';
     platform = data.platform || '';
   }
 
@@ -66,13 +69,14 @@ export function parseApiError(response: Response, data?: any): ChatError {
     return createBannedError(errorMessage, reason, expiresAt, statusCode);
   }
 
-  // 4. Check for streamer offline / not live
-  if (fullErrorText.includes('not currently live') ||
+  // 4. Check for streamer offline / not live (422 from backend, or legacy 502 with keywords)
+  if (statusCode === 422 ||
+      fullErrorText.includes('not currently live') ||
       fullErrorText.includes('stream is offline') ||
       fullErrorText.includes('not live on') ||
       fullErrorText.includes('streamer is offline')) {
     const streamerName = data?.streamer || data?.channel || extractStreamerName(fullErrorText);
-    return createStreamerOfflineError(errorMessage, platform, streamerName, statusCode);
+    return createStreamerOfflineError(description || errorMessage, platform, streamerName, statusCode);
   }
 
   // 5. Check for platform API errors (502, 503, 504)

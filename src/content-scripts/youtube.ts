@@ -134,8 +134,8 @@ class YouTubeDetector extends PlatformDetector {
   }
 
   /**
-   * Extract YouTube video ID from the current page URL.
-   * Supports /watch?v=VIDEO_ID and /live/VIDEO_ID formats.
+   * Extract YouTube video ID from the current page URL or DOM.
+   * Supports /watch?v=VIDEO_ID, /live/VIDEO_ID, and /@channel/live formats.
    */
   private extractVideoId(): string | null {
     // /watch?v=VIDEO_ID
@@ -145,6 +145,26 @@ class YouTubeDetector extends PlatformDetector {
     // /live/VIDEO_ID
     const liveMatch = window.location.pathname.match(/\/live\/([^/?]+)/);
     if (liveMatch) return liveMatch[1];
+
+    // /@channel/live — no video ID in URL, extract from canonical link or ytInitialData
+    const canonical = document.querySelector('link[rel="canonical"]');
+    if (canonical) {
+      const href = canonical.getAttribute('href');
+      const match = href?.match(/\/watch\?v=([^&]+)/);
+      if (match) return match[1];
+    }
+
+    // Fallback: extract from ytInitialPlayerResponse in page scripts
+    try {
+      const scripts = Array.from(document.querySelectorAll('script'));
+      for (const s of scripts) {
+        if (s.textContent?.includes('ytInitialPlayerResponse')) {
+          const match = s.textContent.match(/"videoId":"([^"]{11})"/);
+          if (match) return match[1];
+          break;
+        }
+      }
+    } catch { /* ignore */ }
 
     return null;
   }

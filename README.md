@@ -23,7 +23,7 @@ Replace native platform chat with All-Chat's unified chat experience.
 
 ### Known Limitations
 
-- **YouTube unlisted/private streams are not supported.** The extension relies on YouTube's public search API to discover live streams, which excludes unlisted and private streams. Both sending and receiving messages require the stream to be publicly listed.
+- **YouTube: only public, currently live streams are supported.** Unlisted streams, private streams, and scheduled (upcoming) streams do not work. The system relies on YouTube's public search API (`search.list` with `eventType=live`) to discover streams, which only returns streams that are both public and actively broadcasting.
 
 ## Installation
 

@@ -9,7 +9,7 @@ Replace native platform chat with All-Chat's unified chat experience.
 
 ## Features
 
-- **Multi-platform support** — Twitch, YouTube, YouTube Studio, Kick
+- **Multi-platform support** — Twitch, YouTube (public streams only), YouTube Studio, Kick
 - **Per-platform enable/disable** — Independently toggle AllChat on each platform from the popup
 - **Real-time messaging** — WebSocket connection for instant messages
 - **OAuth authentication** — Log in with Twitch to send messages
@@ -20,6 +20,10 @@ Replace native platform chat with All-Chat's unified chat experience.
 - **Smart reconnection** — Auto-reconnect with visual countdown timer
 - **Inline send feedback** — Visual confirmation directly in the input field
 - **Rate limiting** — 20 messages/min, 100/hour with visual feedback
+
+### Known Limitations
+
+- **YouTube unlisted/private streams are not supported.** The extension relies on YouTube's public search API to discover live streams, which excludes unlisted and private streams. Both sending and receiving messages require the stream to be publicly listed.
 
 ## Installation
 

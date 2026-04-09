@@ -39,7 +39,7 @@
     "postcss-loader": "^7.3.3",
     "style-loader": "^3.3.3",
     "tailwindcss": "^4.2.2",
-    "ts-loader": "^9.5.0",
+    "ts-loader": "^9.5.7",
     "typescript": "^5.3.3",
     "webpack": "^5.105.4",
     "webpack-cli": "^5.1.4",

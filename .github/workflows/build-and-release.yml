@@ -85,33 +85,55 @@ jobs:
           TAG=${GITHUB_REF#refs/tags/}
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
+      - name: Generate release notes
+        run: |
+          VERSION=${{ steps.get_version.outputs.version }}
+          # Find the previous tag
+          PREV_TAG=$(git tag --sort=-v:refname | grep '^v' | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            COMMITS=$(git log --pretty=format:'- %s' HEAD)
+          else
+            COMMITS=$(git log --pretty=format:'- %s' "${PREV_TAG}..HEAD")
+          fi
+          # Filter out version bump commits
+          CHANGELOG=$(echo "$COMMITS" | grep -v '^- chore:' || true)
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="- Minor improvements and bug fixes"
+          fi
+
+          cat > /tmp/release-notes.md << NOTES
+          ## All-Chat Browser Extension ${VERSION}
+
+          ### Changelog
+
+          ${CHANGELOG}
+
+          ### Installation
+
+          #### Install from Store (Recommended)
+          - **Chrome / Edge / Brave:** [Chrome Web Store](https://chromewebstore.google.com/detail/all-chat-extension/ioneembbnocfljgbhgfknbbnpfeadacm)
+          - **Firefox:** [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/all-chat-extension/)
+
+          #### Manual Installation
+          1. Download \`allchat-extension.zip\` below
+          2. Unzip the file
+          3. Open Chrome/Edge and go to \`chrome://extensions/\` or \`edge://extensions/\`
+          4. Enable "Developer mode" (toggle in top-right)
+          5. Click "Load unpacked"
+          6. Select the unzipped folder
+
+          ---
+
+          **Note:** Store versions may take a few days to update. For the latest version immediately, use the manual installation above.
+          NOTES
+          # Remove leading whitespace from heredoc indentation
+          sed -i 's/^          //' /tmp/release-notes.md
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: allchat-extension.zip
-          body: |
-            ## All-Chat Browser Extension ${{ steps.get_version.outputs.version }}
-
-            ### Installation
-
-            #### Chrome/Edge (Manual Installation)
-            1. Download `allchat-extension.zip` below
-            2. Unzip the file
-            3. Open Chrome/Edge and go to `chrome://extensions/` or `edge://extensions/`
-            4. Enable "Developer mode" (toggle in top-right)
-            5. Click "Load unpacked"
-            6. Select the unzipped folder
-
-            #### Requirements
-            - Chrome 88+ or Edge 88+
-            - Extension automatically connects to https://allch.at (no setup needed!)
-
-            ### What's New
-            See [CHECKPOINT.md](https://github.com/caesarakalaeii/all-chat-extension/blob/main/CHECKPOINT.md) for full details.
-
-            ---
-
-            **Note:** This is a development release. For automatic updates, we recommend waiting for the Chrome Web Store release.
+          body_path: /tmp/release-notes.md
           draft: false
           prerelease: false
         env:

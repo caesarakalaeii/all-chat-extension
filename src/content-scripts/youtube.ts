@@ -118,6 +118,57 @@ class YouTubeDetector extends PlatformDetector {
   }
 
   /**
+   * Check ytInitialPlayerResponse for stream status signals.
+   * Returns a reason string if the stream is unsupported, or null if OK.
+   */
+  private getUnsupportedStreamReason(): string | null {
+    try {
+      const scripts = Array.from(document.querySelectorAll('script'));
+      const playerScript = scripts.find(s => s.textContent?.includes('ytInitialPlayerResponse'));
+      if (!playerScript?.textContent) return null;
+
+      if (/["']isUpcoming["']\s*:\s*true/.test(playerScript.textContent)) {
+        return 'scheduled';
+      }
+      if (/["']isUnlisted["']\s*:\s*true/.test(playerScript.textContent)) {
+        return 'unlisted';
+      }
+    } catch {
+      // Can't parse — assume OK and let normal flow handle errors
+    }
+    return null;
+  }
+
+  /**
+   * Show a dismissible badge explaining why AllChat can't activate.
+   */
+  private showUnsupportedStreamBadge(reason: 'scheduled' | 'unlisted'): void {
+    const existingBadge = document.getElementById('allchat-unsupported-badge');
+    if (existingBadge) existingBadge.remove();
+
+    const messages: Record<string, string> = {
+      scheduled: 'AllChat only works on live streams, not scheduled ones. Come back when the stream is live!',
+      unlisted: 'AllChat doesn\'t support unlisted streams. Only public live streams are supported.',
+    };
+
+    const badge = document.createElement('div');
+    badge.id = 'allchat-unsupported-badge';
+    badge.style.cssText = `
+      position: fixed; bottom: 10px; right: 10px; padding: 10px 14px;
+      background: #1f1f23; border: 1px solid #f59e0b; border-radius: 6px;
+      color: #fbbf24; font-size: 12px; z-index: 9999; max-width: 280px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      cursor: pointer; line-height: 1.4;
+    `;
+    badge.textContent = messages[reason];
+    badge.title = 'Click to dismiss';
+    badge.addEventListener('click', () => badge.remove());
+    setTimeout(() => badge.remove(), 15000);
+
+    document.body.appendChild(badge);
+  }
+
+  /**
    * Override init to check for live streams first, and pass display name to UI
    */
   async init(): Promise<void> {
@@ -126,6 +177,14 @@ class YouTubeDetector extends PlatformDetector {
     // YouTube-specific: Only activate on live streams, not VODs
     if (!this.isLiveStream()) {
       console.log(`[AllChat ${this.platform}] Not a live stream, skipping`);
+      return;
+    }
+
+    // Check for unsupported stream types (scheduled, unlisted)
+    const unsupportedReason = this.getUnsupportedStreamReason();
+    if (unsupportedReason) {
+      console.log(`[AllChat ${this.platform}] Stream is ${unsupportedReason}, not supported`);
+      this.showUnsupportedStreamBadge(unsupportedReason as 'scheduled' | 'unlisted');
       return;
     }
 

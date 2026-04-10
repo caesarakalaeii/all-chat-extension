@@ -649,7 +649,13 @@ async function openAuthTab(platform: string, streamerUsername?: string): Promise
     if (changeInfo.status !== 'complete') return;
 
     const url = updatedTab.url ?? '';
-    if (!url.includes('allch.at/chat/auth-success')) return;
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      return;
+    }
+    if (parsedUrl.hostname !== 'allch.at' || !parsedUrl.pathname.startsWith('/chat/auth-success')) return;
 
     // Stop watching immediately to avoid duplicate handling
     chrome.tabs.onUpdated.removeListener(listener);

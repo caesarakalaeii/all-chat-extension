@@ -298,6 +298,10 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
   wsConnection.onmessage = (event) => {
     try {
       const message = JSON.parse(event.data);
+      if (!message || typeof message !== 'object' || typeof message.type !== 'string') {
+        console.warn('[AllChat] Ignoring WebSocket message with invalid structure');
+        return;
+      }
       handleWebSocketMessage(message);
     } catch (error) {
       console.error('[AllChat] Failed to parse WebSocket message:', error);

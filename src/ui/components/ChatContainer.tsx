@@ -330,7 +330,12 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
       window.parent.postMessage({ type: 'GET_CONNECTION_STATE' }, '*');
       console.log('[AllChat UI] Requested current connection state');
 
+      const extensionOrigin = new URL(chrome.runtime.getURL('')).origin;
       const messageHandler = (event: MessageEvent) => {
+        // Only accept messages from our own extension origin
+        if (event.origin !== extensionOrigin && event.origin !== window.location.origin) {
+          return;
+        }
         handleIncomingMessage(event.data as Record<string, unknown>);
       };
       window.addEventListener('message', messageHandler);

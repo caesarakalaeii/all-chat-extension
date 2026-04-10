@@ -269,9 +269,8 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
   const wsUrl = apiUrl.replace(/^http/, 'ws');
 
   // Use viewer-specific endpoint (does NOT trigger polling or expose overlay ID)
-  const token = await getViewerToken();
-  const tokenParam = token ? `?token=${token}` : '';
-  const url = `${wsUrl}/ws/chat/${streamerUsername}${tokenParam}`;
+  // Auth is sent as first WebSocket message instead of URL query parameter
+  const url = `${wsUrl}/ws/chat/${streamerUsername}`;
 
   console.log('[AllChat] Connecting to viewer WebSocket:', url);
 
@@ -282,10 +281,16 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
   wsConnection = new WebSocket(url);
   wsStreamerUsername = streamerUsername;
 
-  wsConnection.onopen = () => {
+  wsConnection.onopen = async () => {
     console.log('[AllChat] WebSocket connected successfully!');
     wsReconnectAttempts = 0;
     startWebSocketHeartbeat();
+
+    // Authenticate via first message instead of URL param
+    const token = await getViewerToken();
+    if (token && wsConnection) {
+      wsConnection.send(JSON.stringify({ type: 'auth', data: { token } }));
+    }
 
     // Update extension badge
     chrome.action.setBadgeBackgroundColor({ color: '#00ff00' });

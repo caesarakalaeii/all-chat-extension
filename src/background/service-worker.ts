@@ -671,14 +671,31 @@ async function openAuthTab(platform: string, streamerUsername?: string): Promise
     chrome.tabs.remove(tabId).catch(() => {});
 
     const params = new URL(url).searchParams;
-    const token = params.get('token');
-    if (!token) {
-      broadcastToAllExtensionContexts({ type: 'AUTH_COMPLETE', success: false, error: 'No token in callback URL' });
+    const code = params.get('code');
+    if (!code) {
+      broadcastToAllExtensionContexts({ type: 'AUTH_COMPLETE', success: false, error: 'No auth code in callback URL' });
       return;
     }
 
-    await storeViewerToken(token);
-    broadcastToAllExtensionContexts({ type: 'AUTH_COMPLETE', success: true });
+    // Exchange short-lived code for JWT token
+    try {
+      const apiUrl = await getApiGatewayUrl();
+      const resp = await fetch(`${apiUrl}/api/v1/auth/viewer/token/exchange`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      if (!resp.ok) {
+        broadcastToAllExtensionContexts({ type: 'AUTH_COMPLETE', success: false, error: 'Code exchange failed' });
+        return;
+      }
+      const data = await resp.json() as { token: string };
+      await storeViewerToken(data.token);
+      broadcastToAllExtensionContexts({ type: 'AUTH_COMPLETE', success: true });
+    } catch (err) {
+      console.error('[AllChat] Token exchange failed:', err);
+      broadcastToAllExtensionContexts({ type: 'AUTH_COMPLETE', success: false, error: 'Code exchange error' });
+    }
   };
 
   chrome.tabs.onUpdated.addListener(listener);

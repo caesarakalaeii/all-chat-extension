@@ -3,3 +3,12 @@ dist/
 *.zip
 .DS_Store
 *.log
+
+# Test artifacts
+playwright-report/
+test-results/
+.playwright-mcp/
+
+# Debug screenshots (keep assets/ icons)
+/*.png
+tests/*.png

@@ -4,6 +4,8 @@ import * as path from 'path';
 
 const STORAGE_PATH = path.resolve(__dirname, '../src/lib/storage.ts');
 const CHAT_CONTAINER_PATH = path.resolve(__dirname, '../src/ui/components/ChatContainer.tsx');
+const MANIFEST_PATH = path.resolve(__dirname, '../manifest.json');
+const SERVICE_WORKER_PATH = path.resolve(__dirname, '../src/background/service-worker.ts');
 
 test.describe('Firefox iframe compatibility — Issue #35', () => {
 
@@ -115,6 +117,121 @@ test.describe('Firefox iframe compatibility — Issue #35', () => {
       );
       expect(inPageBranch, 'in-page iframe branch must exist').toBeTruthy();
       expect(inPageBranch![0]).not.toContain('extensionOrigin');
+    });
+  });
+
+  test.describe('CSP compatibility', () => {
+    let manifest: any;
+
+    test.beforeAll(() => {
+      manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
+    });
+
+    test('CSP does not contain default-src (causes fallback issues in Firefox)', () => {
+      const csp = manifest.content_security_policy?.extension_pages ?? '';
+      expect(csp).not.toContain('default-src');
+    });
+
+    test('CSP includes style-src unsafe-inline', () => {
+      const csp = manifest.content_security_policy?.extension_pages ?? '';
+      expect(csp).toContain("style-src 'self' 'unsafe-inline'");
+    });
+
+    test('CSP includes connect-src for API host', () => {
+      const csp = manifest.content_security_policy?.extension_pages ?? '';
+      expect(csp).toContain('connect-src');
+      expect(csp).toContain('https://allch.at');
+      expect(csp).toContain('wss://allch.at');
+    });
+  });
+
+  test.describe('Manifest Firefox compatibility', () => {
+    let manifest: any;
+
+    test.beforeAll(() => {
+      manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
+    });
+
+    test('browser_specific_settings.gecko exists with proper ID', () => {
+      const id = manifest.browser_specific_settings?.gecko?.id;
+      expect(id).toBeTruthy();
+      expect(id).toMatch(/^[a-z@.]+$|^\{[0-9a-f-]+\}$/);
+    });
+
+    test('gecko strict_min_version is at least 115', () => {
+      const minVersion = manifest.browser_specific_settings?.gecko?.strict_min_version;
+      expect(minVersion).toBeTruthy();
+      expect(parseInt(minVersion)).toBeGreaterThanOrEqual(115);
+    });
+
+    test('background has scripts array alongside service_worker', () => {
+      expect(manifest.background?.scripts).toBeTruthy();
+      expect(Array.isArray(manifest.background.scripts)).toBe(true);
+      expect(manifest.background.scripts.length).toBeGreaterThan(0);
+    });
+
+    test('web_accessible_resources uses MV3 cross-browser format', () => {
+      const war = manifest.web_accessible_resources;
+      expect(war).toBeTruthy();
+      expect(Array.isArray(war)).toBe(true);
+      for (const entry of war) {
+        expect(entry).toHaveProperty('resources');
+        expect(entry).toHaveProperty('matches');
+      }
+    });
+  });
+
+  test.describe('Service worker Firefox compatibility', () => {
+    let swSrc: string;
+
+    test.beforeAll(() => {
+      swSrc = fs.readFileSync(SERVICE_WORKER_PATH, 'utf8');
+    });
+
+    test('fetchStreamerInfo GET does not set Content-Type header', () => {
+      // Extract the fetchStreamerInfo function body
+      const fnMatch = swSrc.match(
+        /async function fetchStreamerInfo[\s\S]*?^}/m
+      );
+      expect(fnMatch, 'fetchStreamerInfo must exist').toBeTruthy();
+      const fnBody = fnMatch![0];
+      // GET requests must not set Content-Type — triggers CORS preflight in Firefox
+      expect(fnBody).not.toContain("'Content-Type'");
+      expect(fnBody).not.toContain('"Content-Type"');
+    });
+
+    test('no chrome.identity calls in service worker', () => {
+      // chrome.identity is not supported in Firefox
+      const withoutComments = swSrc.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+      expect(withoutComments).not.toContain('chrome.identity.');
+    });
+  });
+
+  test.describe('No chrome.identity in content scripts or UI', () => {
+    test('content scripts do not call chrome.identity', () => {
+      const dir = path.resolve(__dirname, '../src/content-scripts');
+      const files = fs.readdirSync(dir, { recursive: true }) as string[];
+      for (const file of files) {
+        if (!file.endsWith('.ts') && !file.endsWith('.tsx')) continue;
+        const fullPath = path.join(dir, file);
+        if (fs.statSync(fullPath).isDirectory()) continue;
+        const src = fs.readFileSync(fullPath, 'utf8');
+        const withoutComments = src.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+        expect(withoutComments, `${file} must not use chrome.identity`).not.toContain('chrome.identity.');
+      }
+    });
+
+    test('UI components do not call chrome.identity', () => {
+      const dir = path.resolve(__dirname, '../src/ui');
+      const files = fs.readdirSync(dir, { recursive: true }) as string[];
+      for (const file of files) {
+        if (!file.endsWith('.ts') && !file.endsWith('.tsx')) continue;
+        const fullPath = path.join(dir, file);
+        if (fs.statSync(fullPath).isDirectory()) continue;
+        const src = fs.readFileSync(fullPath, 'utf8');
+        const withoutComments = src.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+        expect(withoutComments, `${file} must not use chrome.identity`).not.toContain('chrome.identity.');
+      }
     });
   });
 });

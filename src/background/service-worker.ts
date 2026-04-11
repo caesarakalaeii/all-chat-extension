@@ -225,12 +225,7 @@ async function fetchStreamerInfo(username: string): Promise<StreamerInfo> {
   const fetchUrl = `${apiUrl}/api/v1/auth/streamers/${encodeURIComponent(username)}`;
   console.log('[AllChat SW] Fetching streamer info from:', fetchUrl);
 
-  const response = await fetch(fetchUrl, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
+  const response = await fetch(fetchUrl);
 
   if (response.status === 404) {
     throw new Error('STREAMER_NOT_FOUND');

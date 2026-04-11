@@ -13,7 +13,18 @@ export { DEFAULT_SETTINGS };
  */
 export async function getSyncStorage(): Promise<SyncStorage> {
   return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      console.warn('[AllChat Storage] chrome.storage.sync.get timed out, resolving defaults');
+      resolve({ ...DEFAULT_SETTINGS } as SyncStorage);
+    }, 5000);
+
     chrome.storage.sync.get(DEFAULT_SETTINGS as unknown as Record<string, unknown>, (items) => {
+      clearTimeout(timer);
+      if (chrome.runtime.lastError) {
+        console.warn('[AllChat Storage] chrome.storage.sync.get error:', chrome.runtime.lastError.message);
+        resolve({ ...DEFAULT_SETTINGS } as SyncStorage);
+        return;
+      }
       const result = items as unknown as SyncStorage & { extensionEnabled?: boolean };
 
       // Migration: legacy extensionEnabled -> platformEnabled
@@ -64,7 +75,18 @@ export async function setSyncStorage(data: Partial<SyncStorage>): Promise<void> 
  */
 export async function getLocalStorage(): Promise<LocalStorage> {
   return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      console.warn('[AllChat Storage] chrome.storage.local.get timed out, resolving empty');
+      resolve({} as LocalStorage);
+    }, 5000);
+
     chrome.storage.local.get(null, (items) => {
+      clearTimeout(timer);
+      if (chrome.runtime.lastError) {
+        console.warn('[AllChat Storage] chrome.storage.local.get error:', chrome.runtime.lastError.message);
+        resolve({} as LocalStorage);
+        return;
+      }
       resolve(items as LocalStorage);
     });
   });

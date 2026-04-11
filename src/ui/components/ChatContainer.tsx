@@ -42,8 +42,10 @@ function getNativePopoutUrl(platform: Platform, streamer: string, twitchChannel?
  */
 type NameGradient = { type: string; colors: string[]; angle: number };
 
-function buildGradientCSS(g: NameGradient): string {
-  return `linear-gradient(${g.angle}deg, ${g.colors.join(', ')})`;
+function buildGradientCSS(g: NameGradient): string | undefined {
+  if (!g.colors || g.colors.length < 2) return undefined;
+  const angle = typeof g.angle === 'number' ? g.angle : 90;
+  return `linear-gradient(${angle}deg, ${g.colors.join(', ')})`;
 }
 
 function parseNameGradient(raw: string | undefined): NameGradient | null {
@@ -701,18 +703,23 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                             : (message.user.color || '#fff');
 
                           if (activeGradient) {
-                            return (
-                              <span
-                                className="font-semibold text-sm text-transparent"
-                                style={{
-                                  backgroundImage: buildGradientCSS(activeGradient),
-                                  backgroundClip: 'text',
-                                  WebkitBackgroundClip: 'text',
-                                }}
-                              >
-                                {message.user.display_name || message.user.username}
-                              </span>
-                            );
+                            const gradientCSS = buildGradientCSS(activeGradient);
+                            if (gradientCSS) {
+                              return (
+                                <span
+                                  className="font-semibold text-sm"
+                                  style={{
+                                    backgroundImage: gradientCSS,
+                                    backgroundClip: 'text',
+                                    WebkitBackgroundClip: 'text',
+                                    WebkitTextFillColor: 'transparent',
+                                    color: 'transparent',
+                                  }}
+                                >
+                                  {message.user.display_name || message.user.username}
+                                </span>
+                              );
+                            }
                           }
                           return (
                             <span

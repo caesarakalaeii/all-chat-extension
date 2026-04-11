@@ -417,6 +417,12 @@ export abstract class PlatformDetector {
         throw new Error(response.error);
       }
 
+      // Treat empty platforms as "not configured" — the streamer exists but
+      // has no public overlay, so the extension cannot connect.
+      if (!response.data?.platforms?.length) {
+        return null;
+      }
+
       return response.data;
     } catch (error) {
       console.error(`[AllChat ${this.platform}] API check failed:`, error);

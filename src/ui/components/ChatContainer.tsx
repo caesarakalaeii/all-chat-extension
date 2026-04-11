@@ -330,10 +330,11 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
       window.parent.postMessage({ type: 'GET_CONNECTION_STATE' }, '*');
       console.log('[AllChat UI] Requested current connection state');
 
-      const extensionOrigin = new URL(chrome.runtime.getURL('')).origin;
       const messageHandler = (event: MessageEvent) => {
-        // Only accept messages from our own extension origin
-        if (event.origin !== extensionOrigin && event.origin !== window.location.origin) {
+        // Only accept messages from the direct parent frame (content script relay).
+        // Origin-based checks fail in Firefox: content scripts report the page origin,
+        // not the extension origin, so all relayed messages get silently dropped.
+        if (event.source !== window.parent) {
           return;
         }
         handleIncomingMessage(event.data as Record<string, unknown>);

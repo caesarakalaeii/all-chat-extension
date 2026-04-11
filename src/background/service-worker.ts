@@ -167,6 +167,32 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           sendResponse({ success: true, data: { authenticated: !!token, viewerInfo } });
           break;
 
+        case 'GET_COSMETICS': {
+          const cosToken = await getViewerToken();
+          if (!cosToken) {
+            sendResponse({ success: true, data: null });
+            break;
+          }
+          const apiUrl = await getApiGatewayUrl();
+          const cosResp = await fetch(`${apiUrl}/api/v1/auth/viewer/cosmetics`, {
+            headers: { Authorization: `Bearer ${cosToken}` },
+          });
+          if (cosResp.ok) {
+            const cosmetics = await cosResp.json();
+            // Sync to local storage so it's available offline
+            if (cosmetics.name_gradient) {
+              await setLocalStorage({ viewer_name_gradient: JSON.stringify(cosmetics.name_gradient) });
+            }
+            if (cosmetics.name_color) {
+              await setLocalStorage({ viewer_name_color: cosmetics.name_color });
+            }
+            sendResponse({ success: true, data: cosmetics });
+          } else {
+            sendResponse({ success: true, data: null });
+          }
+          break;
+        }
+
         case 'LOGOUT':
           await clearViewerAuth();
           sendResponse({ success: true });
@@ -547,6 +573,25 @@ async function storeViewerToken(token: string): Promise<void> {
     await setLocalStorage({ viewer_info: viewerInfo });
   } catch (error) {
     console.error('[AllChat] Failed to fetch viewer info:', error);
+  }
+
+  // Fetch cosmetics (name color, gradient) so the popup can display them
+  try {
+    const apiUrl = await getApiGatewayUrl();
+    const resp = await fetch(`${apiUrl}/api/v1/auth/viewer/cosmetics`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (resp.ok) {
+      const cosmetics = await resp.json();
+      if (cosmetics.name_gradient) {
+        await setLocalStorage({ viewer_name_gradient: JSON.stringify(cosmetics.name_gradient) });
+      }
+      if (cosmetics.name_color) {
+        await setLocalStorage({ viewer_name_color: cosmetics.name_color });
+      }
+    }
+  } catch (error) {
+    console.error('[AllChat] Failed to fetch viewer cosmetics:', error);
   }
 }
 

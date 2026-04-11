@@ -26,6 +26,7 @@ function Popup() {
   const [isLoading, setIsLoading] = useState(true);
   const [viewerInfo, setViewerInfo] = useState<ViewerInfo | null>(null);
   const [nameColor, setNameColor] = useState<string>('#ffffff');
+  const [nameGradientRaw, setNameGradientRaw] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'' | 'saving' | 'saved'>('');
   const [currentPlatform, setCurrentPlatform] = useState<string | null>(null);
   const colorSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -41,7 +42,22 @@ function Popup() {
         setPlatformEnabled(settings.platformEnabled);
         setViewerInfo(local.viewer_info || null);
         setNameColor(local.viewer_name_color || '#ffffff');
+        setNameGradientRaw(local.viewer_name_gradient ?? null);
         setCurrentPlatform(sessionData.current_platform ?? null);
+
+        // Fetch latest cosmetics from backend (gradient may have been set on web app)
+        if (local.viewer_jwt_token) {
+          chrome.runtime.sendMessage({ type: 'GET_COSMETICS' }).then((resp: any) => {
+            if (resp?.success && resp.data) {
+              if (resp.data.name_gradient) {
+                setNameGradientRaw(JSON.stringify(resp.data.name_gradient));
+              }
+              if (resp.data.name_color) {
+                setNameColor(resp.data.name_color);
+              }
+            }
+          }).catch(() => {});
+        }
       } catch (err) {
         console.error('Failed to load settings:', err);
       } finally {
@@ -211,19 +227,43 @@ function Popup() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                 <label style={{ fontSize: '12px', color: '#adadb8' }}>Name Color</label>
-                <input
-                  type="color"
-                  value={nameColor}
-                  onChange={(e) => handleColorChange(e.target.value)}
-                  style={{ width: '32px', height: '24px', cursor: 'pointer', border: 'none', padding: 0, background: 'none' }}
-                />
-                <button
-                  onClick={handleColorReset}
-                  title="Reset to default"
-                  style={{ fontSize: '11px', color: '#adadb8', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}
-                >
-                  &#x21BA;
-                </button>
+                {(() => {
+                  let gradient: { colors: string[]; angle: number } | null = null;
+                  if (nameGradientRaw) {
+                    try { gradient = JSON.parse(nameGradientRaw); } catch {}
+                  }
+                  if (gradient && gradient.colors?.length >= 2) {
+                    return (
+                      <div
+                        title="Gradient set via allch.at settings"
+                        style={{
+                          width: '32px',
+                          height: '24px',
+                          borderRadius: '4px',
+                          background: `linear-gradient(${gradient.angle ?? 90}deg, ${gradient.colors.join(', ')})`,
+                          border: '1px solid #3a3a3d',
+                        }}
+                      />
+                    );
+                  }
+                  return (
+                    <input
+                      type="color"
+                      value={nameColor}
+                      onChange={(e) => handleColorChange(e.target.value)}
+                      style={{ width: '32px', height: '24px', cursor: 'pointer', border: 'none', padding: 0, background: 'none' }}
+                    />
+                  );
+                })()}
+                {!nameGradientRaw && (
+                  <button
+                    onClick={handleColorReset}
+                    title="Reset to default"
+                    style={{ fontSize: '11px', color: '#adadb8', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}
+                  >
+                    &#x21BA;
+                  </button>
+                )}
                 {saveStatus === 'saving' && <span style={{ fontSize: '11px', color: '#adadb8' }}>Saving…</span>}
                 {saveStatus === 'saved' && <span style={{ fontSize: '11px', color: '#00c853' }}>Saved</span>}
               </div>

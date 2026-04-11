@@ -1,29 +1,30 @@
 # All-Chat Browser Extension
 
-Replace native platform chat with All-Chat's unified chat experience.
+**One chat for every stream.** This extension replaces native Twitch, YouTube, and Kick chat with [All-Chat](https://allch.at) — so you see messages from every platform the streamer broadcasts to.
+
+Part of [All-Chat](https://allch.at) — the free, open-source multi-platform chat overlay for streamers.
 
 [![Build Status](https://github.com/caesarakalaeii/all-chat-extension/workflows/Build%20and%20Release/badge.svg)](https://github.com/caesarakalaeii/all-chat-extension/actions)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Chrome Web Store](https://img.shields.io/chrome-web-store/v/ioneembbnocfljgbhgfknbbnpfeadacm)](https://chromewebstore.google.com/detail/all-chat-extension/ioneembbnocfljgbhgfknbbnpfeadacm)
 [![Firefox Add-on](https://img.shields.io/amo/v/all-chat-extension)](https://addons.mozilla.org/en-US/firefox/addon/all-chat-extension/)
 
+<p align="center">
+  <img src="assets/screenshot-twitch.png" alt="All-Chat extension replacing native Twitch chat" width="600" />
+</p>
+
 ## Features
 
-- **Multi-platform support** — Twitch, YouTube (public streams only), YouTube Studio, Kick
-- **Per-platform enable/disable** — Independently toggle AllChat on each platform from the popup
-- **Real-time messaging** — WebSocket connection for instant messages
-- **OAuth authentication** — Log in with Twitch to send messages
-- **Viewer identity** — Avatars, name gradients, avatar frames, and flair from your All-Chat profile
-- **Rich message display** — Emotes, badges, and user colors
-- **Badge system** — All-Chat, premium, moderator, VIP, and subscriber badges in correct order
-- **Emote autocomplete** — Type `:` to autocomplete 7TV, BTTV, and FFZ emotes (global + channel-specific)
-- **Smart reconnection** — Auto-reconnect with visual countdown timer
-- **Inline send feedback** — Visual confirmation directly in the input field
-- **Rate limiting** — 20 messages/min, 100/hour with visual feedback
-
-### Known Limitations
-
-- **YouTube: only public, currently live streams are supported.** Unlisted streams, private streams, and scheduled (upcoming) streams do not work. The system relies on YouTube's public search API (`search.list` with `eventType=live`) to discover streams, which only returns streams that are both public and actively broadcasting.
+- **Every platform in one chat** — Twitch, YouTube, YouTube Studio, and Kick chat unified in a single panel
+- **Toggle per site** — Enable or disable All-Chat independently on each platform from the popup
+- **Messages appear instantly** — Real-time delivery via WebSocket, no polling delay
+- **Send with your existing account** — Log in with Twitch, YouTube, or Kick — no extra accounts needed
+- **Your identity carries over** — Avatars, name gradients, avatar frames, and flair from your All-Chat profile
+- **Full emote support** — Emotes, badges, and user colors render correctly across platforms
+- **Emote autocomplete** — Type `:` to search 7TV, BTTV, and FFZ emotes (global + channel-specific)
+- **Never miss a message** — Auto-reconnects with a visual countdown if your connection drops
+- **Visual send feedback** — Confirmation appears directly in the input field when your message is sent
+- **Rate limiting with feedback** — 20 messages/min, 100/hour with clear visual indicators
 
 ## Installation
 
@@ -57,10 +58,10 @@ Then load the `dist/` folder as an unpacked extension:
 ## Usage
 
 1. Install the extension from the store links above
-2. Visit a supported platform (Twitch, YouTube, Kick) where the streamer uses All-Chat
-3. The native chat is replaced with the All-Chat overlay
-4. Click the extension icon to manage per-platform toggles (enable/disable per site)
-5. Click "Login with Twitch" to send messages
+2. Visit any Twitch, YouTube, or Kick stream where All-Chat sources are set up
+3. Native chat is automatically replaced with the All-Chat feed
+4. Click the extension icon to toggle All-Chat on or off per platform
+5. Sign in to send messages with your existing platform account
 6. Type `:` to autocomplete emotes from 7TV, BTTV, and FFZ
 
 ### Connection States
@@ -69,6 +70,10 @@ Then load the `dist/` folder as an unpacked extension:
 - **Connecting/Reconnecting** — Establishing connection (shows countdown)
 - **Failed** — Connection failed after 10 attempts (click reload)
 - **Disconnected** — Not connected to chat
+
+### Notes
+
+- **YouTube**: Only public, currently live streams are supported. Unlisted, private, and scheduled streams do not work — stream discovery relies on YouTube's public search API.
 
 ## Development
 
@@ -194,4 +199,4 @@ For issues, questions, or feature requests:
 
 ---
 
-**Made with ❤️ by the All-Chat team**
+**Free. Open source. Built for streamers who refuse to pick just one platform.**

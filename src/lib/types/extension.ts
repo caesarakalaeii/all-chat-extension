@@ -35,6 +35,7 @@ export type ExtensionMessage =
   | { type: 'DO_LOGIN'; platform: 'twitch' | 'youtube' | 'kick'; streamerUsername?: string }
   | { type: 'OPEN_AUTH_TAB'; platform: 'twitch' | 'youtube' | 'kick'; streamerUsername?: string }
   | { type: 'GET_AUTH_STATUS' }
+  | { type: 'GET_COSMETICS' }
   | { type: 'GET_CONNECTION_STATE' }
   | { type: 'LOGOUT' }
   | { type: 'STORE_VIEWER_TOKEN'; token: string }

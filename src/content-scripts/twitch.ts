@@ -65,6 +65,7 @@ type WidgetType = keyof typeof WIDGET_SELECTORS;
 let widgetObserver: MutationObserver | null = null;
 const cloneSyncObservers = new Map<HTMLElement, MutationObserver>(); // original -> its sync observer
 const cloneMap = new Map<HTMLElement, HTMLElement>(); // original -> clone
+const cloneTypeMap = new Map<HTMLElement, WidgetType>(); // original -> widget type
 
 /**
  * Find first matching widget element within a scope using the config's selectors.
@@ -115,14 +116,27 @@ function resolveElementByPath(root: HTMLElement, path: number[]): HTMLElement | 
  * Wire click and input event forwarding on a clone so user interactions
  * on the clone are relayed to the corresponding element in the original (D-11).
  */
-function setupEventForwarding(clone: HTMLElement, original: HTMLElement): void {
+function setupEventForwarding(clone: HTMLElement, original: HTMLElement, widgetType: WidgetType): void {
   clone.addEventListener('click', (e: MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
 
+    // Re-query the LIVE original element — Twitch's React may have re-rendered
+    // the widget since we captured the reference, making the original stale/detached.
+    const chatShell = document.querySelector('.chat-shell');
+    const config = WIDGET_SELECTORS[widgetType];
+    const liveOriginal = chatShell ? findWidget(config, chatShell) : null;
+    const activeOriginal = liveOriginal ?? original;
+
     const target = e.target as HTMLElement;
     const path = getElementPath(target, clone);
-    const originalTarget = resolveElementByPath(original, path) ?? original;
+    const originalTarget = resolveElementByPath(activeOriginal, path) ?? activeOriginal;
+
+    console.log('[AllChat Twitch] Forwarding click to original:', widgetType, path, originalTarget.tagName);
+
+    // Temporarily make original interactive (override pointer-events: none from hide CSS)
+    const origPE = activeOriginal.style.pointerEvents;
+    activeOriginal.style.pointerEvents = 'auto';
 
     // Try .click() first (higher browser trust), fall back to dispatchEvent
     try {
@@ -134,16 +148,24 @@ function setupEventForwarding(clone: HTMLElement, original: HTMLElement): void {
         composed: true,
       }));
     }
+
+    // Restore pointer-events after a tick (let React process the event first)
+    setTimeout(() => { activeOriginal.style.pointerEvents = origPE; }, 50);
   }, true); // useCapture to intercept before any inline handlers
 
   // Forward input events for text inputs inside widgets (e.g., prediction point entry)
   clone.addEventListener('input', (e: Event) => {
     const target = e.target as HTMLInputElement;
     if (target.value === undefined && target.value !== '') return;
+
+    const chatShell = document.querySelector('.chat-shell');
+    const config = WIDGET_SELECTORS[widgetType];
+    const liveOriginal = chatShell ? findWidget(config, chatShell) : null;
+    const activeOriginal = liveOriginal ?? original;
+
     const path = getElementPath(target, clone);
-    const originalTarget = resolveElementByPath(original, path) as HTMLInputElement | null;
+    const originalTarget = resolveElementByPath(activeOriginal, path) as HTMLInputElement | null;
     if (originalTarget) {
-      // Set value on original and trigger React's onChange via native setter
       const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
         window.HTMLInputElement.prototype, 'value'
       )?.set;
@@ -161,7 +183,7 @@ function setupEventForwarding(clone: HTMLElement, original: HTMLElement): void {
  * Starts a sync MutationObserver on the original to re-clone on DOM changes (D-10).
  * Returns the clone element, or null if the zone doesn't exist (graceful degradation).
  */
-function cloneWidgetIntoZone(original: HTMLElement, zone: 'top' | 'bottom'): HTMLElement | null {
+function cloneWidgetIntoZone(original: HTMLElement, zone: 'top' | 'bottom', widgetType: WidgetType): HTMLElement | null {
   // Don't double-clone
   if (cloneMap.has(original)) return cloneMap.get(original)!;
 
@@ -175,7 +197,7 @@ function cloneWidgetIntoZone(original: HTMLElement, zone: 'top' | 'bottom'): HTM
   clone.setAttribute('data-allchat-clone', 'true');
 
   // D-11: Event forwarding — intercept clicks on clone, dispatch on original
-  setupEventForwarding(clone, original);
+  setupEventForwarding(clone, original, widgetType);
 
   // Insert clone into zone
   zoneEl.appendChild(clone);
@@ -198,7 +220,7 @@ function cloneWidgetIntoZone(original: HTMLElement, zone: 'top' | 'bottom'): HTM
     const newClone = original.cloneNode(true) as HTMLElement;
     newClone.setAttribute('aria-hidden', 'true');
     newClone.setAttribute('data-allchat-clone', 'true');
-    setupEventForwarding(newClone, original);
+    setupEventForwarding(newClone, original, widgetType);
     currentClone.replaceWith(newClone);
     cloneMap.set(original, newClone);
   });
@@ -211,8 +233,9 @@ function cloneWidgetIntoZone(original: HTMLElement, zone: 'top' | 'bottom'): HTM
 
   cloneSyncObservers.set(original, syncObserver);
   cloneMap.set(original, clone);
+  cloneTypeMap.set(original, widgetType);
 
-  console.log(`[AllChat Twitch] Cloned widget into ${zone} zone`);
+  console.log(`[AllChat Twitch] Cloned ${widgetType} widget into ${zone} zone`);
   return clone;
 }
 
@@ -225,6 +248,7 @@ function removeCloneForOriginal(original: HTMLElement): void {
   if (clone) {
     clone.remove();
     cloneMap.delete(original);
+    cloneTypeMap.delete(original);
   }
   const syncObs = cloneSyncObservers.get(original);
   if (syncObs) {
@@ -265,11 +289,11 @@ function buildSelectorString(selectors: readonly string[]): string | null {
  */
 function startWidgetDetection(chatShell: HTMLElement): void {
   // Initial scan for persistent widgets (D-15)
-  for (const config of Object.values(WIDGET_SELECTORS)) {
+  for (const [type, config] of Object.entries(WIDGET_SELECTORS)) {
     if (config.persistent) {
       const widget = findWidget(config, chatShell);
       if (widget) {
-        cloneWidgetIntoZone(widget, config.zone);
+        cloneWidgetIntoZone(widget, config.zone, type as WidgetType);
       }
     }
   }
@@ -284,7 +308,7 @@ function startWidgetDetection(chatShell: HTMLElement): void {
       // Check added nodes for widget matches
       for (const node of mutation.addedNodes) {
         if (!(node instanceof HTMLElement)) continue;
-        for (const config of Object.values(WIDGET_SELECTORS)) {
+        for (const [type, config] of Object.entries(WIDGET_SELECTORS)) {
           if (config.persistent) continue; // Persistent already handled at init
           const selectorStr = buildSelectorString(config.selectors);
           if (!selectorStr) continue;
@@ -298,7 +322,7 @@ function startWidgetDetection(chatShell: HTMLElement): void {
             continue;
           }
           if (widget && !cloneMap.has(widget)) {
-            cloneWidgetIntoZone(widget, config.zone);
+            cloneWidgetIntoZone(widget, config.zone, type as WidgetType);
           }
         }
       }
@@ -356,10 +380,11 @@ function resyncWidgetClones(): void {
       removeCloneForOriginal(original);
     } else {
       // Re-clone to pick up any changes while hidden
+      const wType = cloneTypeMap.get(original) ?? 'channelPoints';
       const newClone = original.cloneNode(true) as HTMLElement;
       newClone.setAttribute('aria-hidden', 'true');
       newClone.setAttribute('data-allchat-clone', 'true');
-      setupEventForwarding(newClone, original);
+      setupEventForwarding(newClone, original, wType);
       clone.replaceWith(newClone);
       cloneMap.set(original, newClone);
     }
@@ -368,11 +393,11 @@ function resyncWidgetClones(): void {
   // Also check for new persistent widgets that appeared while AllChat was hidden
   const chatShell = document.querySelector('.chat-shell') as HTMLElement | null;
   if (chatShell) {
-    for (const config of Object.values(WIDGET_SELECTORS)) {
+    for (const [type, config] of Object.entries(WIDGET_SELECTORS)) {
       if (config.persistent) {
         const widget = findWidget(config, chatShell);
         if (widget && !cloneMap.has(widget)) {
-          cloneWidgetIntoZone(widget, config.zone);
+          cloneWidgetIntoZone(widget, config.zone, type as WidgetType);
         }
       }
     }
@@ -649,13 +674,13 @@ class TwitchDetector extends PlatformDetector {
     const hideStyle = document.createElement('style');
     hideStyle.id = 'allchat-hide-native-style';
     hideStyle.textContent = `
-      /* Hide ALL native .chat-shell children except AllChat elements */
+      /* Hide native .chat-shell children behind AllChat's opaque container.
+         Use opacity:0 instead of visibility:hidden so elements retain their
+         full size/layout — Twitch React handlers may check visibility before
+         processing events (needed for widget clone event forwarding). */
       .chat-shell > *:not(#allchat-tab-bar):not(#allchat-container) {
-        visibility: hidden !important;
-        height: 0 !important;
-        min-height: 0 !important;
-        overflow: hidden !important;
-        position: absolute !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
       }
     `;
     document.head.appendChild(hideStyle);

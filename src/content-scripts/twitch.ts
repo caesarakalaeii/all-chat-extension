@@ -11,6 +11,187 @@ import { getSyncStorage } from '../lib/storage';
 // Module-level slot observer — shared between createInjectionPoint and teardown
 let slotObserver: MutationObserver | null = null;
 
+/**
+ * Build the tab bar DOM element per UI-SPEC Layout Contract (D-04 through D-08).
+ * The tab bar is injected as a sibling of #allchat-container inside .chat-shell.
+ * Inline styles reference hardcoded OkLCh/hex values that match src/ui/styles.css tokens.
+ */
+function createTabBar(): HTMLElement {
+  const tabBar = document.createElement('div');
+  tabBar.id = 'allchat-tab-bar';
+  tabBar.setAttribute('role', 'tablist');
+  tabBar.setAttribute('aria-label', 'Chat view switcher');
+  tabBar.style.cssText = `
+    position: absolute; top: 0; left: 0; right: 0; z-index: 2;
+    height: 36px; display: flex;
+    background: oklch(0.11 0.009 270);
+    border-bottom: 1px solid oklch(from #fff l c h / 0.06);
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 13px; font-weight: 600; line-height: 1;
+  `;
+
+  // AllChat tab (left)
+  const allchatTab = document.createElement('button');
+  allchatTab.id = 'allchat-tab-allchat';
+  allchatTab.setAttribute('role', 'tab');
+  allchatTab.setAttribute('aria-selected', 'true');
+  allchatTab.setAttribute('aria-label', 'AllChat tab — cross-platform chat view');
+  allchatTab.style.cssText = `
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+    background: none; border: none; border-bottom: 2px solid #A37BFF;
+    border-right: 1px solid oklch(from #fff l c h / 0.06);
+    color: oklch(0.91 0.003 270); cursor: pointer;
+    padding: 0 8px; transition: color 0.15s ease;
+    font-family: inherit; font-size: inherit; font-weight: inherit;
+  `;
+
+  // InfinityLogo inline SVG (16px, stroke #A37BFF) — static simplified version
+  // (no animation — content script cannot use React)
+  // SVG path from InfinityLogo.tsx: inf = 'M6 10c5 0 7-8 12-8a4 4 0 0 1 0 8c-5 0-7-8-12-8a4 4 0 1 0 0 8'
+  const logoSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  logoSvg.setAttribute('width', '16');
+  logoSvg.setAttribute('height', '10');
+  logoSvg.setAttribute('viewBox', '0 0 24 14');
+  logoSvg.setAttribute('fill', 'none');
+  logoSvg.setAttribute('aria-hidden', 'true');
+  const infPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  infPath.setAttribute('d', 'M6 10c5 0 7-8 12-8a4 4 0 0 1 0 8c-5 0-7-8-12-8a4 4 0 1 0 0 8');
+  infPath.setAttribute('stroke', '#A37BFF');
+  infPath.setAttribute('stroke-width', '2.5');
+  infPath.setAttribute('stroke-linecap', 'round');
+  logoSvg.appendChild(infPath);
+  allchatTab.appendChild(logoSvg);
+
+  const allchatLabel = document.createElement('span');
+  allchatLabel.textContent = 'AllChat';
+  allchatTab.appendChild(allchatLabel);
+
+  // Connection dot (6px, initially yellow/connecting) — right of AllChat text
+  const connDot = document.createElement('span');
+  connDot.id = 'allchat-tab-conn-dot';
+  connDot.style.cssText = `
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #facc15; flex-shrink: 0;
+  `;
+  allchatTab.appendChild(connDot);
+
+  // Twitch Chat tab (right)
+  const twitchTab = document.createElement('button');
+  twitchTab.id = 'allchat-tab-twitch';
+  twitchTab.setAttribute('role', 'tab');
+  twitchTab.setAttribute('aria-selected', 'false');
+  twitchTab.setAttribute('aria-label', 'Twitch Chat tab — native Twitch chat view');
+  twitchTab.style.cssText = `
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px;
+    background: none; border: none; border-bottom: 2px solid transparent;
+    color: oklch(0.58 0.007 270); cursor: pointer;
+    padding: 0 8px; transition: color 0.15s ease;
+    font-family: inherit; font-size: inherit; font-weight: inherit;
+  `;
+  twitchTab.textContent = 'Twitch Chat';
+
+  // Focus-visible outlines (accessibility — WCAG 2.4.7)
+  [allchatTab, twitchTab].forEach(tab => {
+    tab.addEventListener('focus', () => {
+      if (tab.matches(':focus-visible')) {
+        tab.style.outline = '2px solid #A37BFF';
+        tab.style.outlineOffset = '-2px';
+      }
+    });
+    tab.addEventListener('blur', () => {
+      tab.style.outline = 'none';
+    });
+  });
+
+  // Hover states
+  allchatTab.addEventListener('mouseenter', () => { allchatTab.style.background = 'oklch(0.14 0.008 270)'; });
+  allchatTab.addEventListener('mouseleave', () => { allchatTab.style.background = 'none'; });
+  twitchTab.addEventListener('mouseenter', () => { twitchTab.style.background = 'oklch(0.14 0.008 270)'; });
+  twitchTab.addEventListener('mouseleave', () => { twitchTab.style.background = 'none'; });
+
+  tabBar.appendChild(allchatTab);
+  tabBar.appendChild(twitchTab);
+
+  return tabBar;
+}
+
+/**
+ * Wire click handlers on tab bar buttons.
+ * Replaces the old SWITCH_TO_NATIVE message handling for Twitch.
+ * @param detector TwitchDetector instance (for hideNativeChat / showNativeChat)
+ */
+function setupTabSwitching(detector: TwitchDetector): void {
+  const allchatTab = document.getElementById('allchat-tab-allchat') as HTMLButtonElement | null;
+  const twitchTab = document.getElementById('allchat-tab-twitch') as HTMLButtonElement | null;
+
+  if (!allchatTab || !twitchTab) {
+    console.warn('[AllChat Twitch] Tab bar buttons not found — setupTabSwitching skipped');
+    return;
+  }
+
+  twitchTab.addEventListener('click', () => {
+    switchToTwitchTab(detector);
+  });
+
+  allchatTab.addEventListener('click', () => {
+    switchToAllChatTab(detector);
+  });
+}
+
+/**
+ * Activate the Twitch Chat tab: hide AllChat, restore native chat.
+ */
+function switchToTwitchTab(detector: TwitchDetector): void {
+  const allchatTab = document.getElementById('allchat-tab-allchat') as HTMLButtonElement | null;
+  const twitchTab = document.getElementById('allchat-tab-twitch') as HTMLButtonElement | null;
+  const container = document.getElementById('allchat-container');
+
+  if (container) {
+    container.style.display = 'none';
+  }
+  // Remove native chat hide style to restore native Twitch chat visibility
+  detector.showNativeChat();
+
+  if (allchatTab) {
+    allchatTab.setAttribute('aria-selected', 'false');
+    allchatTab.style.borderBottom = '2px solid transparent';
+    allchatTab.style.color = 'oklch(0.58 0.007 270)';
+  }
+  if (twitchTab) {
+    twitchTab.setAttribute('aria-selected', 'true');
+    twitchTab.style.borderBottom = '2px solid #A37BFF';
+    twitchTab.style.color = 'oklch(0.91 0.003 270)';
+  }
+  console.log('[AllChat Twitch] Switched to Twitch Chat tab');
+}
+
+/**
+ * Activate the AllChat tab: restore AllChat, hide native chat.
+ */
+function switchToAllChatTab(detector: TwitchDetector): void {
+  const allchatTab = document.getElementById('allchat-tab-allchat') as HTMLButtonElement | null;
+  const twitchTab = document.getElementById('allchat-tab-twitch') as HTMLButtonElement | null;
+  const container = document.getElementById('allchat-container');
+
+  if (container) {
+    container.style.display = '';
+  }
+  // Re-inject native chat hide style
+  detector.hideNativeChat();
+
+  if (allchatTab) {
+    allchatTab.setAttribute('aria-selected', 'true');
+    allchatTab.style.borderBottom = '2px solid #A37BFF';
+    allchatTab.style.color = 'oklch(0.91 0.003 270)';
+  }
+  if (twitchTab) {
+    twitchTab.setAttribute('aria-selected', 'false');
+    twitchTab.style.borderBottom = '2px solid transparent';
+    twitchTab.style.color = 'oklch(0.58 0.007 270)';
+  }
+  console.log('[AllChat Twitch] Switched to AllChat tab');
+}
+
 class TwitchDetector extends PlatformDetector {
   platform = 'twitch' as const;
 
@@ -91,11 +272,15 @@ class TwitchDetector extends PlatformDetector {
   }
 
   removeAllChatUI(): void {
-    // Remove All-Chat container
+    // Remove All-Chat container and tab bar
     const container = document.getElementById('allchat-container');
     if (container) {
       container.remove();
       console.log('[AllChat Twitch] Removed All-Chat UI');
+    }
+    const tabBar = document.getElementById('allchat-tab-bar');
+    if (tabBar) {
+      tabBar.remove();
     }
   }
 
@@ -107,11 +292,42 @@ class TwitchDetector extends PlatformDetector {
       const slot = await this.waitForElement('.chat-shell', 60_000);
       // Make .chat-shell a positioning context so allchat-container can overlay it
       slot.style.position = 'relative';
+
+      // Create and inject tab bar as sibling to #allchat-container (D-04 through D-08)
+      const tabBar = createTabBar();
+      slot.appendChild(tabBar);
+
+      // Create #allchat-container as flex column with padding-top for the tab bar
       const container = document.createElement('div');
       container.id = 'allchat-container';
-      // Absolute overlay — native chat sits as first child, we overlay it
-      container.style.cssText = 'position: absolute; inset: 0; z-index: 1;';
+      container.style.cssText = 'position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; padding-top: 36px;';
+
+      // Top widget zone — transient widgets (predictions, polls, hype trains, raids)
+      const widgetZoneTop = document.createElement('div');
+      widgetZoneTop.id = 'allchat-widget-zone-top';
+      widgetZoneTop.setAttribute('role', 'region');
+      widgetZoneTop.setAttribute('aria-label', 'Twitch interactive widgets — predictions, polls, hype trains');
+      widgetZoneTop.style.cssText = 'flex: 0 0 auto; overflow: hidden; max-height: 0;';
+      container.appendChild(widgetZoneTop);
+
+      // Iframe wrapper — takes all remaining vertical space
+      const iframeWrapper = document.createElement('div');
+      iframeWrapper.id = 'allchat-iframe-wrapper';
+      iframeWrapper.style.cssText = 'flex: 1 1 0; min-height: 0;';
+      container.appendChild(iframeWrapper);
+
+      // Bottom widget zone — persistent channel points widget
+      const widgetZoneBottom = document.createElement('div');
+      widgetZoneBottom.id = 'allchat-widget-zone-bottom';
+      widgetZoneBottom.setAttribute('role', 'region');
+      widgetZoneBottom.setAttribute('aria-label', 'Twitch channel points');
+      widgetZoneBottom.style.cssText = 'flex: 0 0 auto; overflow: hidden;';
+      container.appendChild(widgetZoneBottom);
+
       slot.appendChild(container);
+
+      // Wire tab switching — the tab bar handler calls hideNativeChat/showNativeChat
+      setupTabSwitching(this);
 
       // Set up scoped MutationObserver on .chat-shell's parent (INJ-03)
       if (slot.parentElement) {
@@ -129,14 +345,33 @@ class TwitchDetector extends PlatformDetector {
         console.warn('[AllChat Twitch] .chat-shell has no parentElement — slot observer not set up');
       }
 
-      return container;
+      // Return iframeWrapper so injectAllChatUI places the iframe in the correct zone
+      return iframeWrapper;
     } catch {
       console.warn('[AllChat Twitch] .chat-shell not found after timeout — native chat remains visible');
       return null;
     }
   }
 
+  /**
+   * Override to send TAB_BAR_MODE to the iframe after it loads,
+   * so ChatContainer hides its own header in favour of the tab bar.
+   */
+  protected onIframeCreated(iframe: HTMLIFrameElement): void {
+    iframe.addEventListener('load', () => {
+      const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
+      // T-07-03: use extensionOrigin as targetOrigin (not '*') when sending TAB_BAR_MODE
+      iframe.contentWindow?.postMessage({ type: 'TAB_BAR_MODE', enabled: true }, extensionOrigin);
+      console.log('[AllChat Twitch] Sent TAB_BAR_MODE to iframe');
+    });
+  }
+
   teardown(): void {
+    // Remove tab bar in addition to base teardown
+    const tabBar = document.getElementById('allchat-tab-bar');
+    if (tabBar) {
+      tabBar.remove();
+    }
     slotObserver?.disconnect();
     slotObserver = null;
     super.teardown();
@@ -264,6 +499,31 @@ function handleExtensionStateChange(enabled: boolean) {
 }
 
 /**
+ * Update the connection dot color in the tab bar based on connection state.
+ */
+function updateTabBarConnDot(state: string): void {
+  const dot = document.getElementById('allchat-tab-conn-dot');
+  if (!dot) return;
+
+  switch (state) {
+    case 'connected':
+      dot.style.background = '#4ade80'; // green-400
+      break;
+    case 'connecting':
+    case 'reconnecting':
+      dot.style.background = '#facc15'; // yellow-400
+      break;
+    case 'failed':
+      dot.style.background = '#f87171'; // red-400
+      break;
+    case 'disconnected':
+    default:
+      dot.style.background = 'oklch(0.35 0.007 270)'; // dim
+      break;
+  }
+}
+
+/**
  * Set up global message relay from service worker to iframe
  * This is called immediately when content script loads to avoid missing messages
  */
@@ -294,6 +554,11 @@ function setupGlobalMessageRelay() {
           console.log('[AllChat Twitch] Relayed message to iframe:', message.type);
         }
       });
+
+      // Update connection dot in tab bar when CONNECTION_STATE arrives
+      if (message.type === 'CONNECTION_STATE' && message.data?.state) {
+        updateTabBarConnDot(message.data.state);
+      }
     }
     return false;
   });
@@ -355,9 +620,15 @@ function setupGlobalMessageRelay() {
       globalDetector.handlePopoutRequest(event.data);
     }
 
-    // Handle "Switch to native" from AllChat iframe (D-14)
+    // Handle "Switch to native" from AllChat iframe (D-14).
+    // Routes through tab bar for Twitch to keep tab bar state consistent.
     if (event.data.type === 'SWITCH_TO_NATIVE' && globalDetector) {
-      globalDetector.handleSwitchToNative();
+      switchToTwitchTab(globalDetector);
+    }
+
+    // Handle "Switch to AllChat" from AllChat iframe
+    if (event.data.type === 'SWITCH_TO_ALLCHAT' && globalDetector) {
+      switchToAllChatTab(globalDetector);
     }
 
     // Handle "Bring back chat" / close pop-out from AllChat iframe

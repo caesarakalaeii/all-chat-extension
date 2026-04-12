@@ -266,6 +266,7 @@ export abstract class PlatformDetector {
   /**
    * Handle "Switch to native" request from in-page AllChat iframe (D-14).
    * Hides AllChat and shows native chat. Injects "Switch to AllChat" button into native chat.
+   * When a tab bar exists (Twitch), the tab bar handles view switching — skip button injection.
    */
   handleSwitchToNative(): void {
     const container = document.getElementById('allchat-container');
@@ -274,12 +275,16 @@ export abstract class PlatformDetector {
       this.allchatHidden = true;
     }
     this.showNativeChat();
-    this.injectSwitchToAllChatButton();
+    // Only inject the fallback button if no tab bar exists (Twitch uses tab bar instead)
+    if (!document.getElementById('allchat-tab-bar')) {
+      this.injectSwitchToAllChatButton();
+    }
     console.log(`[AllChat ${this.platform}] Switched to native chat (AllChat hidden)`);
   }
 
   /**
    * Handle "Switch to AllChat" — restore AllChat iframe and hide native chat (D-14 reverse).
+   * When a tab bar exists (Twitch), the tab bar handles view switching — skip button removal.
    */
   handleSwitchToAllChat(): void {
     const container = document.getElementById('allchat-container');
@@ -288,7 +293,10 @@ export abstract class PlatformDetector {
       this.allchatHidden = false;
     }
     this.hideNativeChat();
-    this.removeSwitchToAllChatButton();
+    // Only remove the fallback button if no tab bar exists
+    if (!document.getElementById('allchat-tab-bar')) {
+      this.removeSwitchToAllChatButton();
+    }
     console.log(`[AllChat ${this.platform}] Switched back to AllChat`);
   }
 
@@ -458,7 +466,19 @@ export abstract class PlatformDetector {
 
     container.appendChild(iframe);
 
+    // Allow subclasses to hook into iframe creation (e.g. TwitchDetector sends TAB_BAR_MODE)
+    this.onIframeCreated(iframe);
+
     console.log(`[AllChat ${this.platform}] UI injected`);
+  }
+
+  /**
+   * Called immediately after the iframe element is created and appended.
+   * Subclasses may override to attach load listeners or send postMessages.
+   * Default implementation is a no-op.
+   */
+  protected onIframeCreated(_iframe: HTMLIFrameElement): void {
+    // no-op by default
   }
 
   /**

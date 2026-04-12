@@ -91,7 +91,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -135,23 +135,3 @@ Plans:
 - [ ] 06-03-PLAN.md — Service worker port broadcast + PlatformDetector pop-out lifecycle methods
 - [ ] 06-04-PLAN.md — Wire pop-out and native-switch messages into all four content scripts
 - [ ] 06-05-PLAN.md — Native pop-out injection (Twitch/YouTube), manifest update, bidirectional navigation + human verify
-
-### Phase 7: Twitch Native Widget Extraction
-
-**Goal:** Twitch-native interactive features (channel points, predictions, polls, raids) remain fully accessible when AllChat is active — widgets are extracted from the native chat DOM and repositioned alongside the AllChat iframe, with a tab bar switcher for instant toggling between AllChat and native chat views
-**Requirements**: WIDGET-01, WIDGET-02, WIDGET-03, WIDGET-04, WIDGET-05, WIDGET-06, WIDGET-07, WIDGET-08
-**Depends on:** Phase 6
-**Success Criteria** (what must be TRUE):
-  1. Channel points balance, claim button, and redemption menu are visible and functional while AllChat is the active chat view
-  2. Predictions and polls UI is accessible without switching to native chat
-  3. A persistent tab bar (`[AllChat] | [Twitch Chat]`) replaces the current small "switch to native" button — switching is instant with no state loss in either view
-  4. Native chat stays mounted (hidden) when AllChat tab is active — no reload on switch
-  5. The approach generalizes to YouTube and Kick native features in future phases
-**Plans:** 5 plans
-
-Plans:
-- [ ] 07-01-PLAN.md — Wave 0 test scaffold: skip-stubs for WIDGET-01 through WIDGET-08 + twitch-mock.html widget fixtures
-- [ ] 07-02-PLAN.md — Tab bar injection + layout restructure: #allchat-tab-bar, flex column with widget zones, full swap toggling
-- [ ] 07-03-PLAN.md — ChatContainer tabBarMode: conditional header hiding, floating pop-out button, TAB_BAR_MODE message handling
-- [ ] 07-04-PLAN.md — Widget extraction core: clone + event forwarding, MutationObserver sync, widget zone management
-- [ ] 07-05-PLAN.md — README update + human verification: tab bar, widget extraction, regression check on all platforms

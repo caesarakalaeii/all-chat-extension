@@ -129,6 +129,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   const [viewerNameColor, setViewerNameColor] = useState<string | null>(null);
   const [viewerNameGradient, setViewerNameGradient] = useState<string | null>(null);
   const [isPoppedOut, setIsPoppedOut] = useState(false); // in-page: true when pop-out window is open
+  const [tabBarMode, setTabBarMode] = useState(false); // true when Twitch tab bar controls view (header hidden)
 
   // Parse gradient JSON string for use in style — null when absent or invalid
   const parsedGradient = useMemo(
@@ -220,6 +221,12 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
     if (!data || !data.type) return;
 
     console.log('[AllChat UI] Received message:', data.type, data);
+
+    // Handle tab bar mode toggle (Twitch tab bar replaces iframe header)
+    if (data.type === 'TAB_BAR_MODE') {
+      setTabBarMode(data.enabled as boolean);
+      return;
+    }
 
     // Handle connection state updates
     if (data.type === 'CONNECTION_STATE') {
@@ -497,77 +504,95 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   };
 
   return (
-    <div className="h-full flex flex-col bg-bg">
-      {/* Header */}
-      <div className="px-2 py-1.5 bg-surface border-b border-border flex items-center">
-        {/* Left: collapse button (hidden in pop-out mode — standalone window has its own close) */}
-        {!isPopOut && (
-          <button
-            onClick={toggleCollapse}
-            className="text-[var(--color-text-dim)] hover:text-text transition-colors"
-            title={isCollapsed ? 'Expand' : 'Collapse'}
-            aria-label={isCollapsed ? 'Expand' : 'Collapse'}
-          >
-            <svg
-              className="w-4 h-4 transition-transform"
-              style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-        )}
-
-        {/* Center: InfinityLogo */}
-        <div className="flex-1 flex justify-center">
-          <InfinityLogo size={24} />
-        </div>
-
-        {/* Right: connection dot + platform badge + switch to native + pop-out */}
-        <div className="flex items-center gap-1.5">
-          {/* Connection dot */}
-          <span className={`w-2 h-2 rounded-full ${
-            connectionStatus.state === 'connected'    ? 'bg-green-400' :
-            connectionStatus.state === 'connecting'   ? 'bg-yellow-400 animate-pulse' :
-            connectionStatus.state === 'reconnecting' ? 'bg-yellow-400 animate-pulse' :
-            connectionStatus.state === 'failed'       ? 'bg-red-400' :
-                                                        'bg-[var(--color-text-dim)]'
-          }`} title={connectionStatus.state} />
-          {/* Platform badge */}
-          <span
-            className="w-2 h-2 rounded-full"
-            style={{ backgroundColor: `var(--color-${platform})` }}
-            title={platform}
-          />
-          {/* Switch to native button (per D-03) */}
-          <button
-            onClick={handleSwitchToNative}
-            className="text-[var(--color-text-dim)] hover:text-text transition-colors flex items-center gap-0.5"
-            title="Switch to native chat"
-            aria-label="Switch to native chat"
-          >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            <span className="text-xs">Native</span>
-          </button>
-          {/* Pop-out button (per D-01, D-02) — rightmost in header; hidden when chat is already popped out */}
-          {!isPoppedOut && (
+    <div className="h-full flex flex-col bg-bg relative">
+      {/* Header — hidden when tab bar controls view (Twitch tabBarMode) */}
+      {!tabBarMode && (
+        <div className="px-2 py-1.5 bg-surface border-b border-border flex items-center">
+          {/* Left: collapse button (hidden in pop-out mode — standalone window has its own close) */}
+          {!isPopOut && (
             <button
-              onClick={handlePopOut}
+              onClick={toggleCollapse}
               className="text-[var(--color-text-dim)] hover:text-text transition-colors"
-              title="Open in new window"
-              aria-label="Open chat in new window"
+              title={isCollapsed ? 'Expand' : 'Collapse'}
+              aria-label={isCollapsed ? 'Expand' : 'Collapse'}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
+              <svg
+                className="w-4 h-4 transition-transform"
+                style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
           )}
+
+          {/* Center: InfinityLogo */}
+          <div className="flex-1 flex justify-center">
+            <InfinityLogo size={24} />
+          </div>
+
+          {/* Right: connection dot + platform badge + switch to native + pop-out */}
+          <div className="flex items-center gap-1.5">
+            {/* Connection dot */}
+            <span className={`w-2 h-2 rounded-full ${
+              connectionStatus.state === 'connected'    ? 'bg-green-400' :
+              connectionStatus.state === 'connecting'   ? 'bg-yellow-400 animate-pulse' :
+              connectionStatus.state === 'reconnecting' ? 'bg-yellow-400 animate-pulse' :
+              connectionStatus.state === 'failed'       ? 'bg-red-400' :
+                                                          'bg-[var(--color-text-dim)]'
+            }`} title={connectionStatus.state} />
+            {/* Platform badge */}
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: `var(--color-${platform})` }}
+              title={platform}
+            />
+            {/* Switch to native button (per D-03) */}
+            <button
+              onClick={handleSwitchToNative}
+              className="text-[var(--color-text-dim)] hover:text-text transition-colors flex items-center gap-0.5"
+              title="Switch to native chat"
+              aria-label="Switch to native chat"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              <span className="text-xs">Native</span>
+            </button>
+            {/* Pop-out button (per D-01, D-02) — rightmost in header; hidden when chat is already popped out */}
+            {!isPoppedOut && (
+              <button
+                onClick={handlePopOut}
+                className="text-[var(--color-text-dim)] hover:text-text transition-colors"
+                title="Open in new window"
+                aria-label="Open chat in new window"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Pop-out button (floating) when in tabBarMode — still accessible from iframe */}
+      {tabBarMode && !isPoppedOut && !isPopOut && (
+        <div style={{ position: 'absolute', top: 4, right: 4, zIndex: 10 }}>
+          <button
+            onClick={handlePopOut}
+            className="text-[var(--color-text-dim)] hover:text-text transition-colors bg-surface/80 rounded p-1"
+            title="Open in new window"
+            aria-label="Open chat in new window"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {!isCollapsed && (
         <>

@@ -179,8 +179,15 @@ function placeWidgetInZone(original: HTMLElement, zone: 'top' | 'bottom' | 'tab-
       } else {
         targetEl.appendChild(wrapper);
       }
-      // Style the wrapper to fit in the tab bar
-      wrapper.style.cssText = 'display: flex; align-items: center; flex: 0 0 auto; border-left: 1px solid oklch(from #fff l c h / 0.06); padding: 0 4px; height: 36px;';
+      // Style the wrapper to fit in the tab bar — constrain width so it
+      // doesn't squish the tab labels when the user has a long bits/points display.
+      // overflow: visible allows the fixed-position dialog to render outside.
+      wrapper.style.cssText = 'display: flex; align-items: center; flex: 0 1 auto; max-width: 120px; overflow: visible; border-left: 1px solid oklch(from #fff l c h / 0.06); padding: 0 2px; height: 36px;';
+      // Also constrain the button inside to prevent text overflow
+      const cpBtn = wrapper.querySelector('button');
+      if (cpBtn) {
+        (cpBtn as HTMLElement).style.cssText += '; max-width: 110px; overflow: hidden; transform: scale(0.85); transform-origin: center;';
+      }
     } else {
       targetEl.appendChild(wrapper);
       if (zone === 'bottom') {
@@ -211,7 +218,11 @@ function placeWidgetInZone(original: HTMLElement, zone: 'top' | 'bottom' | 'tab-
             } else if (targetEl) {
               targetEl.appendChild(newWrapper);
             }
-            newWrapper.style.cssText = 'display: flex; align-items: center; flex: 0 0 auto; border-left: 1px solid oklch(from #fff l c h / 0.06); padding: 0 4px; height: 36px;';
+            newWrapper.style.cssText = 'display: flex; align-items: center; flex: 0 1 auto; max-width: 120px; overflow: visible; border-left: 1px solid oklch(from #fff l c h / 0.06); padding: 0 2px; height: 36px;';
+            var newCpBtn = newWrapper.querySelector('button');
+            if (newCpBtn) {
+              newCpBtn.style.cssText += '; max-width: 110px; overflow: hidden; transform: scale(0.85); transform-origin: center;';
+            }
           } else if (targetEl) {
             targetEl.appendChild(newWrapper);
           }

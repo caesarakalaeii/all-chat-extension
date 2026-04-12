@@ -390,7 +390,7 @@ function createTabBar(): HTMLElement {
   tabBar.setAttribute('role', 'tablist');
   tabBar.setAttribute('aria-label', 'Chat view switcher');
   tabBar.style.cssText = `
-    position: absolute; top: 0; left: 0; right: 0; z-index: 2;
+    position: absolute; top: 0; left: 0; right: 0; z-index: 9999;
     height: 36px; display: flex;
     background: oklch(0.11 0.009 270);
     border-bottom: 1px solid oklch(from #fff l c h / 0.06);
@@ -509,16 +509,26 @@ function setupTabSwitching(detector: TwitchDetector): void {
 /**
  * Activate the Twitch Chat tab: hide AllChat, restore native chat.
  */
-function switchToTwitchTab(detector: TwitchDetector): void {
+function switchToTwitchTab(_detector: TwitchDetector): void {
   const allchatTab = document.getElementById('allchat-tab-allchat') as HTMLButtonElement | null;
   const twitchTab = document.getElementById('allchat-tab-twitch') as HTMLButtonElement | null;
   const container = document.getElementById('allchat-container');
 
+  // Instead of display:none + showNativeChat() (which triggers React re-renders
+  // that can remove our injected elements), just push the container behind native
+  // chat via z-index. Native chat is always in the DOM — hiding CSS makes it
+  // invisible. We toggle that CSS AND keep the container in place.
   if (container) {
-    container.style.display = 'none';
+    container.style.visibility = 'hidden';
+    container.style.pointerEvents = 'none';
   }
-  // Remove native chat hide style to restore native Twitch chat visibility
-  detector.showNativeChat();
+  // Remove the hide-native CSS so native chat shows through.
+  // We remove+re-add instead of toggling .disabled (Firefox doesn't support
+  // .disabled on injected <style> elements reliably).
+  const hideStyle = document.getElementById('allchat-hide-native-style');
+  if (hideStyle) {
+    hideStyle.remove();
+  }
 
   if (allchatTab) {
     allchatTab.setAttribute('aria-selected', 'false');
@@ -542,9 +552,11 @@ function switchToAllChatTab(detector: TwitchDetector): void {
   const container = document.getElementById('allchat-container');
 
   if (container) {
-    container.style.display = '';
+    container.style.visibility = 'visible';
+    container.style.pointerEvents = 'auto';
   }
-  // Re-inject native chat hide style
+  // Re-inject the hide-native CSS (was removed during Twitch tab switch).
+  // We call hideNativeChat() which is idempotent (checks if style exists first).
   detector.hideNativeChat();
 
   if (allchatTab) {
@@ -615,19 +627,13 @@ class TwitchDetector extends PlatformDetector {
     const hideStyle = document.createElement('style');
     hideStyle.id = 'allchat-hide-native-style';
     hideStyle.textContent = `
-      /* Hide native Twitch chat components */
-      [data-a-target="chat-input"],
-      [data-a-target="chat-welcome-message"],
-      div[role="log"][class*="chat"],
-      .chat-input,
-      .chat-input__textarea,
-      .stream-chat-header,
-      .chat-scrollable-area__message-container,
-      .chat-wysiwyg-input {
+      /* Hide ALL native .chat-shell children except AllChat elements */
+      .chat-shell > *:not(#allchat-tab-bar):not(#allchat-container) {
         visibility: hidden !important;
         height: 0 !important;
         min-height: 0 !important;
         overflow: hidden !important;
+        position: absolute !important;
       }
     `;
     document.head.appendChild(hideStyle);
@@ -664,6 +670,7 @@ class TwitchDetector extends PlatformDetector {
       const slot = await this.waitForElement('.chat-shell', 60_000);
       // Make .chat-shell a positioning context so allchat-container can overlay it
       slot.style.position = 'relative';
+      slot.style.overflow = 'hidden';
 
       // Create and inject tab bar as sibling to #allchat-container (D-04 through D-08)
       const tabBar = createTabBar();
@@ -672,7 +679,7 @@ class TwitchDetector extends PlatformDetector {
       // Create #allchat-container as flex column with padding-top for the tab bar
       const container = document.createElement('div');
       container.id = 'allchat-container';
-      container.style.cssText = 'position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; padding-top: 36px;';
+      container.style.cssText = 'position: absolute; inset: 0; z-index: 9998; display: flex; flex-direction: column; padding-top: 36px; background: oklch(0.09 0.007 270);';
 
       // Top widget zone — transient widgets (predictions, polls, hype trains, raids)
       const widgetZoneTop = document.createElement('div');
@@ -693,7 +700,7 @@ class TwitchDetector extends PlatformDetector {
       widgetZoneBottom.id = 'allchat-widget-zone-bottom';
       widgetZoneBottom.setAttribute('role', 'region');
       widgetZoneBottom.setAttribute('aria-label', 'Twitch channel points');
-      widgetZoneBottom.style.cssText = 'flex: 0 0 auto; overflow: hidden;';
+      widgetZoneBottom.style.cssText = 'flex: 0 0 auto; overflow: hidden; max-height: 50px;';
       container.appendChild(widgetZoneBottom);
 
       slot.appendChild(container);
@@ -704,6 +711,22 @@ class TwitchDetector extends PlatformDetector {
       // Wire tab switching — the tab bar handler calls hideNativeChat/showNativeChat
       setupTabSwitching(this);
 
+      // Guard against React reconciliation removing our injected elements.
+      // Twitch's React manages .chat-shell — when it re-renders (e.g., after
+      // native chat visibility toggles), it may remove nodes it doesn't own.
+      // We watch .chat-shell itself and re-append our elements if they vanish.
+      const guardObserver = new MutationObserver(() => {
+        if (!slot.contains(tabBar)) {
+          console.log('[AllChat Twitch] Tab bar removed by React — re-injecting');
+          slot.appendChild(tabBar);
+        }
+        if (!slot.contains(container)) {
+          console.log('[AllChat Twitch] Container removed by React — re-injecting');
+          slot.appendChild(container);
+        }
+      });
+      guardObserver.observe(slot, { childList: true });
+
       // Set up scoped MutationObserver on .chat-shell's parent (INJ-03)
       if (slot.parentElement) {
         slotObserver?.disconnect();
@@ -712,6 +735,7 @@ class TwitchDetector extends PlatformDetector {
           const containerExists = document.getElementById('allchat-container');
           if (!slotExists && !containerExists && globalDetector) {
             console.log('[AllChat Twitch] .chat-shell removed, re-running waitForElement...');
+            guardObserver.disconnect();
             globalDetector.init();
           }
         });

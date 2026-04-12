@@ -21,7 +21,7 @@ const WIDGET_SELECTORS = {
       '.community-points-summary',                           // Fallback class
       '[data-a-target="community-points-summary"]',         // ARIA fallback
     ],
-    zone: 'bottom' as const,
+    zone: 'tab-bar' as const,
     persistent: true,
   },
   // Transient widgets (appear/disappear during stream events)
@@ -144,17 +144,24 @@ const reparentedWidgets = new Map<HTMLElement, { originalParent: HTMLElement; or
  * Transient widgets (predictions, polls, etc.): CLONE into the zone.
  * Clones are display-only; clicking switches to the Twitch Chat tab for interaction.
  */
-function placeWidgetInZone(original: HTMLElement, zone: 'top' | 'bottom', widgetType: WidgetType): HTMLElement | null {
-  if (cloneMap.has(original) || reparentedWidgets.has(original)) return null;
-
-  const zoneId = zone === 'top' ? 'allchat-widget-zone-top' : 'allchat-widget-zone-bottom';
-  const zoneEl = document.getElementById(zoneId);
-  if (!zoneEl) return null;
+function placeWidgetInZone(original: HTMLElement, zone: 'top' | 'bottom' | 'tab-bar', widgetType: WidgetType): HTMLElement | null {
+  // Guard: check if this widget or its wrapper is already tracked
+  const wrapper = original.parentElement?.parentElement ?? original;
+  if (cloneMap.has(original) || reparentedWidgets.has(original) || reparentedWidgets.has(wrapper)) return null;
+  // Also skip if element is already inside our UI
+  if (original.closest('#allchat-tab-bar') || original.closest('#allchat-widget-zone-top') || original.closest('#allchat-widget-zone-bottom')) return null;
 
   const config = WIDGET_SELECTORS[widgetType];
 
   if (config.persistent) {
-    // REPARENT: move the real element's wrapper into the zone.
+    // For tab-bar zone: reparent into the tab bar (between Twitch tab and popout button)
+    // For other zones: reparent into the widget zone
+    const targetEl = zone === 'tab-bar'
+      ? document.getElementById('allchat-tab-bar')
+      : document.getElementById(zone === 'top' ? 'allchat-widget-zone-top' : 'allchat-widget-zone-bottom');
+    if (!targetEl) return null;
+
+    // REPARENT: move the real element's wrapper into the target.
     // The widget selector matches the innermost element (e.g., community-points-summary),
     // but Twitch renders popover dialogs as siblings in a parent wrapper (e.g., dMndGY).
     // We reparent 2 levels up to capture both the button AND the dialog container.
@@ -164,14 +171,23 @@ function placeWidgetInZone(original: HTMLElement, zone: 'top' | 'bottom', widget
     const originalNextSibling = wrapper.nextSibling;
     reparentedWidgets.set(wrapper, { originalParent: wrapperParent, originalNextSibling });
 
-    // Move wrapper into zone — contains the REAL Twitch button + dialog container
-    zoneEl.appendChild(wrapper);
-    wrapper.setAttribute('data-allchat-reparented', 'true');
-
-    // Expand zone
-    if (zone === 'bottom') {
-      zoneEl.style.borderTop = '1px solid oklch(from #fff l c h / 0.06)';
+    if (zone === 'tab-bar') {
+      // Insert before the popout button (last child of tab bar)
+      const popoutBtn = document.getElementById('allchat-tab-popout');
+      if (popoutBtn) {
+        targetEl.insertBefore(wrapper, popoutBtn);
+      } else {
+        targetEl.appendChild(wrapper);
+      }
+      // Style the wrapper to fit in the tab bar
+      wrapper.style.cssText = 'display: flex; align-items: center; flex: 0 0 auto; border-left: 1px solid oklch(from #fff l c h / 0.06); padding: 0 4px; height: 36px;';
+    } else {
+      targetEl.appendChild(wrapper);
+      if (zone === 'bottom') {
+        targetEl.style.borderTop = '1px solid oklch(from #fff l c h / 0.06)';
+      }
     }
+    wrapper.setAttribute('data-allchat-reparented', 'true');
 
     // Watch for Twitch React re-creating the widget in the original location.
     // When React notices the element is gone, it creates a new one. We detect
@@ -187,21 +203,35 @@ function placeWidgetInZone(original: HTMLElement, zone: 'top' | 'bottom', widget
         if (newWrapperParent) {
           reparentedWidgets.set(newWrapper, { originalParent: newWrapperParent, originalNextSibling: newWrapper.nextSibling });
           reparentedWidgets.delete(wrapper);
-          if (wrapper.parentElement === zoneEl) wrapper.remove();
-          zoneEl.appendChild(newWrapper);
+          if (wrapper.parentElement) wrapper.remove();
+          if (zone === 'tab-bar') {
+            const popoutBtn = document.getElementById('allchat-tab-popout');
+            if (popoutBtn && targetEl) {
+              targetEl.insertBefore(newWrapper, popoutBtn);
+            } else if (targetEl) {
+              targetEl.appendChild(newWrapper);
+            }
+            newWrapper.style.cssText = 'display: flex; align-items: center; flex: 0 0 auto; border-left: 1px solid oklch(from #fff l c h / 0.06); padding: 0 4px; height: 36px;';
+          } else if (targetEl) {
+            targetEl.appendChild(newWrapper);
+          }
           newWrapper.setAttribute('data-allchat-reparented', 'true');
           console.log(`[AllChat Twitch] Re-reparented ${widgetType} wrapper after React re-render`);
         }
       }
     });
     // Observe the original parent for React re-creating the widget
-    watchObserver.observe(originalParent, { childList: true, subtree: true });
+    watchObserver.observe(wrapperParent, { childList: true, subtree: true });
     cloneSyncObservers.set(original, watchObserver);
 
     console.log(`[AllChat Twitch] Reparented ${widgetType} widget into ${zone} zone (interactive)`);
     return original;
   } else {
-    // CLONE: transient widgets use display-only clones
+    // CLONE: transient widgets use display-only clones (always top or bottom zone)
+    const zoneId = zone === 'top' ? 'allchat-widget-zone-top' : 'allchat-widget-zone-bottom';
+    const zoneEl = document.getElementById(zoneId);
+    if (!zoneEl) return null;
+
     const clone = original.cloneNode(true) as HTMLElement;
     clone.setAttribute('aria-hidden', 'true');
     clone.setAttribute('data-allchat-clone', 'true');
@@ -764,9 +794,16 @@ class TwitchDetector extends PlatformDetector {
       // On offline channel pages it only exists after the "Chat" tab is clicked,
       // so we wait up to 60s to accommodate offline channel visits.
       const slot = await this.waitForElement('.chat-shell', 60_000);
-      // Make .chat-shell a positioning context so allchat-container can overlay it
+      // Make .chat-shell a positioning context so allchat-container can overlay it.
+      // Cap height at parent's height — without this, hidden native chat content
+      // expands .chat-shell beyond its visible area, pushing the bottom widget zone
+      // below the visible clip boundary.
       slot.style.position = 'relative';
       slot.style.overflow = 'hidden';
+      const parentHeight = slot.parentElement?.getBoundingClientRect().height;
+      if (parentHeight) {
+        slot.style.maxHeight = parentHeight + 'px';
+      }
 
       // Create and inject tab bar as sibling to #allchat-container (D-04 through D-08)
       const tabBar = createTabBar();

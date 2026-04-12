@@ -228,6 +228,12 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
       return;
     }
 
+    // Handle pop-out trigger from tab bar button
+    if (data.type === 'TRIGGER_POPOUT') {
+      handlePopOut();
+      return;
+    }
+
     // Handle connection state updates
     if (data.type === 'CONNECTION_STATE') {
       const status = data.data as ConnectionStatus;
@@ -578,20 +584,9 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
         </div>
       )}
 
-      {/* Pop-out button (floating) when in tabBarMode — still accessible from iframe */}
-      {tabBarMode && !isPoppedOut && !isPopOut && (
-        <div style={{ position: 'absolute', top: 4, right: 4, zIndex: 10 }}>
-          <button
-            onClick={handlePopOut}
-            className="text-[var(--color-text-dim)] hover:text-text transition-colors bg-surface/80 rounded p-1"
-            title="Open in new window"
-            aria-label="Open chat in new window"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
-            </svg>
-          </button>
-        </div>
+      {/* Pop-out button moved to tab bar (content script) in tabBarMode — no floating button needed */}
+      {false && tabBarMode && !isPoppedOut && !isPopOut && (
+        <div></div>
       )}
 
       {!isCollapsed && (

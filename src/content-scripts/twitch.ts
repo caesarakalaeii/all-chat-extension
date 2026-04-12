@@ -477,8 +477,30 @@ function createTabBar(): HTMLElement {
   twitchTab.addEventListener('mouseenter', () => { twitchTab.style.background = 'oklch(0.14 0.008 270)'; });
   twitchTab.addEventListener('mouseleave', () => { twitchTab.style.background = 'none'; });
 
+  // Pop-out button (rightmost in tab bar, replaces floating iframe button)
+  const popoutBtn = document.createElement('button');
+  popoutBtn.id = 'allchat-tab-popout';
+  popoutBtn.setAttribute('aria-label', 'Open chat in new window');
+  popoutBtn.title = 'Open in new window';
+  popoutBtn.style.cssText = `
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+    width: 36px; background: none; border: none; border-left: 1px solid oklch(from #fff l c h / 0.06);
+    color: oklch(0.58 0.007 270); cursor: pointer; transition: color 0.15s ease;
+  `;
+  popoutBtn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/></svg>';
+  popoutBtn.addEventListener('mouseenter', () => { popoutBtn.style.color = 'oklch(0.91 0.003 270)'; });
+  popoutBtn.addEventListener('mouseleave', () => { popoutBtn.style.color = 'oklch(0.58 0.007 270)'; });
+  popoutBtn.addEventListener('click', () => {
+    // Send POPOUT_REQUEST to the iframe which handles the pop-out logic
+    const iframe = document.querySelector('#allchat-container iframe') as HTMLIFrameElement | null;
+    if (iframe?.contentWindow) {
+      iframe.contentWindow.postMessage({ type: 'TRIGGER_POPOUT' }, '*');
+    }
+  });
+
   tabBar.appendChild(allchatTab);
   tabBar.appendChild(twitchTab);
+  tabBar.appendChild(popoutBtn);
 
   return tabBar;
 }

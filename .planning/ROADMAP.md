@@ -150,8 +150,8 @@ Plans:
 **Plans:** 5 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Wave 0 test scaffold: skip-stubs for WIDGET-01 through WIDGET-08 + twitch-mock.html widget fixtures
-- [ ] 07-02-PLAN.md — Tab bar injection + layout restructure: #allchat-tab-bar, flex column with widget zones, full swap toggling
-- [ ] 07-03-PLAN.md — ChatContainer tabBarMode: conditional header hiding, floating pop-out button, TAB_BAR_MODE message handling
-- [ ] 07-04-PLAN.md — Widget extraction core: clone + event forwarding, MutationObserver sync, widget zone management
-- [ ] 07-05-PLAN.md — README update + human verification: tab bar, widget extraction, regression check on all platforms
+- [x] 07-01-PLAN.md — Wave 0 test scaffold: skip-stubs for WIDGET-01 through WIDGET-08 + twitch-mock.html widget fixtures
+- [x] 07-02-PLAN.md — Tab bar injection + layout restructure: #allchat-tab-bar, flex column with widget zones, full swap toggling
+- [x] 07-03-PLAN.md — ChatContainer tabBarMode: conditional header hiding, floating pop-out button, TAB_BAR_MODE message handling
+- [x] 07-04-PLAN.md — Widget extraction core: clone + event forwarding, MutationObserver sync, widget zone management
+- [x] 07-05-PLAN.md — README update + human verification: tab bar, widget extraction, regression check on all platforms

@@ -11,6 +11,18 @@
       background: #0e0e10;
       color: #efeff1;
     }
+    .community-points-summary {
+      padding: 8px;
+      background: #1f1f23;
+      border-top: 1px solid #2c2c34;
+      font-size: 13px;
+    }
+    .prediction-checkout-widget {
+      padding: 8px;
+      background: #1f1f23;
+      border-bottom: 1px solid #2c2c34;
+      font-size: 13px;
+    }
     .twitch-layout {
       display: flex;
       height: 100vh;
@@ -56,10 +68,25 @@
     </div>
     <div class="right-column">
       <div class="chat-shell" style="width:100%;height:100%;">
+        <!-- Mock Twitch prediction widget (transient) — 2026-04 selectors -->
+        <div class="prediction-checkout-widget" data-test-selector="community-prediction-highlight-header" id="mock-prediction-widget" style="display: none;">
+          <div data-test-selector="community-prediction-highlight-header-title">Who will win?</div>
+          <div class="prediction-options">
+            <button data-test-selector="predictions-list-item__title">Option A</button>
+            <button data-test-selector="predictions-list-item__title">Option B</button>
+          </div>
+        </div>
         <div class="stream-chat">
           <div class="chat-room">
             <h3>Stream Chat</h3>
             <div id="chat-messages"><p>Welcome to the chat!</p></div>
+          </div>
+        </div>
+        <!-- Mock Twitch channel points widget (persistent) — 2026-04 selectors -->
+        <div class="community-points-summary" data-test-selector="community-points-summary">
+          <div class="community-points-summary__content">
+            <span data-test-selector="copo-balance-string">12,450</span>
+            <button data-test-selector="community-points-summary__claim-button" class="tw-button">Claim Bonus</button>
           </div>
         </div>
       </div>

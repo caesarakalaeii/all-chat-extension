@@ -116,63 +116,17 @@ function resolveElementByPath(root: HTMLElement, path: number[]): HTMLElement | 
  * Wire click and input event forwarding on a clone so user interactions
  * on the clone are relayed to the corresponding element in the original (D-11).
  */
-function setupEventForwarding(clone: HTMLElement, original: HTMLElement, widgetType: WidgetType): void {
+function setupEventForwarding(clone: HTMLElement, _original: HTMLElement, _widgetType: WidgetType): void {
+  // Clicking a cloned widget switches to the Twitch Chat tab where the original
+  // is fully interactive. Direct event forwarding (.click() / dispatchEvent) doesn't
+  // work reliably with Twitch's React event delegation system.
+  clone.style.cursor = 'pointer';
+  clone.title = 'Click to switch to Twitch Chat for full interaction';
   clone.addEventListener('click', (e: MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-
-    // Re-query the LIVE original element — Twitch's React may have re-rendered
-    // the widget since we captured the reference, making the original stale/detached.
-    const chatShell = document.querySelector('.chat-shell');
-    const config = WIDGET_SELECTORS[widgetType];
-    const liveOriginal = chatShell ? findWidget(config, chatShell) : null;
-    const activeOriginal = liveOriginal ?? original;
-
-    const target = e.target as HTMLElement;
-    const path = getElementPath(target, clone);
-    const originalTarget = resolveElementByPath(activeOriginal, path) ?? activeOriginal;
-
-    console.log('[AllChat Twitch] Forwarding click to original:', widgetType, path, originalTarget.tagName);
-
-    // Temporarily make original interactive (override pointer-events: none from hide CSS)
-    const origPE = activeOriginal.style.pointerEvents;
-    activeOriginal.style.pointerEvents = 'auto';
-
-    // Try .click() first (higher browser trust), fall back to dispatchEvent
-    try {
-      originalTarget.click();
-    } catch {
-      originalTarget.dispatchEvent(new MouseEvent('click', {
-        bubbles: true,
-        cancelable: true,
-        composed: true,
-      }));
-    }
-
-    // Restore pointer-events after a tick (let React process the event first)
-    setTimeout(() => { activeOriginal.style.pointerEvents = origPE; }, 50);
-  }, true); // useCapture to intercept before any inline handlers
-
-  // Forward input events for text inputs inside widgets (e.g., prediction point entry)
-  clone.addEventListener('input', (e: Event) => {
-    const target = e.target as HTMLInputElement;
-    if (target.value === undefined && target.value !== '') return;
-
-    const chatShell = document.querySelector('.chat-shell');
-    const config = WIDGET_SELECTORS[widgetType];
-    const liveOriginal = chatShell ? findWidget(config, chatShell) : null;
-    const activeOriginal = liveOriginal ?? original;
-
-    const path = getElementPath(target, clone);
-    const originalTarget = resolveElementByPath(activeOriginal, path) as HTMLInputElement | null;
-    if (originalTarget) {
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype, 'value'
-      )?.set;
-      if (nativeInputValueSetter) {
-        nativeInputValueSetter.call(originalTarget, target.value);
-        originalTarget.dispatchEvent(new Event('input', { bubbles: true }));
-      }
+    if (globalDetector) {
+      switchToTwitchTab(globalDetector);
     }
   }, true);
 }
@@ -289,14 +243,24 @@ function buildSelectorString(selectors: readonly string[]): string | null {
  */
 function startWidgetDetection(chatShell: HTMLElement): void {
   // Initial scan for persistent widgets (D-15)
-  for (const [type, config] of Object.entries(WIDGET_SELECTORS)) {
-    if (config.persistent) {
-      const widget = findWidget(config, chatShell);
-      if (widget) {
-        cloneWidgetIntoZone(widget, config.zone, type as WidgetType);
+  // Retry a few times — Twitch renders channel points asynchronously after chat loads
+  const scanPersistent = (retries: number) => {
+    let foundAll = true;
+    for (const [type, config] of Object.entries(WIDGET_SELECTORS)) {
+      if (config.persistent && !cloneMap.size) {
+        const widget = findWidget(config, chatShell);
+        if (widget) {
+          cloneWidgetIntoZone(widget, config.zone, type as WidgetType);
+        } else {
+          foundAll = false;
+        }
       }
     }
-  }
+    if (!foundAll && retries > 0) {
+      setTimeout(() => scanPersistent(retries - 1), 2000);
+    }
+  };
+  scanPersistent(5); // retry up to 5 times over 10 seconds
 
   // D-14: MutationObserver for transient widgets
   // NOTE (T-07-06): Observer is scoped to avoid firing on every chat message DOM update.
@@ -309,7 +273,6 @@ function startWidgetDetection(chatShell: HTMLElement): void {
       for (const node of mutation.addedNodes) {
         if (!(node instanceof HTMLElement)) continue;
         for (const [type, config] of Object.entries(WIDGET_SELECTORS)) {
-          if (config.persistent) continue; // Persistent already handled at init
           const selectorStr = buildSelectorString(config.selectors);
           if (!selectorStr) continue;
           // Check if the added node IS the widget or CONTAINS the widget
@@ -674,13 +637,13 @@ class TwitchDetector extends PlatformDetector {
     const hideStyle = document.createElement('style');
     hideStyle.id = 'allchat-hide-native-style';
     hideStyle.textContent = `
-      /* Hide native .chat-shell children behind AllChat's opaque container.
-         Use opacity:0 instead of visibility:hidden so elements retain their
-         full size/layout — Twitch React handlers may check visibility before
-         processing events (needed for widget clone event forwarding). */
+      /* Hide native .chat-shell children behind AllChat's opaque container */
       .chat-shell > *:not(#allchat-tab-bar):not(#allchat-container) {
-        opacity: 0 !important;
-        pointer-events: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+        position: absolute !important;
       }
     `;
     document.head.appendChild(hideStyle);

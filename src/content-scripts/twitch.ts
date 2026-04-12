@@ -11,6 +11,374 @@ import { getSyncStorage } from '../lib/storage';
 // Module-level slot observer — shared between createInjectionPoint and teardown
 let slotObserver: MutationObserver | null = null;
 
+// Twitch widget selectors — verified against live twitch.tv on 2026-04-12
+// Update date and selectors when Twitch changes their DOM
+const WIDGET_SELECTORS = {
+  // Persistent widgets (always present for logged-in users)
+  channelPoints: {
+    selectors: [
+      '[data-test-selector="community-points-summary"]',    // Primary — 2026-04
+      '.community-points-summary',                           // Fallback class
+      '[data-a-target="community-points-summary"]',         // ARIA fallback
+    ],
+    zone: 'bottom' as const,
+    persistent: true,
+  },
+  // Transient widgets (appear/disappear during stream events)
+  prediction: {
+    selectors: [
+      '[data-test-selector="community-prediction-highlight-header"]',  // 2026-04
+      '.prediction-checkout-widget',                                    // Fallback
+    ],
+    zone: 'top' as const,
+    persistent: false,
+  },
+  poll: {
+    selectors: [
+      '[data-test-selector*="poll"]',          // 2026-04 — broad match
+      '.poll-overlay',                          // Fallback
+    ],
+    zone: 'top' as const,
+    persistent: false,
+  },
+  hypeTrain: {
+    selectors: [
+      '[data-test-selector*="hype-train"]',    // 2026-04 — broad match
+      '.hype-train-container',                  // Fallback
+    ],
+    zone: 'top' as const,
+    persistent: false,
+  },
+  raid: {
+    selectors: [
+      '[data-test-selector*="raid"]',           // 2026-04 — broad match
+      '.raid-banner',                           // Fallback
+    ],
+    zone: 'top' as const,
+    persistent: false,
+  },
+} as const;
+
+type WidgetType = keyof typeof WIDGET_SELECTORS;
+
+// Module-level widget extraction state
+let widgetObserver: MutationObserver | null = null;
+const cloneSyncObservers = new Map<HTMLElement, MutationObserver>(); // original -> its sync observer
+const cloneMap = new Map<HTMLElement, HTMLElement>(); // original -> clone
+
+/**
+ * Find first matching widget element within a scope using the config's selectors.
+ * Returns null if not found — degrades gracefully (D-12).
+ */
+function findWidget(config: typeof WIDGET_SELECTORS[WidgetType], scope: Element): HTMLElement | null {
+  for (const selector of config.selectors) {
+    try {
+      const el = scope.querySelector(selector) as HTMLElement | null;
+      if (el) return el;
+    } catch {
+      // Invalid selector (e.g., rotted data-test-selector*= value) — skip silently
+    }
+  }
+  return null;
+}
+
+/**
+ * Map a target element to its index path from root within the clone tree.
+ * Used by event forwarding to resolve the corresponding original element.
+ */
+function getElementPath(target: HTMLElement, root: HTMLElement): number[] {
+  const path: number[] = [];
+  let el: HTMLElement | null = target;
+  while (el && el !== root) {
+    const parent = el.parentElement;
+    if (!parent) break;
+    path.unshift(Array.from(parent.children).indexOf(el));
+    el = parent;
+  }
+  return path;
+}
+
+/**
+ * Resolve an element inside a root by following an index path.
+ * Returns null if path is invalid (e.g., original subtree changed since last clone sync).
+ */
+function resolveElementByPath(root: HTMLElement, path: number[]): HTMLElement | null {
+  let el: Element = root;
+  for (const idx of path) {
+    if (!el.children[idx]) return null;
+    el = el.children[idx];
+  }
+  return el as HTMLElement;
+}
+
+/**
+ * Wire click and input event forwarding on a clone so user interactions
+ * on the clone are relayed to the corresponding element in the original (D-11).
+ */
+function setupEventForwarding(clone: HTMLElement, original: HTMLElement): void {
+  clone.addEventListener('click', (e: MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const target = e.target as HTMLElement;
+    const path = getElementPath(target, clone);
+    const originalTarget = resolveElementByPath(original, path) ?? original;
+
+    // Try .click() first (higher browser trust), fall back to dispatchEvent
+    try {
+      originalTarget.click();
+    } catch {
+      originalTarget.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      }));
+    }
+  }, true); // useCapture to intercept before any inline handlers
+
+  // Forward input events for text inputs inside widgets (e.g., prediction point entry)
+  clone.addEventListener('input', (e: Event) => {
+    const target = e.target as HTMLInputElement;
+    if (target.value === undefined && target.value !== '') return;
+    const path = getElementPath(target, clone);
+    const originalTarget = resolveElementByPath(original, path) as HTMLInputElement | null;
+    if (originalTarget) {
+      // Set value on original and trigger React's onChange via native setter
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, 'value'
+      )?.set;
+      if (nativeInputValueSetter) {
+        nativeInputValueSetter.call(originalTarget, target.value);
+        originalTarget.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }
+  }, true);
+}
+
+/**
+ * Deep-clone a widget element into the specified zone.
+ * Sets aria-hidden and data-allchat-clone on the clone.
+ * Starts a sync MutationObserver on the original to re-clone on DOM changes (D-10).
+ * Returns the clone element, or null if the zone doesn't exist (graceful degradation).
+ */
+function cloneWidgetIntoZone(original: HTMLElement, zone: 'top' | 'bottom'): HTMLElement | null {
+  // Don't double-clone
+  if (cloneMap.has(original)) return cloneMap.get(original)!;
+
+  const zoneId = zone === 'top' ? 'allchat-widget-zone-top' : 'allchat-widget-zone-bottom';
+  const zoneEl = document.getElementById(zoneId);
+  if (!zoneEl) return null;
+
+  // D-09: Deep clone
+  const clone = original.cloneNode(true) as HTMLElement;
+  clone.setAttribute('aria-hidden', 'true');
+  clone.setAttribute('data-allchat-clone', 'true');
+
+  // D-11: Event forwarding — intercept clicks on clone, dispatch on original
+  setupEventForwarding(clone, original);
+
+  // Insert clone into zone
+  zoneEl.appendChild(clone);
+
+  // Expand the top zone (remove max-height: 0 collapse)
+  if (zone === 'top') {
+    zoneEl.style.maxHeight = 'none';
+    zoneEl.style.overflow = 'visible';
+  }
+
+  // Add top border to bottom zone when it receives its first widget
+  if (zone === 'bottom') {
+    zoneEl.style.borderTop = '1px solid oklch(from #fff l c h / 0.06)';
+  }
+
+  // D-10: Sync observer — re-clone when original changes (simpler and safer than incremental patching)
+  const syncObserver = new MutationObserver(() => {
+    const currentClone = cloneMap.get(original);
+    if (!currentClone) return;
+    const newClone = original.cloneNode(true) as HTMLElement;
+    newClone.setAttribute('aria-hidden', 'true');
+    newClone.setAttribute('data-allchat-clone', 'true');
+    setupEventForwarding(newClone, original);
+    currentClone.replaceWith(newClone);
+    cloneMap.set(original, newClone);
+  });
+  syncObserver.observe(original, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    characterData: true,
+  });
+
+  cloneSyncObservers.set(original, syncObserver);
+  cloneMap.set(original, clone);
+
+  console.log(`[AllChat Twitch] Cloned widget into ${zone} zone`);
+  return clone;
+}
+
+/**
+ * Remove the clone for a tracked original: disconnects sync observer,
+ * removes clone from DOM, collapses zone if empty (D-16).
+ */
+function removeCloneForOriginal(original: HTMLElement): void {
+  const clone = cloneMap.get(original);
+  if (clone) {
+    clone.remove();
+    cloneMap.delete(original);
+  }
+  const syncObs = cloneSyncObservers.get(original);
+  if (syncObs) {
+    syncObs.disconnect();
+    cloneSyncObservers.delete(original);
+  }
+
+  // Collapse zones if empty
+  const topZone = document.getElementById('allchat-widget-zone-top');
+  if (topZone && topZone.children.length === 0) {
+    topZone.style.maxHeight = '0';
+    topZone.style.overflow = 'hidden';
+  }
+  const bottomZone = document.getElementById('allchat-widget-zone-bottom');
+  if (bottomZone && bottomZone.children.length === 0) {
+    bottomZone.style.borderTop = 'none';
+  }
+}
+
+/**
+ * Build combined CSS selector string from a config's selector array.
+ * Returns null if all selectors fail to produce a valid string.
+ */
+function buildSelectorString(selectors: readonly string[]): string | null {
+  const valid = selectors.filter(s => {
+    try { document.querySelector(s); return true; } catch { return false; }
+  });
+  return valid.length > 0 ? valid.join(',') : null;
+}
+
+/**
+ * Start the widget detection system (D-14, D-15).
+ * 1. Scans chatShell for persistent widgets (channel points) on init.
+ * 2. Watches for transient widgets (predictions, polls, hype trains, raids)
+ *    appearing/disappearing via MutationObserver.
+ *
+ * Graceful degradation: if no widgets found, zones stay collapsed. No errors thrown.
+ */
+function startWidgetDetection(chatShell: HTMLElement): void {
+  // Initial scan for persistent widgets (D-15)
+  for (const config of Object.values(WIDGET_SELECTORS)) {
+    if (config.persistent) {
+      const widget = findWidget(config, chatShell);
+      if (widget) {
+        cloneWidgetIntoZone(widget, config.zone);
+      }
+    }
+  }
+
+  // D-14: MutationObserver for transient widgets
+  // NOTE (T-07-06): Observer is scoped to avoid firing on every chat message DOM update.
+  // Two separate observations:
+  //   1. chatShell direct children (childList: true, subtree: false) — top-level widget appearance
+  //   2. stream-chat area (childList: true, subtree: true) — widgets nested inside chat content area
+  widgetObserver = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      // Check added nodes for widget matches
+      for (const node of mutation.addedNodes) {
+        if (!(node instanceof HTMLElement)) continue;
+        for (const config of Object.values(WIDGET_SELECTORS)) {
+          if (config.persistent) continue; // Persistent already handled at init
+          const selectorStr = buildSelectorString(config.selectors);
+          if (!selectorStr) continue;
+          // Check if the added node IS the widget or CONTAINS the widget
+          let widget: HTMLElement | null = null;
+          try {
+            widget = node.matches(selectorStr)
+              ? node
+              : node.querySelector(selectorStr) as HTMLElement | null;
+          } catch {
+            continue;
+          }
+          if (widget && !cloneMap.has(widget)) {
+            cloneWidgetIntoZone(widget, config.zone);
+          }
+        }
+      }
+
+      // D-16: Check removed nodes — remove clones when originals disappear
+      for (const node of mutation.removedNodes) {
+        if (!(node instanceof HTMLElement)) continue;
+        for (const [original] of cloneMap.entries()) {
+          if (node === original || node.contains(original)) {
+            removeCloneForOriginal(original);
+          }
+        }
+      }
+    }
+  });
+
+  // Observe chatShell direct children for top-level widget appearance (low-cost)
+  widgetObserver.observe(chatShell, { childList: true, subtree: false });
+
+  // Also observe the chat content area for nested widget containers
+  const chatContent = chatShell.querySelector('.stream-chat') || chatShell;
+  if (chatContent !== chatShell) {
+    widgetObserver.observe(chatContent, { childList: true, subtree: true });
+  }
+
+  console.log('[AllChat Twitch] Widget detection started');
+}
+
+/**
+ * Stop widget detection: disconnect observers, remove all clones from DOM.
+ */
+function stopWidgetDetection(): void {
+  widgetObserver?.disconnect();
+  widgetObserver = null;
+  for (const [, obs] of cloneSyncObservers) {
+    obs.disconnect();
+  }
+  cloneSyncObservers.clear();
+  for (const [, clone] of cloneMap) {
+    clone.remove();
+  }
+  cloneMap.clear();
+  console.log('[AllChat Twitch] Widget detection stopped');
+}
+
+/**
+ * Re-sync all clones after AllChat tab becomes visible again.
+ * Removes stale clones for originals no longer in DOM.
+ * Re-clones to pick up changes that occurred while zones were hidden.
+ * Also scans for new persistent widgets that appeared while hidden.
+ */
+function resyncWidgetClones(): void {
+  for (const [original, clone] of cloneMap.entries()) {
+    if (!document.contains(original)) {
+      removeCloneForOriginal(original);
+    } else {
+      // Re-clone to pick up any changes while hidden
+      const newClone = original.cloneNode(true) as HTMLElement;
+      newClone.setAttribute('aria-hidden', 'true');
+      newClone.setAttribute('data-allchat-clone', 'true');
+      setupEventForwarding(newClone, original);
+      clone.replaceWith(newClone);
+      cloneMap.set(original, newClone);
+    }
+  }
+
+  // Also check for new persistent widgets that appeared while AllChat was hidden
+  const chatShell = document.querySelector('.chat-shell') as HTMLElement | null;
+  if (chatShell) {
+    for (const config of Object.values(WIDGET_SELECTORS)) {
+      if (config.persistent) {
+        const widget = findWidget(config, chatShell);
+        if (widget && !cloneMap.has(widget)) {
+          cloneWidgetIntoZone(widget, config.zone);
+        }
+      }
+    }
+  }
+}
+
 /**
  * Build the tab bar DOM element per UI-SPEC Layout Contract (D-04 through D-08).
  * The tab bar is injected as a sibling of #allchat-container inside .chat-shell.
@@ -189,6 +557,10 @@ function switchToAllChatTab(detector: TwitchDetector): void {
     twitchTab.style.borderBottom = '2px solid transparent';
     twitchTab.style.color = 'oklch(0.58 0.007 270)';
   }
+
+  // Re-sync widget clones to catch any changes that occurred while zones were hidden
+  resyncWidgetClones();
+
   console.log('[AllChat Twitch] Switched to AllChat tab');
 }
 
@@ -326,6 +698,9 @@ class TwitchDetector extends PlatformDetector {
 
       slot.appendChild(container);
 
+      // Start widget extraction: clone persistent widgets, watch for transient ones (D-14, D-15)
+      startWidgetDetection(slot);
+
       // Wire tab switching — the tab bar handler calls hideNativeChat/showNativeChat
       setupTabSwitching(this);
 
@@ -367,6 +742,8 @@ class TwitchDetector extends PlatformDetector {
   }
 
   teardown(): void {
+    // Stop widget detection before other cleanup
+    stopWidgetDetection();
     // Remove tab bar in addition to base teardown
     const tabBar = document.getElementById('allchat-tab-bar');
     if (tabBar) {

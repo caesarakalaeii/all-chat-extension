@@ -21,7 +21,7 @@ const WIDGET_SELECTORS = {
       '.community-points-summary',                           // Fallback class
       '[data-a-target="community-points-summary"]',         // ARIA fallback
     ],
-    zone: 'tab-bar' as const,
+    zone: 'bottom' as const,
     persistent: true,
   },
   // Transient widgets (appear/disappear during stream events)
@@ -823,7 +823,7 @@ class TwitchDetector extends PlatformDetector {
       // Create #allchat-container as flex column with padding-top for the tab bar
       const container = document.createElement('div');
       container.id = 'allchat-container';
-      container.style.cssText = 'position: absolute; inset: 0; z-index: 9998; display: flex; flex-direction: column; padding-top: 36px; background: oklch(0.09 0.007 270);';
+      container.style.cssText = 'position: absolute; top: 0; left: 0; right: 0; z-index: 9998; display: flex; flex-direction: column; padding-top: 36px; background: oklch(0.09 0.007 270); max-height: 100vh;';
 
       // Top widget zone — transient widgets (predictions, polls, hype trains, raids)
       const widgetZoneTop = document.createElement('div');
@@ -844,7 +844,7 @@ class TwitchDetector extends PlatformDetector {
       widgetZoneBottom.id = 'allchat-widget-zone-bottom';
       widgetZoneBottom.setAttribute('role', 'region');
       widgetZoneBottom.setAttribute('aria-label', 'Twitch channel points');
-      widgetZoneBottom.style.cssText = 'flex: 0 0 auto; overflow: hidden; max-height: 50px;';
+      widgetZoneBottom.style.cssText = 'flex: 0 0 auto; overflow: visible;';
       container.appendChild(widgetZoneBottom);
 
       slot.appendChild(container);

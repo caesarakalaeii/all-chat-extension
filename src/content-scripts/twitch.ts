@@ -154,15 +154,19 @@ function placeWidgetInZone(original: HTMLElement, zone: 'top' | 'bottom', widget
   const config = WIDGET_SELECTORS[widgetType];
 
   if (config.persistent) {
-    // REPARENT: move the real element into the zone
-    const originalParent = original.parentElement;
-    if (!originalParent) return null;
-    const originalNextSibling = original.nextSibling;
-    reparentedWidgets.set(original, { originalParent, originalNextSibling });
+    // REPARENT: move the real element's wrapper into the zone.
+    // The widget selector matches the innermost element (e.g., community-points-summary),
+    // but Twitch renders popover dialogs as siblings in a parent wrapper (e.g., dMndGY).
+    // We reparent 2 levels up to capture both the button AND the dialog container.
+    const wrapper = original.parentElement?.parentElement ?? original;
+    const wrapperParent = wrapper.parentElement;
+    if (!wrapperParent) return null;
+    const originalNextSibling = wrapper.nextSibling;
+    reparentedWidgets.set(wrapper, { originalParent: wrapperParent, originalNextSibling });
 
-    // Move element into zone — this is the REAL Twitch element, fully interactive
-    zoneEl.appendChild(original);
-    original.setAttribute('data-allchat-reparented', 'true');
+    // Move wrapper into zone — contains the REAL Twitch button + dialog container
+    zoneEl.appendChild(wrapper);
+    wrapper.setAttribute('data-allchat-reparented', 'true');
 
     // Expand zone
     if (zone === 'bottom') {
@@ -176,16 +180,17 @@ function placeWidgetInZone(original: HTMLElement, zone: 'top' | 'bottom', widget
       const chatShell = document.querySelector('.chat-shell');
       if (!chatShell) return;
       const newWidget = findWidget(config, chatShell);
-      if (newWidget && newWidget !== original && !reparentedWidgets.has(newWidget)) {
-        // React re-created the widget — reparent the new one
-        const newParent = newWidget.parentElement;
-        if (newParent) {
-          reparentedWidgets.set(newWidget, { originalParent: newParent, originalNextSibling: newWidget.nextSibling });
-          reparentedWidgets.delete(original);
-          if (original.parentElement === zoneEl) original.remove();
-          zoneEl.appendChild(newWidget);
-          newWidget.setAttribute('data-allchat-reparented', 'true');
-          console.log(`[AllChat Twitch] Re-reparented ${widgetType} after React re-render`);
+      if (newWidget && newWidget !== original && !reparentedWidgets.has(newWidget) && !reparentedWidgets.has(newWidget.parentElement?.parentElement ?? newWidget)) {
+        // React re-created the widget — reparent the new wrapper
+        const newWrapper = newWidget.parentElement?.parentElement ?? newWidget;
+        const newWrapperParent = newWrapper.parentElement;
+        if (newWrapperParent) {
+          reparentedWidgets.set(newWrapper, { originalParent: newWrapperParent, originalNextSibling: newWrapper.nextSibling });
+          reparentedWidgets.delete(wrapper);
+          if (wrapper.parentElement === zoneEl) wrapper.remove();
+          zoneEl.appendChild(newWrapper);
+          newWrapper.setAttribute('data-allchat-reparented', 'true');
+          console.log(`[AllChat Twitch] Re-reparented ${widgetType} wrapper after React re-render`);
         }
       }
     });

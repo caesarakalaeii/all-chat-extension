@@ -490,22 +490,25 @@ No confirmed selectors from public sources. [ASSUMED] Raid notification appears 
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Does the iframe header get fully removed or slimmed down?**
+1. **Does the iframe header get fully removed or slimmed down?** -- RESOLVED
    - What we know: D-04 says tab bar replaces the header entirely. Connection dot, platform badge, and pop-out button live in the header. 
    - What's unclear: Where do those controls go if the header is removed? Into the tab bar? This adds complexity to the content script (it would need to relay connection state from iframe postMessages into the tab bar DOM).
    - Recommendation: Planner should decide whether to move all controls to the tab bar (complex, content-script-side) or slim the iframe header (simpler, keeps controls in React). The locked decision D-04 leans toward full removal.
+   - **Resolution:** Fully removed per D-04. Plan 03 hides the iframe header when `tabBarMode` is true. Connection dot moves to the tab bar (Plan 02 `#allchat-tab-conn-dot`). Pop-out button repositions as a floating element inside the iframe (Plan 03). Platform badge is dropped (tab bar context makes it redundant on Twitch).
 
-2. **What is the exact DOM location of Twitch widgets relative to `.chat-shell`?**
+2. **What is the exact DOM location of Twitch widgets relative to `.chat-shell`?** -- RESOLVED
    - What we know: Native Twitch places channel points at the bottom of `.chat-shell`, transient widgets at the top (above the message list).
    - What's unclear: Are they direct children of `.chat-shell` or nested? Do they appear inside the same container as the message list or as siblings?
    - Recommendation: Implementer must inspect live Twitch DOM before writing extraction code.
+   - **Resolution:** Deferred to implementation time. Plan 04 Task 1 explicitly requires live Twitch DOM inspection before writing selector code. The `WIDGET_SELECTORS` config uses multi-level fallback chains to handle unknown nesting. Graceful degradation: if no widgets found, zones stay empty. This is an acceptable implementation-time discovery.
 
-3. **How should the tab bar communicate connection state to/from the iframe?**
+3. **How should the tab bar communicate connection state to/from the iframe?** -- RESOLVED
    - What we know: Connection state (connected/connecting/failed) is currently displayed via a dot in the iframe header.
    - What's unclear: If the header is removed, how does the tab bar show connection status without becoming a bidirectional postMessage relay for UI state?
    - Recommendation: Either retain a minimal header inside the iframe (connection dot only) or have the content script listen to `CONNECTION_STATE` postMessages from the iframe and update a DOM element in the tab bar.
+   - **Resolution:** Content script listens to `CONNECTION_STATE` postMessages and updates `#allchat-tab-conn-dot` background color in the tab bar DOM. Implemented in Plan 02 Task 1 via `setupGlobalMessageRelay()` — the existing `CONNECTION_STATE` handler gains an additional DOM update for the connection dot element. Colors: green (#4ade80) = connected, yellow (#facc15) = connecting/reconnecting, red (#f87171) = failed, dim (oklch(0.35 0.007 270)) = disconnected.
 
 ---
 

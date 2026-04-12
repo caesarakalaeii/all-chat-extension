@@ -712,6 +712,20 @@ class TwitchDetector extends PlatformDetector {
         overflow: hidden !important;
         position: absolute !important;
       }
+      /* Fix Twitch channel points popover positioning after reparent.
+         The dialog opens inside the reparented widget in our bottom zone —
+         position: absolute with the original offset renders it off-screen.
+         Override to fixed positioning anchored at the bottom-right of viewport. */
+      #allchat-widget-zone-bottom [role="dialog"] {
+        position: fixed !important;
+        bottom: 50px !important;
+        right: 10px !important;
+        top: auto !important;
+        left: auto !important;
+        z-index: 10001 !important;
+        max-height: 70vh !important;
+        overflow-y: auto !important;
+      }
     `;
     document.head.appendChild(hideStyle);
     console.log('[AllChat Twitch] Injected CSS to hide native chat');

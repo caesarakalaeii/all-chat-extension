@@ -758,9 +758,9 @@ class TwitchDetector extends PlatformDetector {
    */
   protected onIframeCreated(iframe: HTMLIFrameElement): void {
     iframe.addEventListener('load', () => {
-      const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
-      // T-07-03: use extensionOrigin as targetOrigin (not '*') when sending TAB_BAR_MODE
-      iframe.contentWindow?.postMessage({ type: 'TAB_BAR_MODE', enabled: true }, extensionOrigin);
+      // TAB_BAR_MODE is a non-sensitive UI toggle (hides header in favour of tab bar).
+      // Use '*' targetOrigin for Firefox compatibility (moz-extension:// vs chrome-extension://).
+      iframe.contentWindow?.postMessage({ type: 'TAB_BAR_MODE', enabled: true }, '*');
       console.log('[AllChat Twitch] Sent TAB_BAR_MODE to iframe');
     });
   }

@@ -131,79 +131,130 @@ function setupEventForwarding(clone: HTMLElement, _original: HTMLElement, _widge
   }, true);
 }
 
+// Track reparented persistent widgets so we can restore them on teardown
+const reparentedWidgets = new Map<HTMLElement, { originalParent: HTMLElement; originalNextSibling: Node | null }>();
+
 /**
- * Deep-clone a widget element into the specified zone.
- * Sets aria-hidden and data-allchat-clone on the clone.
- * Starts a sync MutationObserver on the original to re-clone on DOM changes (D-10).
- * Returns the clone element, or null if the zone doesn't exist (graceful degradation).
+ * Place a widget into the specified zone.
+ *
+ * Persistent widgets (channel points): REPARENT the original element into the zone.
+ * The real Twitch element is moved — fully interactive, no event forwarding needed.
+ * We save the original parent so we can restore on teardown.
+ *
+ * Transient widgets (predictions, polls, etc.): CLONE into the zone.
+ * Clones are display-only; clicking switches to the Twitch Chat tab for interaction.
  */
-function cloneWidgetIntoZone(original: HTMLElement, zone: 'top' | 'bottom', widgetType: WidgetType): HTMLElement | null {
-  // Don't double-clone
-  if (cloneMap.has(original)) return cloneMap.get(original)!;
+function placeWidgetInZone(original: HTMLElement, zone: 'top' | 'bottom', widgetType: WidgetType): HTMLElement | null {
+  if (cloneMap.has(original) || reparentedWidgets.has(original)) return null;
 
   const zoneId = zone === 'top' ? 'allchat-widget-zone-top' : 'allchat-widget-zone-bottom';
   const zoneEl = document.getElementById(zoneId);
   if (!zoneEl) return null;
 
-  // D-09: Deep clone
-  const clone = original.cloneNode(true) as HTMLElement;
-  clone.setAttribute('aria-hidden', 'true');
-  clone.setAttribute('data-allchat-clone', 'true');
+  const config = WIDGET_SELECTORS[widgetType];
 
-  // D-11: Event forwarding — intercept clicks on clone, dispatch on original
-  setupEventForwarding(clone, original, widgetType);
+  if (config.persistent) {
+    // REPARENT: move the real element into the zone
+    const originalParent = original.parentElement;
+    if (!originalParent) return null;
+    const originalNextSibling = original.nextSibling;
+    reparentedWidgets.set(original, { originalParent, originalNextSibling });
 
-  // Insert clone into zone
-  zoneEl.appendChild(clone);
+    // Move element into zone — this is the REAL Twitch element, fully interactive
+    zoneEl.appendChild(original);
+    original.setAttribute('data-allchat-reparented', 'true');
 
-  // Expand the top zone (remove max-height: 0 collapse)
-  if (zone === 'top') {
-    zoneEl.style.maxHeight = 'none';
-    zoneEl.style.overflow = 'visible';
+    // Expand zone
+    if (zone === 'bottom') {
+      zoneEl.style.borderTop = '1px solid oklch(from #fff l c h / 0.06)';
+    }
+
+    // Watch for Twitch React re-creating the widget in the original location.
+    // When React notices the element is gone, it creates a new one. We detect
+    // that and reparent the new one too.
+    const watchObserver = new MutationObserver(() => {
+      const chatShell = document.querySelector('.chat-shell');
+      if (!chatShell) return;
+      const newWidget = findWidget(config, chatShell);
+      if (newWidget && newWidget !== original && !reparentedWidgets.has(newWidget)) {
+        // React re-created the widget — reparent the new one
+        const newParent = newWidget.parentElement;
+        if (newParent) {
+          reparentedWidgets.set(newWidget, { originalParent: newParent, originalNextSibling: newWidget.nextSibling });
+          reparentedWidgets.delete(original);
+          if (original.parentElement === zoneEl) original.remove();
+          zoneEl.appendChild(newWidget);
+          newWidget.setAttribute('data-allchat-reparented', 'true');
+          console.log(`[AllChat Twitch] Re-reparented ${widgetType} after React re-render`);
+        }
+      }
+    });
+    // Observe the original parent for React re-creating the widget
+    watchObserver.observe(originalParent, { childList: true, subtree: true });
+    cloneSyncObservers.set(original, watchObserver);
+
+    console.log(`[AllChat Twitch] Reparented ${widgetType} widget into ${zone} zone (interactive)`);
+    return original;
+  } else {
+    // CLONE: transient widgets use display-only clones
+    const clone = original.cloneNode(true) as HTMLElement;
+    clone.setAttribute('aria-hidden', 'true');
+    clone.setAttribute('data-allchat-clone', 'true');
+    setupEventForwarding(clone, original, widgetType);
+    zoneEl.appendChild(clone);
+
+    if (zone === 'top') {
+      zoneEl.style.maxHeight = 'none';
+      zoneEl.style.overflow = 'visible';
+    }
+
+    // Sync observer for transient clones
+    const syncObserver = new MutationObserver(() => {
+      const currentClone = cloneMap.get(original);
+      if (!currentClone) return;
+      const newClone = original.cloneNode(true) as HTMLElement;
+      newClone.setAttribute('aria-hidden', 'true');
+      newClone.setAttribute('data-allchat-clone', 'true');
+      setupEventForwarding(newClone, original, widgetType);
+      currentClone.replaceWith(newClone);
+      cloneMap.set(original, newClone);
+    });
+    syncObserver.observe(original, { childList: true, subtree: true, attributes: true, characterData: true });
+
+    cloneSyncObservers.set(original, syncObserver);
+    cloneMap.set(original, clone);
+    cloneTypeMap.set(original, widgetType);
+
+    console.log(`[AllChat Twitch] Cloned ${widgetType} widget into ${zone} zone (display-only)`);
+    return clone;
   }
-
-  // Add top border to bottom zone when it receives its first widget
-  if (zone === 'bottom') {
-    zoneEl.style.borderTop = '1px solid oklch(from #fff l c h / 0.06)';
-  }
-
-  // D-10: Sync observer — re-clone when original changes (simpler and safer than incremental patching)
-  const syncObserver = new MutationObserver(() => {
-    const currentClone = cloneMap.get(original);
-    if (!currentClone) return;
-    const newClone = original.cloneNode(true) as HTMLElement;
-    newClone.setAttribute('aria-hidden', 'true');
-    newClone.setAttribute('data-allchat-clone', 'true');
-    setupEventForwarding(newClone, original, widgetType);
-    currentClone.replaceWith(newClone);
-    cloneMap.set(original, newClone);
-  });
-  syncObserver.observe(original, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    characterData: true,
-  });
-
-  cloneSyncObservers.set(original, syncObserver);
-  cloneMap.set(original, clone);
-  cloneTypeMap.set(original, widgetType);
-
-  console.log(`[AllChat Twitch] Cloned ${widgetType} widget into ${zone} zone`);
-  return clone;
 }
 
 /**
- * Remove the clone for a tracked original: disconnects sync observer,
- * removes clone from DOM, collapses zone if empty (D-16).
+ * Remove a widget from its zone: restores reparented originals, removes clones,
+ * disconnects observers, collapses zones if empty (D-16).
  */
-function removeCloneForOriginal(original: HTMLElement): void {
+function removeWidgetFromZone(original: HTMLElement): void {
+  // Handle reparented persistent widgets — restore to original location
+  const reparentInfo = reparentedWidgets.get(original);
+  if (reparentInfo) {
+    original.removeAttribute('data-allchat-reparented');
+    if (reparentInfo.originalNextSibling) {
+      reparentInfo.originalParent.insertBefore(original, reparentInfo.originalNextSibling);
+    } else {
+      reparentInfo.originalParent.appendChild(original);
+    }
+    reparentedWidgets.delete(original);
+  }
+
+  // Handle cloned transient widgets
   const clone = cloneMap.get(original);
   if (clone) {
     clone.remove();
     cloneMap.delete(original);
     cloneTypeMap.delete(original);
   }
+
   const syncObs = cloneSyncObservers.get(original);
   if (syncObs) {
     syncObs.disconnect();
@@ -250,7 +301,7 @@ function startWidgetDetection(chatShell: HTMLElement): void {
       if (config.persistent && !cloneMap.size) {
         const widget = findWidget(config, chatShell);
         if (widget) {
-          cloneWidgetIntoZone(widget, config.zone, type as WidgetType);
+          placeWidgetInZone(widget, config.zone, type as WidgetType);
         } else {
           foundAll = false;
         }
@@ -285,7 +336,7 @@ function startWidgetDetection(chatShell: HTMLElement): void {
             continue;
           }
           if (widget && !cloneMap.has(widget)) {
-            cloneWidgetIntoZone(widget, config.zone, type as WidgetType);
+            placeWidgetInZone(widget, config.zone, type as WidgetType);
           }
         }
       }
@@ -295,7 +346,7 @@ function startWidgetDetection(chatShell: HTMLElement): void {
         if (!(node instanceof HTMLElement)) continue;
         for (const [original] of cloneMap.entries()) {
           if (node === original || node.contains(original)) {
-            removeCloneForOriginal(original);
+            removeWidgetFromZone(original);
           }
         }
       }
@@ -324,10 +375,26 @@ function stopWidgetDetection(): void {
     obs.disconnect();
   }
   cloneSyncObservers.clear();
+  // Remove transient clones
   for (const [, clone] of cloneMap) {
     clone.remove();
   }
   cloneMap.clear();
+  cloneTypeMap.clear();
+  // Restore reparented persistent widgets to their original locations
+  for (const [widget, info] of reparentedWidgets) {
+    widget.removeAttribute('data-allchat-reparented');
+    try {
+      if (info.originalNextSibling) {
+        info.originalParent.insertBefore(widget, info.originalNextSibling);
+      } else {
+        info.originalParent.appendChild(widget);
+      }
+    } catch {
+      // Original parent may be gone — widget stays where it is
+    }
+  }
+  reparentedWidgets.clear();
   console.log('[AllChat Twitch] Widget detection stopped');
 }
 
@@ -338,11 +405,11 @@ function stopWidgetDetection(): void {
  * Also scans for new persistent widgets that appeared while hidden.
  */
 function resyncWidgetClones(): void {
+  // Re-sync transient clones
   for (const [original, clone] of cloneMap.entries()) {
     if (!document.contains(original)) {
-      removeCloneForOriginal(original);
+      removeWidgetFromZone(original);
     } else {
-      // Re-clone to pick up any changes while hidden
       const wType = cloneTypeMap.get(original) ?? 'channelPoints';
       const newClone = original.cloneNode(true) as HTMLElement;
       newClone.setAttribute('aria-hidden', 'true');
@@ -353,14 +420,14 @@ function resyncWidgetClones(): void {
     }
   }
 
-  // Also check for new persistent widgets that appeared while AllChat was hidden
+  // Persistent widgets: check if they're still in their zone; re-reparent if React re-created them
   const chatShell = document.querySelector('.chat-shell') as HTMLElement | null;
   if (chatShell) {
     for (const [type, config] of Object.entries(WIDGET_SELECTORS)) {
       if (config.persistent) {
         const widget = findWidget(config, chatShell);
-        if (widget && !cloneMap.has(widget)) {
-          cloneWidgetIntoZone(widget, config.zone, type as WidgetType);
+        if (widget && !reparentedWidgets.has(widget) && !cloneMap.has(widget)) {
+          placeWidgetInZone(widget, config.zone, type as WidgetType);
         }
       }
     }

@@ -458,7 +458,19 @@ export abstract class PlatformDetector {
 
     container.appendChild(iframe);
 
+    // Allow subclasses to hook into iframe creation (e.g. TwitchDetector sends TAB_BAR_MODE)
+    this.onIframeCreated(iframe);
+
     console.log(`[AllChat ${this.platform}] UI injected`);
+  }
+
+  /**
+   * Called immediately after the iframe element is created and appended.
+   * Subclasses may override to attach load listeners or send postMessages.
+   * Default implementation is a no-op.
+   */
+  protected onIframeCreated(_iframe: HTMLIFrameElement): void {
+    // no-op by default
   }
 
   /**

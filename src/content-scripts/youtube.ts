@@ -3,40 +3,67 @@
  *
  * Handles All-Chat injection on YouTube.com
  * URL formats: youtube.com/watch?v=..., youtube.com/live/..., youtube.com/@username
+ *
+ * Strategy: Full-panel toggle with tab bar.
+ * A tab bar lets users switch between AllChat and native YouTube chat.
+ * YouTube's chat is inside a cross-origin iframe (ytd-live-chat-frame),
+ * so we toggle the entire element rather than targeting individual children.
  */
 
 import { PlatformDetector } from './base/PlatformDetector';
+import { createTabBar, setupTabSwitching, switchToNativeTab, switchToAllChatTab as switchToAllChatTabVisual, updateTabBarConnDot, removeTabBar } from './base/tabBar';
 import { getSyncStorage } from '../lib/storage';
+
+// Guard observer — watches for YouTube removing our injected elements
+let guardObserver: MutationObserver | null = null;
+
+/**
+ * Activate the YouTube Chat tab: hide AllChat, show native YouTube chat.
+ */
+function handleSwitchToYouTube(): void {
+  const container = document.getElementById('allchat-container');
+  if (container) container.style.display = 'none';
+  document.getElementById('allchat-hide-native-style')?.remove();
+  switchToNativeTab();
+  console.log('[AllChat YouTube] Switched to YouTube Chat tab');
+}
+
+/**
+ * Activate the AllChat tab: show AllChat, hide native YouTube chat.
+ */
+function handleSwitchToAllChat(detector: YouTubeDetector): void {
+  const container = document.getElementById('allchat-container');
+  if (container) container.style.display = 'flex';
+  detector.hideNativeChat();
+  switchToAllChatTabVisual();
+  console.log('[AllChat YouTube] Switched to AllChat tab');
+}
 
 class YouTubeDetector extends PlatformDetector {
   platform = 'youtube' as const;
 
   /**
-   * Check if the current page is a live stream
-   * Returns true only for active live streams, not VODs
+   * Check if the current page is a live stream.
+   * Returns true only for active live streams, not VODs.
    */
   isLiveStream(): boolean {
-    // Method 1: Check for live chat frame (only present on live streams)
     const liveChatFrame = document.querySelector('ytd-live-chat-frame');
     if (liveChatFrame) {
       console.log('[AllChat YouTube] Live chat frame detected');
       return true;
     }
 
-    // Method 2: Check URL patterns for live streams
     if (window.location.pathname.includes('/live/')) {
       console.log('[AllChat YouTube] /live/ URL detected');
       return true;
     }
 
-    // Method 3: Check for "LIVE" badge in player
     const liveBadge = document.querySelector('.ytp-live-badge, .badge-style-type-live-now');
     if (liveBadge) {
       console.log('[AllChat YouTube] Live badge detected');
       return true;
     }
 
-    // Method 4: Check ytInitialPlayerResponse for isLiveContent
     try {
       const scripts = Array.from(document.querySelectorAll('script'));
       const playerScript = scripts.find(s => s.textContent?.includes('ytInitialPlayerResponse'));
@@ -56,14 +83,9 @@ class YouTubeDetector extends PlatformDetector {
   }
 
   extractStreamerUsername(): string | null {
-    // Method 1: From URL — fast path for /@channel/live pages
     const urlMatch = window.location.pathname.match(/@([^\/]+)/);
     if (urlMatch) return urlMatch[1];
 
-    // Method 2: From ytInitialData — tried early because it returns the channel_id
-    // (UC...) which is always the primary key stored in overlay_chat_sources.
-    // Handle-based methods (3-5) can return display-name strings that only match
-    // if channel_handle was also populated in the DB, which is not guaranteed.
     try {
       const scripts = Array.from(document.querySelectorAll('script'));
       const dataScript = scripts.find(s => s.textContent?.includes('"channelId"'));
@@ -73,7 +95,6 @@ class YouTubeDetector extends PlatformDetector {
       }
     } catch { /* ignore */ }
 
-    // Method 3: From page metadata link
     const channelLink = document.querySelector('link[itemprop="url"]');
     if (channelLink) {
       const href = channelLink.getAttribute('href');
@@ -81,7 +102,6 @@ class YouTubeDetector extends PlatformDetector {
       if (match) return match[1];
     }
 
-    // Method 4: From channel link in header
     const channelNameElement = document.querySelector('ytd-channel-name a');
     if (channelNameElement) {
       const href = channelNameElement.getAttribute('href');
@@ -91,7 +111,6 @@ class YouTubeDetector extends PlatformDetector {
       if (idMatch) return idMatch[1];
     }
 
-    // Method 5: From owner link in video page
     const ownerLink = document.querySelector('a.yt-simple-endpoint.ytd-video-owner-renderer');
     if (ownerLink) {
       const href = ownerLink.getAttribute('href');
@@ -104,12 +123,7 @@ class YouTubeDetector extends PlatformDetector {
     return null;
   }
 
-  /**
-   * Extract a human-readable channel name for display in the UI.
-   * Falls back to the username (channel ID or handle) if not found.
-   */
   extractDisplayName(fallback: string): string {
-    // From the channel name element text content
     const channelNameEl = document.querySelector('ytd-channel-name #text, ytd-channel-name a');
     if (channelNameEl?.textContent?.trim()) {
       return channelNameEl.textContent.trim();
@@ -117,10 +131,6 @@ class YouTubeDetector extends PlatformDetector {
     return fallback;
   }
 
-  /**
-   * Check ytInitialPlayerResponse for stream status signals.
-   * Returns a reason string if the stream is unsupported, or null if OK.
-   */
   private getUnsupportedStreamReason(): string | null {
     try {
       const scripts = Array.from(document.querySelectorAll('script'));
@@ -134,14 +144,11 @@ class YouTubeDetector extends PlatformDetector {
         return 'unlisted';
       }
     } catch {
-      // Can't parse — assume OK and let normal flow handle errors
+      // Can't parse — assume OK
     }
     return null;
   }
 
-  /**
-   * Show a dismissible badge explaining why AllChat can't activate.
-   */
   private showUnsupportedStreamBadge(reason: 'scheduled' | 'unlisted'): void {
     const existingBadge = document.getElementById('allchat-unsupported-badge');
     if (existingBadge) existingBadge.remove();
@@ -168,19 +175,14 @@ class YouTubeDetector extends PlatformDetector {
     document.body.appendChild(badge);
   }
 
-  /**
-   * Override init to check for live streams first, and pass display name to UI
-   */
   async init(): Promise<void> {
     console.log(`[AllChat ${this.platform}] Initializing...`);
 
-    // YouTube-specific: Only activate on live streams, not VODs
     if (!this.isLiveStream()) {
       console.log(`[AllChat ${this.platform}] Not a live stream, skipping`);
       return;
     }
 
-    // Check for unsupported stream types (scheduled, unlisted)
     const unsupportedReason = this.getUnsupportedStreamReason();
     if (unsupportedReason) {
       console.log(`[AllChat ${this.platform}] Stream is ${unsupportedReason}, not supported`);
@@ -188,24 +190,16 @@ class YouTubeDetector extends PlatformDetector {
       return;
     }
 
-    // Continue with normal initialization, passing display name override
     return super.init(this.extractDisplayName.bind(this));
   }
 
-  /**
-   * Extract YouTube video ID from the current page URL or DOM.
-   * Supports /watch?v=VIDEO_ID, /live/VIDEO_ID, and /@channel/live formats.
-   */
   private extractVideoId(): string | null {
-    // /watch?v=VIDEO_ID
     const vParam = new URLSearchParams(window.location.search).get('v');
     if (vParam) return vParam;
 
-    // /live/VIDEO_ID
     const liveMatch = window.location.pathname.match(/\/live\/([^/?]+)/);
     if (liveMatch) return liveMatch[1];
 
-    // /@channel/live — no video ID in URL, extract from canonical link or ytInitialData
     const canonical = document.querySelector('link[rel="canonical"]');
     if (canonical) {
       const href = canonical.getAttribute('href');
@@ -213,7 +207,6 @@ class YouTubeDetector extends PlatformDetector {
       if (match) return match[1];
     }
 
-    // Fallback: extract from ytInitialPlayerResponse in page scripts
     try {
       const scripts = Array.from(document.querySelectorAll('script'));
       for (const s of scripts) {
@@ -228,40 +221,41 @@ class YouTubeDetector extends PlatformDetector {
     return null;
   }
 
-  /**
-   * Pass the YouTube video ID to the AllChat iframe so the backend can use
-   * the cheap videos.list API (1 quota unit) instead of the unreliable
-   * search.list API (100 quota units) to discover the liveChatId.
-   */
   protected override getExtraIframeParams(): Record<string, string> {
     const videoId = this.extractVideoId();
     return videoId ? { video_id: videoId } : {};
   }
 
   getChatContainerSelector(): string[] {
-    // Multi-level fallback selectors for YouTube live chat
     return [
-      'ytd-live-chat-frame',          // Primary container
-      '#chat-container',              // ID selector
-      '#chat',                        // Alternative ID
-      '[id="chat"]',                  // Attribute selector
-      '.yt-live-chat-app',            // Class name
+      'ytd-live-chat-frame',
+      '#chat-container',
+      '#chat',
+      '[id="chat"]',
+      '.yt-live-chat-app',
     ];
   }
 
   hideNativeChat(): void {
-    if (document.getElementById('allchat-hide-native-style')) return; // idempotent
+    if (document.getElementById('allchat-hide-native-style')) return;
 
     const style = document.createElement('style');
     style.id = 'allchat-hide-native-style';
-    // Use visibility:hidden + overflow:hidden instead of display:none so YouTube
-    // keeps allocating height for #chat-container. display:none collapses the
-    // parent to ~152px which makes our injected container unusably small.
     style.textContent = `
+      /* Hide the native YouTube chat frame */
       ytd-live-chat-frame {
-        visibility: hidden !important;
-        overflow: hidden !important;
-        pointer-events: none !important;
+        display: none !important;
+      }
+      /* Ensure AllChat fills the space */
+      #allchat-container {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+      }
+      #allchat-container iframe {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
       }
     `;
     document.head.appendChild(style);
@@ -272,7 +266,7 @@ class YouTubeDetector extends PlatformDetector {
     const style = document.getElementById('allchat-hide-native-style');
     if (style) {
       style.remove();
-      console.log('[AllChat YouTube] Removed CSS to show native chat');
+      console.log('[AllChat YouTube] Removed CSS, native chat restored');
     }
   }
 
@@ -282,6 +276,8 @@ class YouTubeDetector extends PlatformDetector {
       container.remove();
       console.log('[AllChat YouTube] Removed All-Chat UI');
     }
+    removeTabBar();
+    this.showNativeChat();
   }
 
   async createInjectionPoint(): Promise<HTMLElement | null> {
@@ -291,43 +287,109 @@ class YouTubeDetector extends PlatformDetector {
       const watchFlexy = document.querySelector('ytd-watch-flexy');
       const isTheaterMode = watchFlexy?.hasAttribute('theater') ?? false;
 
-      const container = document.createElement('div');
-      container.id = 'allchat-container';
-
       if (isTheaterMode) {
-        // In theater mode #chat-container collapses to width:0 because YouTube
-        // removes the right-hand sidebar. Use a fixed overlay on the right side
-        // of the screen so the chat remains visible over the video.
-        container.style.cssText = 'position: fixed; top: 0; right: 0; width: 340px; height: 100vh; z-index: 9999;';
-        document.body.appendChild(container);
-        console.log('[AllChat YouTube] Injected in theater-mode (fixed overlay)');
-      } else {
-        const parent = nativeChat.parentElement;
-        if (!parent) {
-          console.warn('[AllChat YouTube] ytd-live-chat-frame has no parent — native chat remains visible');
-          return null;
+        // In theater mode, #chat-container collapses. Use a fixed overlay with tab bar.
+        const wrapper = document.createElement('div');
+        wrapper.id = 'allchat-theater-wrapper';
+        wrapper.style.cssText = 'position: fixed; top: 0; right: 0; width: 340px; height: 100vh; z-index: 9999; display: flex; flex-direction: column;';
+
+        const tabBar = createTabBar('YouTube Chat');
+        wrapper.appendChild(tabBar);
+
+        const container = document.createElement('div');
+        container.id = 'allchat-container';
+        container.style.cssText = 'flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;';
+        wrapper.appendChild(container);
+
+        document.body.appendChild(wrapper);
+
+        // Wire tab switching — native tab disabled in theater mode
+        const nativeTab = document.getElementById('allchat-tab-native');
+        if (nativeTab) {
+          nativeTab.style.opacity = '0.4';
+          nativeTab.style.cursor = 'not-allowed';
+          nativeTab.title = 'Exit theater mode to view YouTube Chat';
         }
-        // Position over the native chat frame absolutely so we fill the full
-        // column height regardless of how YouTube sizes #chat-container
-        container.style.cssText = 'position: absolute; inset: 0; z-index: 1;';
-        // Make parent a positioning context
-        if (parent.style.position === '' || parent.style.position === 'static') {
-          parent.style.position = 'relative';
-        }
-        parent.insertBefore(container, nativeChat);
+
+        console.log('[AllChat YouTube] Injected in theater-mode (fixed overlay with tab bar)');
+        return container;
       }
 
+      // Normal mode: inject tab bar and container as siblings of ytd-live-chat-frame
+      const parent = nativeChat.parentElement;
+      if (!parent) {
+        console.warn('[AllChat YouTube] ytd-live-chat-frame has no parent');
+        return null;
+      }
+
+      // Make parent a flex column so tab bar + content share the space
+      parent.style.cssText += '; display: flex !important; flex-direction: column !important;';
+
+      // Tab bar first
+      const tabBar = createTabBar('YouTube Chat');
+      parent.insertBefore(tabBar, parent.firstChild);
+
+      // AllChat container after tab bar, before native chat
+      const container = document.createElement('div');
+      container.id = 'allchat-container';
+      container.style.cssText = 'flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;';
+      parent.insertBefore(container, nativeChat);
+
+      // Ensure ytd-live-chat-frame participates in flex layout
+      nativeChat.style.cssText += '; flex: 1 1 auto; min-height: 0;';
+
+      // Hide native chat — AllChat starts as active tab
+      this.hideNativeChat();
+
+      // Wire tab switching
+      const detector = this;
+      setupTabSwitching(
+        () => handleSwitchToYouTube(),
+        () => handleSwitchToAllChat(detector),
+      );
+
+      // Guard against YouTube removing our elements
+      guardObserver?.disconnect();
+      guardObserver = new MutationObserver(() => {
+        if (!parent.contains(container) && document.contains(parent)) {
+          console.log('[AllChat YouTube] Container removed — re-injecting');
+          parent.insertBefore(container, nativeChat);
+        }
+        if (!parent.contains(tabBar) && document.contains(parent)) {
+          console.log('[AllChat YouTube] Tab bar removed — re-injecting');
+          parent.insertBefore(tabBar, parent.firstChild);
+        }
+      });
+      guardObserver.observe(parent, { childList: true });
+
+      console.log('[AllChat YouTube] Injected with tab bar (flex column)');
       return container;
     } catch {
-      console.warn('[AllChat YouTube] ytd-live-chat-frame not found after timeout — native chat remains visible');
+      console.warn('[AllChat YouTube] ytd-live-chat-frame not found — native chat remains visible');
       return null;
     }
+  }
+
+  protected onIframeCreated(iframe: HTMLIFrameElement): void {
+    iframe.addEventListener('load', () => {
+      iframe.contentWindow?.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: false }, '*');
+      console.log('[AllChat YouTube] Sent TAB_BAR_MODE to iframe');
+    });
+  }
+
+  teardown(): void {
+    removeTabBar();
+    // Clean up theater wrapper if present
+    document.getElementById('allchat-theater-wrapper')?.remove();
+    guardObserver?.disconnect();
+    guardObserver = null;
+    this.showNativeChat();
+    super.teardown();
   }
 }
 
 /**
- * Inject "Switch to AllChat" button into native platform pop-out chat (D-11).
- * Clicking navigates the pop-out window to AllChat's chat-container.html (D-12).
+ * Inject "Switch to AllChat" button into native platform pop-out chat.
  */
 function injectNativePopoutSwitchButton(platform: string, streamer: string, displayName: string) {
   if (document.getElementById('allchat-native-popout-btn')) return;
@@ -370,9 +432,6 @@ let globalDetector: YouTubeDetector | null = null;
 // Guard against duplicate message relay registration
 let messageRelaySetup = false;
 
-/**
- * Handle extension enable/disable state changes
- */
 function handleExtensionStateChange(enabled: boolean) {
   console.log(`[AllChat YouTube] Extension state changed: ${enabled ? 'enabled' : 'disabled'}`);
 
@@ -383,28 +442,24 @@ function handleExtensionStateChange(enabled: boolean) {
       globalDetector = null;
     }
   } else {
-    // Re-enable: create detector and init without page reload (per D-04)
     if (!globalDetector) {
       globalDetector = new YouTubeDetector();
-      setupGlobalMessageRelay(); // idempotent via guard
+      setupGlobalMessageRelay();
       globalDetector.init();
     }
   }
 }
 
-// Initialize detector
 async function initialize() {
   console.log('[AllChat YouTube] Content script loaded');
 
-  // Check if extension is enabled
   const settings = await getSyncStorage();
   if (!settings.platformEnabled.youtube) {
     console.log('[AllChat YouTube] Extension disabled for YouTube, not injecting');
-    setupGlobalMessageRelay(); // Listen for re-enable even when disabled
+    setupGlobalMessageRelay();
     return;
   }
 
-  // Detect YouTube native pop-out chat: /live_chat or /live_chat_replay
   const isNativePopout = window.location.pathname === '/live_chat' || window.location.pathname === '/live_chat_replay';
   if (isNativePopout) {
     const urlParams = new URLSearchParams(window.location.search);
@@ -418,64 +473,56 @@ async function initialize() {
 
   globalDetector = new YouTubeDetector();
 
-  // Signal to popup which platform page the user is on
   chrome.runtime.sendMessage({ type: 'SET_CURRENT_PLATFORM', platform: 'youtube' }).catch((err: unknown) => {
     console.warn('[AllChat YouTube] Failed to write current_platform to session:', err);
   });
 
-  // Set up message relay IMMEDIATELY (before any async operations)
   setupGlobalMessageRelay();
 
-  // Wait for channel name to render before init — on /watch?v= URLs the DOM
-  // isn't ready when the content script fires, causing extractStreamerUsername to fail.
-  // waitForElement handles both loading and already-loaded states.
   await globalDetector.waitForElement('ytd-channel-name a').catch(() => null);
   globalDetector?.init();
 
-  // Watch for URL changes (YouTube is an SPA) — registered once
   setupUrlWatcher();
 }
 
-/**
- * Set up global message relay from service worker to iframe
- */
 function setupGlobalMessageRelay() {
   if (messageRelaySetup) return;
   messageRelaySetup = true;
 
-  // Listen for messages FROM service worker TO iframes
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log('[AllChat YouTube] Received from service worker:', message.type);
 
-    // Handle extension state changes
     if (message.type === 'EXTENSION_STATE_CHANGED') {
       handleExtensionStateChange(message.enabled);
       return false;
     }
 
-    // Relay CONNECTION_STATE and WS_MESSAGE to all AllChat iframes
     if (message.type === 'CONNECTION_STATE' || message.type === 'WS_MESSAGE') {
       const iframes = document.querySelectorAll('iframe[data-platform="youtube"][data-streamer]');
-      console.log(`[AllChat YouTube] Relaying to ${iframes.length} iframe(s)`);
 
       iframes.forEach((iframe) => {
         const iframeElement = iframe as HTMLIFrameElement;
+        const iframeStreamer = iframeElement.getAttribute('data-streamer');
+        if (message.streamer && iframeStreamer && message.streamer !== iframeStreamer) {
+          return;
+        }
         if (iframeElement.contentWindow) {
           const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
           iframeElement.contentWindow.postMessage(message, extensionOrigin);
-          console.log('[AllChat YouTube] Relayed message to iframe:', message.type);
         }
       });
+
+      if (message.type === 'CONNECTION_STATE' && message.data?.state) {
+        updateTabBarConnDot(message.data.state);
+      }
     }
     return false;
   });
 
-  // Listen for messages FROM iframes requesting current state or login
   window.addEventListener('message', async (event) => {
     const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
 
     if (event.data.type === 'GET_CONNECTION_STATE') {
-      console.log('[AllChat YouTube] iframe requested connection state');
       const response = await chrome.runtime.sendMessage({ type: 'GET_CONNECTION_STATE' });
       if (response.success && event.source) {
         (event.source as Window).postMessage({
@@ -518,20 +565,20 @@ function setupGlobalMessageRelay() {
       }
     }
 
-    // Guard: only handle pop-out messages from the AllChat extension origin (T-06-09)
     if (event.origin !== extensionOrigin) return;
 
-    // Handle pop-out request from AllChat iframe
     if (event.data.type === 'POPOUT_REQUEST' && globalDetector) {
       globalDetector.handlePopoutRequest(event.data);
     }
 
-    // Handle "Switch to native" from AllChat iframe (D-14)
     if (event.data.type === 'SWITCH_TO_NATIVE' && globalDetector) {
-      globalDetector.handleSwitchToNative();
+      handleSwitchToYouTube();
     }
 
-    // Handle "Bring back chat" / close pop-out from AllChat iframe
+    if (event.data.type === 'SWITCH_TO_ALLCHAT' && globalDetector) {
+      handleSwitchToAllChat(globalDetector);
+    }
+
     if (event.data.type === 'CLOSE_POPOUT' && globalDetector) {
       globalDetector.closePopout();
       const iframes = document.querySelectorAll('iframe[data-platform="youtube"]');
@@ -547,17 +594,12 @@ function setupGlobalMessageRelay() {
   console.log('[AllChat YouTube] Global message relay set up');
 }
 
-/**
- * Watch for URL changes using YouTube SPA navigation events.
- * yt-navigate-finish is the canonical YouTube SPA signal — fires once per navigation.
- * popstate handles browser back/forward. Both are deduplicated via URL equality check.
- */
 function setupUrlWatcher(): void {
   let activeUrl = location.href;
 
   const handleNavigation = () => {
     const url = location.href;
-    if (url === activeUrl) return; // Dedup: both events may fire for same navigation
+    if (url === activeUrl) return;
     activeUrl = url;
 
     console.log('[AllChat YouTube] Navigation detected, tearing down...');
@@ -572,12 +614,6 @@ function setupUrlWatcher(): void {
   window.addEventListener('popstate', handleNavigation);
 }
 
-/**
- * Watch for YouTube theater/cinema mode toggles and reinitialise the UI.
- * When the user enters or exits theater mode, YouTube reflowing the layout
- * breaks the injected container's absolute positioning context. Tearing down
- * and re-injecting after a short reflow delay restores correct rendering.
- */
 function setupTheaterModeWatcher(): void {
   const watchFlexy = document.querySelector('ytd-watch-flexy');
   if (!watchFlexy) return;
@@ -586,7 +622,6 @@ function setupTheaterModeWatcher(): void {
 
   const observer = new MutationObserver(() => {
     if (!globalDetector) return;
-    // Debounce: YouTube may toggle multiple attributes in quick succession
     if (reinitTimer) clearTimeout(reinitTimer);
     reinitTimer = setTimeout(() => {
       console.log('[AllChat YouTube] Theater/fullscreen mode changed, reinitialising...');
@@ -602,7 +637,6 @@ function setupTheaterModeWatcher(): void {
   });
 }
 
-// Start initialization
 initialize().then(() => {
   setupTheaterModeWatcher();
 });

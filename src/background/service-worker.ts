@@ -476,6 +476,7 @@ function broadcastConnectionState(state: ConnectionState, details?: any): void {
             maxAttempts: WS_MAX_RECONNECT_ATTEMPTS,
             ...details,
           },
+          streamer: wsStreamerUsername,
         }).catch((err) => {
           console.warn(`[AllChat] Failed to send CONNECTION_STATE to tab ${tab.id}:`, err.message);
         });
@@ -507,6 +508,7 @@ function handleWebSocketMessage(message: any): void {
         chrome.tabs.sendMessage(tab.id, {
           type: 'WS_MESSAGE',
           data: message,
+          streamer: wsStreamerUsername,
         }).catch((err) => {
           console.warn(`[AllChat] Failed to send WS_MESSAGE to tab ${tab.id}:`, err.message);
         });

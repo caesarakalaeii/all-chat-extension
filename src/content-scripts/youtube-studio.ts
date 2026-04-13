@@ -227,10 +227,13 @@ function setupGlobalMessageRelay() {
 
     if (message.type === 'CONNECTION_STATE' || message.type === 'WS_MESSAGE') {
       const iframes = document.querySelectorAll('iframe[data-platform="youtube"][data-streamer]');
-      console.log(`[AllChat YTStudio] Relaying to ${iframes.length} iframe(s)`);
 
       iframes.forEach((iframe) => {
         const iframeElement = iframe as HTMLIFrameElement;
+        const iframeStreamer = iframeElement.getAttribute('data-streamer');
+        if (message.streamer && iframeStreamer && message.streamer !== iframeStreamer) {
+          return;
+        }
         if (iframeElement.contentWindow) {
           const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
           iframeElement.contentWindow.postMessage(message, extensionOrigin);

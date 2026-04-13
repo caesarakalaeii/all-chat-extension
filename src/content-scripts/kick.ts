@@ -3,10 +3,41 @@
  *
  * Handles All-Chat injection on Kick.com
  * URL format: kick.com/<username>
+ *
+ * Strategy: Full-panel toggle with tab bar.
+ * A tab bar lets users switch between AllChat and native Kick chat.
+ * When AllChat is active, all native Kick children are hidden.
+ * When Kick Chat is active, AllChat is hidden and full native UI is restored.
  */
 
 import { PlatformDetector } from './base/PlatformDetector';
+import { createTabBar, setupTabSwitching, switchToNativeTab, switchToAllChatTab as switchToAllChatTabVisual, updateTabBarConnDot, removeTabBar } from './base/tabBar';
 import { getSyncStorage } from '../lib/storage';
+
+// Guard observer — watches for Next.js removing our injected elements
+let guardObserver: MutationObserver | null = null;
+
+/**
+ * Activate the Kick Chat tab: hide AllChat, show native Kick chat.
+ */
+function handleSwitchToKick(): void {
+  const container = document.getElementById('allchat-container');
+  if (container) container.style.display = 'none';
+  document.getElementById('allchat-hide-native-style')?.remove();
+  switchToNativeTab();
+  console.log('[AllChat Kick] Switched to Kick Chat tab');
+}
+
+/**
+ * Activate the AllChat tab: show AllChat, hide native Kick chat.
+ */
+function handleSwitchToAllChat(detector: KickDetector): void {
+  const container = document.getElementById('allchat-container');
+  if (container) container.style.display = 'flex';
+  detector.hideNativeChat();
+  switchToAllChatTabVisual();
+  console.log('[AllChat Kick] Switched to AllChat tab');
+}
 
 class KickDetector extends PlatformDetector {
   platform = 'kick' as const;
@@ -14,8 +45,6 @@ class KickDetector extends PlatformDetector {
   /**
    * Check if the current page is a live stream via Kick API.
    * DOM-based live badge detection is not reliable on Kick (no stable selector as of 2026-03-12).
-   * API-based detection: GET kick.com/api/v2/channels/{slug} — livestream field is non-null when live.
-   * This method is async; callers must await it.
    */
   async isLiveStream(): Promise<boolean> {
     const slug = this.extractStreamerUsername();
@@ -49,9 +78,6 @@ class KickDetector extends PlatformDetector {
     }
   }
 
-  /**
-   * Override init to check for live streams first via API
-   */
   async init(): Promise<void> {
     console.log('[AllChat Kick] Initializing...');
 
@@ -70,7 +96,6 @@ class KickDetector extends PlatformDetector {
 
     const username = match[1];
 
-    // Exclude non-channel paths
     const excluded = ['home', 'categories', 'search', 'subscriptions', 'settings', 'clip', 'clips'];
     if (excluded.includes(username.toLowerCase())) {
       return null;
@@ -80,24 +105,33 @@ class KickDetector extends PlatformDetector {
   }
 
   getChatContainerSelector(): string[] {
-    // Verified selectors against live kick.com (2026-03-12):
-    // #channel-chatroom — confirmed present (340×1240px on live page). PRIMARY selector. Only needed.
-    // #chatroom — does NOT exist on current Kick.com
-    // .chatroom-wrapper — does NOT exist on current Kick.com
     return [
-      '#channel-chatroom', // primary — verified 2026-03-12
+      '#channel-chatroom',
     ];
   }
 
   hideNativeChat(): void {
-    if (document.getElementById('allchat-hide-native-style')) return; // idempotent
+    if (document.getElementById('allchat-hide-native-style')) return;
 
     const style = document.createElement('style');
     style.id = 'allchat-hide-native-style';
-    // Hide children of #channel-chatroom that are not the injected container.
-    // Hiding the slot itself would remove the container; target children instead.
-    // verified: 2026-03-12 — update if selector breaks
-    style.textContent = `#channel-chatroom > *:not(#allchat-container) { display: none !important; /* verified: 2026-03-12 — update if selector breaks */ }`;
+    style.textContent = `
+      /* Hide all native Kick chat children except AllChat elements */
+      #channel-chatroom > *:not(#allchat-container):not(#allchat-tab-bar) {
+        display: none !important;
+      }
+      /* Ensure AllChat fills the space */
+      #allchat-container {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+      }
+      #allchat-container iframe {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+      }
+    `;
     document.head.appendChild(style);
     console.log('[AllChat Kick] Injected CSS to hide native chat');
   }
@@ -106,7 +140,7 @@ class KickDetector extends PlatformDetector {
     const style = document.getElementById('allchat-hide-native-style');
     if (style) {
       style.remove();
-      console.log('[AllChat Kick] Removed CSS to show native chat');
+      console.log('[AllChat Kick] Removed CSS, native chat restored');
     }
   }
 
@@ -116,39 +150,75 @@ class KickDetector extends PlatformDetector {
       container.remove();
       console.log('[AllChat Kick] Removed All-Chat UI');
     }
+    removeTabBar();
+    this.showNativeChat();
   }
 
   async createInjectionPoint(): Promise<HTMLElement | null> {
-    // Selector fallback chain — try in order, use first that resolves
-    const SELECTORS = [
-      '#channel-chatroom',   // primary — verified 2026-03-12
-      '#chatroom',           // fallback 1 — verified 2026-03-12 (not present, kept for future)
-      '.chatroom-wrapper',   // fallback 2 — verified 2026-03-12 (not present, kept for future)
-    ];
+    try {
+      const slot = await this.waitForElement('#channel-chatroom');
 
-    let slot: HTMLElement | null = null;
+      // 1. Create and inject tab bar as first child
+      const tabBar = createTabBar('Kick Chat');
+      slot.insertBefore(tabBar, slot.firstChild);
 
-    for (const sel of SELECTORS) {
-      try {
-        slot = await this.waitForElement(sel);
-        console.log(`[AllChat Kick] Found chat slot with selector: ${sel}`);
-        break;
-      } catch {
-        // Selector not found, try next
-      }
-    }
+      // 2. Create #allchat-container
+      const container = document.createElement('div');
+      container.id = 'allchat-container';
+      container.style.cssText = 'flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;';
 
-    if (!slot) {
-      console.warn('[AllChat Kick] No chat slot found — native chat remains visible');
+      // Insert after tab bar
+      tabBar.insertAdjacentElement('afterend', container);
+
+      // 3. Hide native children — AllChat starts as active tab
+      this.hideNativeChat();
+
+      // 4. Wire tab switching
+      const detector = this;
+      setupTabSwitching(
+        () => handleSwitchToKick(),
+        () => handleSwitchToAllChat(detector),
+      );
+
+      // 5. Guard against Next.js re-renders removing our elements
+      guardObserver?.disconnect();
+      guardObserver = new MutationObserver(() => {
+        if (!slot.contains(container) && document.contains(slot)) {
+          console.log('[AllChat Kick] Container removed by Next.js — re-injecting');
+          const bar = document.getElementById('allchat-tab-bar');
+          if (bar) {
+            bar.insertAdjacentElement('afterend', container);
+          } else {
+            slot.insertBefore(container, slot.firstChild);
+          }
+        }
+        if (!slot.contains(tabBar) && document.contains(slot)) {
+          console.log('[AllChat Kick] Tab bar removed by Next.js — re-injecting');
+          slot.insertBefore(tabBar, slot.firstChild);
+        }
+      });
+      guardObserver.observe(slot, { childList: true });
+
+      return container;
+    } catch {
+      console.warn('[AllChat Kick] #channel-chatroom not found — native chat remains visible');
       return null;
     }
+  }
 
-    const container = document.createElement('div');
-    container.id = 'allchat-container';
-    container.style.cssText = 'width: 100%; height: 100%;';
-    slot.appendChild(container);
+  protected onIframeCreated(iframe: HTMLIFrameElement): void {
+    iframe.addEventListener('load', () => {
+      iframe.contentWindow?.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: false }, '*');
+      console.log('[AllChat Kick] Sent TAB_BAR_MODE to iframe');
+    });
+  }
 
-    return container;
+  teardown(): void {
+    removeTabBar();
+    guardObserver?.disconnect();
+    guardObserver = null;
+    this.showNativeChat();
+    super.teardown();
   }
 }
 
@@ -158,9 +228,6 @@ let globalDetector: KickDetector | null = null;
 // Guard against duplicate message relay registration
 let messageRelaySetup = false;
 
-/**
- * Handle extension enable/disable state changes
- */
 function handleExtensionStateChange(enabled: boolean) {
   console.log(`[AllChat Kick] Extension state changed: ${enabled ? 'enabled' : 'disabled'}`);
 
@@ -170,117 +237,97 @@ function handleExtensionStateChange(enabled: boolean) {
       globalDetector = null;
     }
   } else {
-    // Re-enable: create detector and init without page reload (per D-04)
     if (!globalDetector) {
       globalDetector = new KickDetector();
-      setupGlobalMessageRelay(); // idempotent via guard
+      setupGlobalMessageRelay();
       globalDetector.init();
       setupUrlWatcher();
     }
   }
 }
 
-// Initialize detector
 async function initialize() {
   console.log('[AllChat Kick] Content script loaded');
 
-  // D-16: Research finding — Kick has no known native pop-out chat URL (06-RESEARCH.md, Open Question Q1).
-  // D-16 scope for Kick is deferred per research outcome, not skipped. AllChat pop-out button
-  // works on Kick in-page (D-15), but native pop-out "Switch to AllChat" injection (D-11) cannot
-  // be implemented without a discoverable pop-out URL. Re-evaluate if Kick adds pop-out support.
-
-  // Check if extension is enabled
   const settings = await getSyncStorage();
   if (!settings.platformEnabled.kick) {
     console.log('[AllChat Kick] Extension disabled for Kick, not injecting');
-    setupGlobalMessageRelay(); // Listen for re-enable even when disabled
+    setupGlobalMessageRelay();
     return;
   }
 
   globalDetector = new KickDetector();
 
-  // Signal to popup which platform page the user is on
   chrome.runtime.sendMessage({ type: 'SET_CURRENT_PLATFORM', platform: 'kick' }).catch((err: unknown) => {
     console.warn('[AllChat Kick] Failed to write current_platform to session:', err);
   });
 
-  // Set up message relay IMMEDIATELY (before any async operations)
   setupGlobalMessageRelay();
-
-  // isLiveStream() check is handled inside init()
   globalDetector.init();
-
-  // Watch for URL changes (Kick is an SPA)
   setupUrlWatcher();
 }
 
-/**
- * Set up global message relay from service worker to iframe
- * This is called immediately when content script loads to avoid missing messages
- */
 function setupGlobalMessageRelay() {
   if (messageRelaySetup) return;
   messageRelaySetup = true;
 
-  // Listen for messages FROM service worker TO iframes
   chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
     console.log('[AllChat Kick] Received from service worker:', message.type);
 
-    // Handle extension state changes
     if (message.type === 'EXTENSION_STATE_CHANGED') {
       handleExtensionStateChange(message.enabled);
       return false;
     }
 
-    // Relay CONNECTION_STATE and WS_MESSAGE to all AllChat iframes
     if (message.type === 'CONNECTION_STATE' || message.type === 'WS_MESSAGE') {
-      const iframes = document.querySelectorAll('iframe[data-platform="kick"]');
-      console.log(`[AllChat Kick] Relaying to ${iframes.length} iframe(s)`);
+      const iframes = document.querySelectorAll('iframe[data-platform="kick"][data-streamer]');
 
       iframes.forEach((iframe) => {
         const iframeElement = iframe as HTMLIFrameElement;
+        const iframeStreamer = iframeElement.getAttribute('data-streamer');
+        if (message.streamer && iframeStreamer && message.streamer !== iframeStreamer) {
+          return;
+        }
         if (iframeElement.contentWindow) {
           const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
           iframeElement.contentWindow.postMessage(message, extensionOrigin);
-          console.log('[AllChat Kick] Relayed message to iframe:', message.type);
         }
       });
+
+      if (message.type === 'CONNECTION_STATE' && message.data?.state) {
+        updateTabBarConnDot(message.data.state);
+      }
     }
     return false;
   });
 
-  // Listen for messages FROM iframes requesting current state
   window.addEventListener('message', async (event) => {
     const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
 
     if (event.data.type === 'GET_CONNECTION_STATE') {
-      console.log('[AllChat Kick] iframe requested connection state');
-      // Request from service worker
       const response = await chrome.runtime.sendMessage({ type: 'GET_CONNECTION_STATE' });
       if (response.success && event.source) {
-        // Send back to the iframe that requested it
         (event.source as Window).postMessage({
           type: 'CONNECTION_STATE',
           data: response.data
         }, extensionOrigin);
-        console.log('[AllChat Kick] Sent current connection state to iframe:', response.data);
       }
     }
 
-    // Guard: only handle pop-out messages from the AllChat extension origin (T-06-09)
     if (event.origin !== extensionOrigin) return;
 
-    // Handle pop-out request from AllChat iframe
     if (event.data.type === 'POPOUT_REQUEST' && globalDetector) {
       globalDetector.handlePopoutRequest(event.data);
     }
 
-    // Handle "Switch to native" from AllChat iframe (D-14)
     if (event.data.type === 'SWITCH_TO_NATIVE' && globalDetector) {
-      globalDetector.handleSwitchToNative();
+      handleSwitchToKick();
     }
 
-    // Handle "Bring back chat" / close pop-out from AllChat iframe
+    if (event.data.type === 'SWITCH_TO_ALLCHAT' && globalDetector) {
+      handleSwitchToAllChat(globalDetector);
+    }
+
     if (event.data.type === 'CLOSE_POPOUT' && globalDetector) {
       globalDetector.closePopout();
       const iframes = document.querySelectorAll('iframe[data-platform="kick"]');
@@ -296,18 +343,12 @@ function setupGlobalMessageRelay() {
   console.log('[AllChat Kick] Global message relay set up');
 }
 
-/**
- * Watch for URL changes using SPA navigation detection.
- * popstate handles browser back/forward navigation.
- * MutationObserver on title handles Next.js pushState navigation.
- * Both are deduplicated via URL equality check.
- */
 function setupUrlWatcher(): void {
   let activeUrl = location.href;
 
   const handleNavigation = async () => {
     const url = location.href;
-    if (url === activeUrl) return; // Dedup: both events may fire for same navigation
+    if (url === activeUrl) return;
     activeUrl = url;
 
     console.log('[AllChat Kick] Navigation detected, tearing down...');
@@ -321,15 +362,12 @@ function setupUrlWatcher(): void {
     }
   };
 
-  // popstate handles back/forward navigation
   window.addEventListener('popstate', handleNavigation);
 
-  // MutationObserver on title handles Next.js pushState navigation
   new MutationObserver(handleNavigation).observe(
     document.querySelector('title') || document.head,
     { childList: true, characterData: true, subtree: true }
   );
 }
 
-// Start initialization
 initialize();

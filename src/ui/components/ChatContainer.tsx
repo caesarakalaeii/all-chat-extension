@@ -129,7 +129,8 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   const [viewerNameColor, setViewerNameColor] = useState<string | null>(null);
   const [viewerNameGradient, setViewerNameGradient] = useState<string | null>(null);
   const [isPoppedOut, setIsPoppedOut] = useState(false); // in-page: true when pop-out window is open
-  const [tabBarMode, setTabBarMode] = useState(false); // true when Twitch tab bar controls view (header hidden)
+  const [tabBarMode, setTabBarMode] = useState(false); // true when platform tab bar controls view (header hidden)
+  const [tabBarHideInput, setTabBarHideInput] = useState(true); // true when native input stays visible (Twitch)
 
   // Parse gradient JSON string for use in style — null when absent or invalid
   const parsedGradient = useMemo(
@@ -225,6 +226,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
     // Handle tab bar mode toggle (Twitch tab bar replaces iframe header)
     if (data.type === 'TAB_BAR_MODE') {
       setTabBarMode(data.enabled as boolean);
+      setTabBarHideInput((data as any).hideInput !== false); // default true for backward compat
       return;
     }
 
@@ -761,29 +763,33 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                 )}
               </div>
 
-              {/* Footer / Message Input */}
-              {loadingAuth ? (
-                <div className="px-3 py-3 bg-surface border-t border-border text-center">
-                  <p className="text-xs text-[var(--color-text-dim)]">Loading...</p>
-                </div>
-              ) : viewerToken ? (
-                <MessageInput
-                  platform={platform}
-                  streamer={streamer}
-                  twitchChannel={twitchChannel}
-                  videoId={videoId}
-                  token={viewerToken}
-                  onAuthError={handleAuthError}
-                  onSendSuccess={handleMessageSent}
-                />
-              ) : (
-                <div className="border-t border-border">
-                  <LoginPrompt
+              {/* Footer / Message Input — hidden when tabBarMode + hideInput (Twitch: native
+                  input with channel points stays visible). Shown on YouTube/Kick where
+                  native input is hidden alongside the native chat panel. */}
+              {!(tabBarMode && tabBarHideInput) && (
+                loadingAuth ? (
+                  <div className="px-3 py-3 bg-surface border-t border-border text-center">
+                    <p className="text-xs text-[var(--color-text-dim)]">Loading...</p>
+                  </div>
+                ) : viewerToken ? (
+                  <MessageInput
                     platform={platform}
-                    streamer={displayName}
-                    onLogin={handleLogin}
+                    streamer={streamer}
+                    twitchChannel={twitchChannel}
+                    videoId={videoId}
+                    token={viewerToken}
+                    onAuthError={handleAuthError}
+                    onSendSuccess={handleMessageSent}
                   />
-                </div>
+                ) : (
+                  <div className="border-t border-border">
+                    <LoginPrompt
+                      platform={platform}
+                      streamer={displayName}
+                      onLogin={handleLogin}
+                    />
+                  </div>
+                )
               )}
             </>
           )}

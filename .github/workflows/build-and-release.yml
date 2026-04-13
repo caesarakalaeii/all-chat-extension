@@ -130,7 +130,7 @@ jobs:
           sed -i 's/^          //' /tmp/release-notes.md
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: allchat-extension.zip
           body_path: /tmp/release-notes.md

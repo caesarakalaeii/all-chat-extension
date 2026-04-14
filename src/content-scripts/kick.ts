@@ -11,7 +11,7 @@
  */
 
 import { PlatformDetector } from './base/PlatformDetector';
-import { createTabBar, setupTabSwitching, switchToNativeTab, switchToAllChatTab as switchToAllChatTabVisual, updateTabBarConnDot, removeTabBar } from './base/tabBar';
+import { createTabBar, setupTabSwitching, switchToNativeTab, switchToAllChatTab as switchToAllChatTabVisual, updateTabBarConnDot, removeTabBar, isLightMode, watchThemeChanges } from './base/tabBar';
 import { getSyncStorage } from '../lib/storage';
 
 // Guard observer — watches for Next.js removing our injected elements
@@ -159,7 +159,7 @@ class KickDetector extends PlatformDetector {
       const slot = await this.waitForElement('#channel-chatroom');
 
       // 1. Create and inject tab bar as first child
-      const tabBar = createTabBar('Kick Chat');
+      const tabBar = createTabBar('Kick Chat', 'kick');
       slot.insertBefore(tabBar, slot.firstChild);
 
       // 2. Create #allchat-container
@@ -179,6 +179,14 @@ class KickDetector extends PlatformDetector {
         () => handleSwitchToKick(),
         () => handleSwitchToAllChat(detector),
       );
+
+      // 4b. Watch for theme changes and update iframe
+      watchThemeChanges('kick', (theme) => {
+        const iframe = document.querySelector('#allchat-container iframe') as HTMLIFrameElement | null;
+        if (iframe?.contentWindow) {
+          iframe.contentWindow.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: false, theme }, '*');
+        }
+      });
 
       // 5. Guard against Next.js re-renders removing our elements
       guardObserver?.disconnect();
@@ -208,7 +216,7 @@ class KickDetector extends PlatformDetector {
 
   protected onIframeCreated(iframe: HTMLIFrameElement): void {
     iframe.addEventListener('load', () => {
-      iframe.contentWindow?.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: false }, '*');
+      iframe.contentWindow?.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: false, theme: isLightMode('kick') ? 'light' : 'dark' }, '*');
       console.log('[AllChat Kick] Sent TAB_BAR_MODE to iframe');
     });
   }

@@ -13,7 +13,7 @@
  */
 
 import { PlatformDetector } from './base/PlatformDetector';
-import { createTabBar, setupTabSwitching, switchToNativeTab, switchToAllChatTab as switchToAllChatTabVisual, updateTabBarConnDot, removeTabBar } from './base/tabBar';
+import { createTabBar, setupTabSwitching, switchToNativeTab, switchToAllChatTab as switchToAllChatTabVisual, updateTabBarConnDot, removeTabBar, isLightMode, watchThemeChanges } from './base/tabBar';
 import { getSyncStorage } from '../lib/storage';
 
 // Module-level slot observer — shared between createInjectionPoint and teardown
@@ -194,7 +194,7 @@ class TwitchDetector extends PlatformDetector {
       }
 
       // 1. Create and inject tab bar between .stream-chat-header and section.chat-room
-      const tabBar = createTabBar('Twitch Chat');
+      const tabBar = createTabBar('Twitch Chat', 'twitch');
       const chatRoom = streamChat.querySelector('section.chat-room, [data-test-selector="chat-room-component-layout"]');
       if (chatRoom) {
         streamChat.insertBefore(tabBar, chatRoom);
@@ -220,6 +220,14 @@ class TwitchDetector extends PlatformDetector {
         () => handleSwitchToTwitch(),
         () => handleSwitchToAllChat(detector),
       );
+
+      // 4b. Watch for light/dark theme changes and update iframe
+      watchThemeChanges('twitch', (theme) => {
+        const iframe = document.querySelector('#allchat-container iframe') as HTMLIFrameElement | null;
+        if (iframe?.contentWindow) {
+          iframe.contentWindow.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: true, theme }, '*');
+        }
+      });
 
       // 5. Guard against React reconciliation removing our elements
       guardObserver?.disconnect();
@@ -271,7 +279,7 @@ class TwitchDetector extends PlatformDetector {
    */
   protected onIframeCreated(iframe: HTMLIFrameElement): void {
     iframe.addEventListener('load', () => {
-      iframe.contentWindow?.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: true }, '*');
+      iframe.contentWindow?.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: true, theme: isLightMode('twitch') ? 'light' : 'dark' }, '*');
       console.log('[AllChat Twitch] Sent TAB_BAR_MODE to iframe');
     });
   }

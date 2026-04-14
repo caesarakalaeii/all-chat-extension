@@ -11,7 +11,7 @@
  */
 
 import { PlatformDetector } from './base/PlatformDetector';
-import { createTabBar, setupTabSwitching, switchToNativeTab, switchToAllChatTab as switchToAllChatTabVisual, updateTabBarConnDot, removeTabBar } from './base/tabBar';
+import { createTabBar, setupTabSwitching, switchToNativeTab, switchToAllChatTab as switchToAllChatTabVisual, updateTabBarConnDot, removeTabBar, isLightMode, watchThemeChanges } from './base/tabBar';
 import { getSyncStorage } from '../lib/storage';
 
 // Guard observer — watches for YouTube removing our injected elements
@@ -239,12 +239,30 @@ class YouTubeDetector extends PlatformDetector {
   hideNativeChat(): void {
     if (document.getElementById('allchat-hide-native-style')) return;
 
+    // Capture the parent's current height before hiding, so it doesn't collapse.
+    // YouTube sizes #chat-container based on ytd-live-chat-frame — without this
+    // the container shrinks to ~0px when the chat frame is removed from flow.
+    const chatFrame = document.querySelector('ytd-live-chat-frame');
+    const parent = chatFrame?.parentElement;
+    if (parent) {
+      const currentHeight = parent.getBoundingClientRect().height;
+      if (currentHeight > 100) {
+        parent.style.minHeight = currentHeight + 'px';
+      }
+    }
+
     const style = document.createElement('style');
     style.id = 'allchat-hide-native-style';
     style.textContent = `
-      /* Hide the native YouTube chat frame */
+      /* Hide native YouTube chat — use visibility+position instead of display:none
+         so YouTube's layout engine doesn't recalculate and collapse the parent */
       ytd-live-chat-frame {
-        display: none !important;
+        visibility: hidden !important;
+        position: absolute !important;
+        width: 0 !important;
+        height: 0 !important;
+        overflow: hidden !important;
+        pointer-events: none !important;
       }
       /* Ensure AllChat fills the space */
       #allchat-container {
@@ -263,6 +281,12 @@ class YouTubeDetector extends PlatformDetector {
   }
 
   showNativeChat(): void {
+    // Clear the forced min-height we set when hiding
+    const chatFrame = document.querySelector('ytd-live-chat-frame');
+    const parent = chatFrame?.parentElement;
+    if (parent) {
+      parent.style.minHeight = '';
+    }
     const style = document.getElementById('allchat-hide-native-style');
     if (style) {
       style.remove();
@@ -293,7 +317,7 @@ class YouTubeDetector extends PlatformDetector {
         wrapper.id = 'allchat-theater-wrapper';
         wrapper.style.cssText = 'position: fixed; top: 0; right: 0; width: 340px; height: 100vh; z-index: 9999; display: flex; flex-direction: column;';
 
-        const tabBar = createTabBar('YouTube Chat');
+        const tabBar = createTabBar('YouTube Chat', 'youtube');
         wrapper.appendChild(tabBar);
 
         const container = document.createElement('div');
@@ -326,7 +350,7 @@ class YouTubeDetector extends PlatformDetector {
       parent.style.cssText += '; display: flex !important; flex-direction: column !important;';
 
       // Tab bar first
-      const tabBar = createTabBar('YouTube Chat');
+      const tabBar = createTabBar('YouTube Chat', 'youtube');
       parent.insertBefore(tabBar, parent.firstChild);
 
       // AllChat container after tab bar, before native chat
@@ -347,6 +371,14 @@ class YouTubeDetector extends PlatformDetector {
         () => handleSwitchToYouTube(),
         () => handleSwitchToAllChat(detector),
       );
+
+      // Watch for theme changes and update iframe
+      watchThemeChanges('youtube', (theme) => {
+        const iframe = document.querySelector('#allchat-container iframe') as HTMLIFrameElement | null;
+        if (iframe?.contentWindow) {
+          iframe.contentWindow.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: false, theme }, '*');
+        }
+      });
 
       // Guard against YouTube removing our elements
       guardObserver?.disconnect();
@@ -372,7 +404,7 @@ class YouTubeDetector extends PlatformDetector {
 
   protected onIframeCreated(iframe: HTMLIFrameElement): void {
     iframe.addEventListener('load', () => {
-      iframe.contentWindow?.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: false }, '*');
+      iframe.contentWindow?.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: false, theme: isLightMode('youtube') ? 'light' : 'dark' }, '*');
       console.log('[AllChat YouTube] Sent TAB_BAR_MODE to iframe');
     });
   }

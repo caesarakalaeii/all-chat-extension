@@ -223,10 +223,19 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
 
     console.log('[AllChat UI] Received message:', data.type, data);
 
-    // Handle tab bar mode toggle (Twitch tab bar replaces iframe header)
+    // Handle tab bar mode toggle (platform tab bar replaces iframe header)
     if (data.type === 'TAB_BAR_MODE') {
       setTabBarMode(data.enabled as boolean);
       setTabBarHideInput((data as any).hideInput !== false); // default true for backward compat
+      // Apply platform + theme to match host appearance
+      // data-platform drives dark palette overrides, data-theme="light" adds light overrides
+      document.documentElement.setAttribute('data-platform', platform);
+      const theme = (data as any).theme;
+      if (theme === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+      }
       return;
     }
 
@@ -763,9 +772,10 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                 )}
               </div>
 
-              {/* Footer / Message Input — hidden when tabBarMode + hideInput (Twitch: native
-                  input with channel points stays visible). Shown on YouTube/Kick where
-                  native input is hidden alongside the native chat panel. */}
+              {/* Footer / Message Input
+                  - tabBarMode + hideInput (Twitch): hidden entirely, native input stays visible
+                  - tabBarMode + !hideInput (YouTube/Kick): show input if logged in, skip login prompt
+                  - no tabBarMode (pop-out, non-tab platforms): full behavior with login prompt */}
               {!(tabBarMode && tabBarHideInput) && (
                 loadingAuth ? (
                   <div className="px-3 py-3 bg-surface border-t border-border text-center">
@@ -781,7 +791,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                     onAuthError={handleAuthError}
                     onSendSuccess={handleMessageSent}
                   />
-                ) : (
+                ) : !tabBarMode ? (
                   <div className="border-t border-border">
                     <LoginPrompt
                       platform={platform}
@@ -789,7 +799,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                       onLogin={handleLogin}
                     />
                   </div>
-                )
+                ) : null
               )}
             </>
           )}

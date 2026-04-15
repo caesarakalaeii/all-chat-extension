@@ -179,11 +179,13 @@ class TwitchDetector extends PlatformDetector {
       console.log('[AllChat Twitch] Removed All-Chat UI');
     }
     removeTabBar();
+    removeViewerCardOverlay();
     this.showNativeChat();
   }
 
   teardown(): void {
     removeTabBar();
+    removeViewerCardOverlay();
     guardObserver?.disconnect();
     guardObserver = null;
     slotObserver?.disconnect();
@@ -416,6 +418,68 @@ function handleExtensionStateChange(enabled: boolean) {
 
 // updateTabBarConnDot imported from ./base/tabBar
 
+/** Remove any existing AllChat viewer card overlay. */
+function removeViewerCardOverlay(): void {
+  document.getElementById('allchat-viewer-card-overlay')?.remove();
+  document.getElementById('allchat-viewer-card-backdrop')?.remove();
+}
+
+/** Show a Twitch viewer card as an iframe overlay on the page. */
+function showViewerCardOverlay(channel: string, username: string): void {
+  removeViewerCardOverlay();
+
+  const backdrop = document.createElement('div');
+  backdrop.id = 'allchat-viewer-card-backdrop';
+  backdrop.style.cssText = 'position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,0.3);';
+  backdrop.addEventListener('click', removeViewerCardOverlay);
+
+  const overlay = document.createElement('div');
+  overlay.id = 'allchat-viewer-card-overlay';
+  overlay.style.cssText =
+    'position:fixed;z-index:99999;width:340px;height:500px;border-radius:8px;overflow:hidden;' +
+    'box-shadow:0 8px 32px rgba(0,0,0,0.5),0 0 0 1px rgba(255,255,255,0.1);background:#18181b;';
+
+  const chatShell = document.querySelector('.chat-shell') as HTMLElement | null;
+  if (chatShell) {
+    const rect = chatShell.getBoundingClientRect();
+    const top = Math.max(8, rect.top + (rect.height - 500) / 2);
+    const left = Math.max(8, rect.left - 340 - 8);
+    overlay.style.top = `${top}px`;
+    overlay.style.left = `${left}px`;
+  } else {
+    overlay.style.top = '50%';
+    overlay.style.left = '50%';
+    overlay.style.transform = 'translate(-50%,-50%)';
+  }
+
+  const closeBtn = document.createElement('button');
+  closeBtn.style.cssText =
+    'position:absolute;top:4px;right:4px;z-index:1;width:28px;height:28px;border-radius:50%;' +
+    'background:rgba(0,0,0,0.6);border:none;color:#efeff1;cursor:pointer;font-size:16px;' +
+    'display:flex;align-items:center;justify-content:center;';
+  closeBtn.innerHTML = '&times;';
+  closeBtn.title = 'Close viewer card';
+  closeBtn.addEventListener('click', removeViewerCardOverlay);
+
+  const iframe = document.createElement('iframe');
+  iframe.src = `https://www.twitch.tv/popout/${channel}/viewercard/${username}`;
+  iframe.style.cssText = 'width:100%;height:100%;border:none;';
+  iframe.title = `Viewer card for ${username}`;
+
+  overlay.appendChild(closeBtn);
+  overlay.appendChild(iframe);
+  document.body.appendChild(backdrop);
+  document.body.appendChild(overlay);
+
+  const handleKeydown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      removeViewerCardOverlay();
+      document.removeEventListener('keydown', handleKeydown);
+    }
+  };
+  document.addEventListener('keydown', handleKeydown);
+}
+
 /**
  * Set up global message relay from service worker to iframe.
  * Called immediately when content script loads to avoid missing messages.
@@ -507,11 +571,7 @@ function setupGlobalMessageRelay() {
     if (event.data.type === 'OPEN_VIEWER_CARD' && globalDetector) {
       const channel = globalDetector.extractStreamerUsername();
       if (channel && event.data.username) {
-        window.open(
-          `https://www.twitch.tv/popout/${channel}/viewercard/${event.data.username}`,
-          '_blank',
-          'width=340,height=500',
-        );
+        showViewerCardOverlay(channel, event.data.username);
       }
     }
 

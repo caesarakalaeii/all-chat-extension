@@ -905,7 +905,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                               if (message.platform === 'twitch') {
                                 window.open(
                                   `https://www.twitch.tv/popout/${twitchChannel || streamer}/viewercard/${message.user.username}`,
-                                  '_blank',
+                                  'allchat_viewercard',
                                   'width=340,height=500',
                                 );
                               } else if (message.platform === 'youtube') {

@@ -4,7 +4,7 @@
  * Main component that manages WebSocket connection and message state
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ChatMessage } from '../../lib/types/message';
 import { ViewerInfo } from '../../lib/types/extension';
 import { renderMessageContent } from '../../lib/renderMessage';
@@ -382,11 +382,26 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
     return () => clearTimeout(timer);
   }, [reconnectCountdown]);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Track whether the user is "following" chat (scrolled to bottom).
+  // We flip this off when the user scrolls up, and back on when they
+  // scroll back near the bottom — so async image loads can't drift us
+  // past a static pixel threshold.
+  const isFollowingChat = useRef(true);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const handleScroll = useCallback(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const threshold = 80;
+    isFollowingChat.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
+  }, []);
+
+  // Auto-scroll when new messages arrive, but only if the user hasn't scrolled up.
   useEffect(() => {
-    const container = document.getElementById('messages-container');
-    if (container) {
-      container.scrollTop = container.scrollHeight;
+    const el = messagesContainerRef.current;
+    if (el && isFollowingChat.current) {
+      el.scrollTop = el.scrollHeight;
     }
   }, [messages]);
 
@@ -655,7 +670,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
               )}
 
               {/* Messages */}
-              <div id="messages-container" className="flex-1 overflow-y-auto p-3 space-y-2">
+              <div id="messages-container" ref={messagesContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-3 space-y-2">
                 {messages.length === 0 ? (
                   <div className="flex items-center justify-center h-full">
                     <div className="text-center text-[var(--color-text-dim)]">

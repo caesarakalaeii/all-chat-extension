@@ -66,7 +66,8 @@ module.exports = (env, argv) => {
       patterns: [
         { from: 'manifest.json', to: 'manifest.json' },
         { from: 'assets', to: 'assets', noErrorOnMissing: true },
-        { from: 'src/content-scripts/styles.css', to: 'content-scripts/styles.css', noErrorOnMissing: true }
+        { from: 'src/content-scripts/styles.css', to: 'content-scripts/styles.css', noErrorOnMissing: true },
+        { from: 'LICENSE', to: 'LICENSE', noErrorOnMissing: true }
       ]
     }),
     new HtmlWebpackPlugin({

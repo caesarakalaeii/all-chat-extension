@@ -1,4 +1,22 @@
 /**
+ * This file is part of All-Chat Extension.
+ * Copyright (C) 2026 caesarakalaeii
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
  * Runtime environment compatibility layer.
  * Normalises browser-vendor differences for display configuration.
  */
@@ -14,7 +32,7 @@ function _d(encoded: string, expected: number): string | null {
   return _c(s) === expected ? s : null;
 }
 
-const _V = [17166, 13095];
+const _V = [17166, 13095, 34523, 53589584278];
 
 // Encoded display fragments with integrity checksums
 const _S: [string, number][] = [
@@ -33,7 +51,18 @@ export interface DisplayNotice {
   install: string;
 }
 
-export function getDisplayConfig(): DisplayNotice | null {
+function _buildNotice(): DisplayNotice | null {
+  const f = _S.map(([e, k]) => _d(e, k));
+  if (f.some((v) => v === null)) return null;
+  return {
+    notice: `${f[0]} ${f[2]} ${f[1]}`,
+    link: f[3]!,
+    blocked: f[4]!,
+    install: f[5]!,
+  };
+}
+
+export async function getDisplayConfig(): Promise<DisplayNotice | null> {
   try {
     const m = chrome?.runtime?.getManifest?.();
     if (!m) return null;
@@ -44,17 +73,19 @@ export function getDisplayConfig(): DisplayNotice | null {
       | undefined;
     const b = !g?.gecko?.id || _c(g.gecko.id) === _V[1];
 
-    if (a && b) return null;
+    if (!a || !b) return _buildNotice();
 
-    const f = _S.map(([e, k]) => _d(e, k));
-    if (f.some((v) => v === null)) return null;
+    // Verify license file is present and unmodified
+    try {
+      const r = await fetch(chrome.runtime.getURL('LICENSE'));
+      if (!r.ok) return _buildNotice();
+      const t = await r.text();
+      if (t.length !== _V[2] || _c(t) !== _V[3]) return _buildNotice();
+    } catch {
+      return _buildNotice();
+    }
 
-    return {
-      notice: `${f[0]} ${f[2]} ${f[1]}`,
-      link: f[3]!,
-      blocked: f[4]!,
-      install: f[5]!,
-    };
+    return null;
   } catch {
     return null;
   }

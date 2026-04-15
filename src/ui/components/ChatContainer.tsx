@@ -1,4 +1,22 @@
 /**
+ * This file is part of All-Chat Extension.
+ * Copyright (C) 2026 caesarakalaeii
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
  * Chat Container Component
  *
  * Main component that manages WebSocket connection and message state
@@ -132,11 +150,12 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   const [isPoppedOut, setIsPoppedOut] = useState(false); // in-page: true when pop-out window is open
   const [tabBarMode, setTabBarMode] = useState(false); // true when platform tab bar controls view (header hidden)
   const [tabBarHideInput, setTabBarHideInput] = useState(true); // true when native input stays visible (Twitch)
-  const [envNotice, setEnvNotice] = useState<ReturnType<typeof getDisplayConfig>>(null);
+  const [envNotice, setEnvNotice] = useState<Awaited<ReturnType<typeof getDisplayConfig>>>(null);
 
   useEffect(() => {
-    const cfg = getDisplayConfig();
-    if (cfg) setEnvNotice(cfg);
+    getDisplayConfig().then((cfg) => {
+      if (cfg) setEnvNotice(cfg);
+    });
   }, []);
 
   // Parse gradient JSON string for use in style — null when absent or invalid

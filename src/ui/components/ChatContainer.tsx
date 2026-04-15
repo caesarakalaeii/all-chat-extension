@@ -152,11 +152,31 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   const [tabBarHideInput, setTabBarHideInput] = useState(true); // true when native input stays visible (Twitch)
   const [envNotice, setEnvNotice] = useState<Awaited<ReturnType<typeof getDisplayConfig>>>(null);
 
+  // Super Chat / Super Sticker ticker — shows recent paid events as colored pills
+  interface TickerItem {
+    id: string;
+    user: ChatMessage['user'];
+    event: NonNullable<ChatMessage['event']>;
+    expiresAt: number; // Date.now() + duration * 1000
+  }
+  const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
+
   useEffect(() => {
     getDisplayConfig().then((cfg) => {
       if (cfg) setEnvNotice(cfg);
     });
   }, []);
+
+  // Auto-expire ticker items
+  useEffect(() => {
+    if (tickerItems.length === 0) return;
+    const nextExpiry = Math.min(...tickerItems.map((t) => t.expiresAt));
+    const delay = Math.max(nextExpiry - Date.now(), 500);
+    const timer = setTimeout(() => {
+      setTickerItems((prev) => prev.filter((t) => t.expiresAt > Date.now()));
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [tickerItems]);
 
   // Parse gradient JSON string for use in style — null when absent or invalid
   const parsedGradient = useMemo(
@@ -306,6 +326,24 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
           }
           return [...prev, processedMessage].slice(-50);
         });
+
+        // Add Super Chat / Super Sticker to the ticker bar
+        if (processedMessage.event &&
+            (processedMessage.event.type === 'super_chat' || processedMessage.event.type === 'super_sticker') &&
+            processedMessage.event.value) {
+          const duration = processedMessage.event.duration || 30;
+          setTickerItems((prev) => {
+            if (prev.some((t) => t.id === processedMessage.id)) return prev;
+            const now = Date.now();
+            // Prune expired items while adding the new one
+            return [...prev.filter((t) => t.expiresAt > now), {
+              id: processedMessage.id,
+              user: processedMessage.user,
+              event: processedMessage.event!,
+              expiresAt: now + duration * 1000,
+            }];
+          });
+        }
 
         resolveTwitchBadgeIcons(processedMessage).then((enrichedMessage) => {
           setMessages((prev) => {
@@ -719,6 +757,41 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                 </div>
               )}
 
+              {/* Super Chat / Super Sticker ticker bar */}
+              {tickerItems.length > 0 && (
+                <div className="flex gap-1.5 px-2 py-1.5 overflow-x-auto border-b border-border" style={{ scrollbarWidth: 'none' }}>
+                  {tickerItems.map((item) => {
+                    const color = (item.event.metadata?.color as string) || (
+                      item.event.tier === 'high' ? '#E62117' :
+                      item.event.tier === 'medium' ? '#1E88E5' : '#FFB300'
+                    );
+                    const textColor = item.event.tier === 'low' ? '#0f0f0f' : '#fff';
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-1.5 rounded-full px-2 py-0.5 flex-shrink-0"
+                        style={{ background: color, color: textColor }}
+                      >
+                        {item.user.avatar_url && (
+                          <img
+                            src={item.user.avatar_url}
+                            alt=""
+                            className="rounded-full"
+                            style={{ width: 20, height: 20 }}
+                          />
+                        )}
+                        <span className="text-xs font-semibold truncate" style={{ maxWidth: 80 }}>
+                          {item.user.display_name || item.user.username}
+                        </span>
+                        <span className="text-xs font-bold whitespace-nowrap">
+                          {item.event.value?.display_text}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* Messages */}
               <div id="messages-container" ref={messagesContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-3 space-y-2">
                 {messages.length === 0 ? (
@@ -732,7 +805,14 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                   messages.map((message) => (
                     <div
                       key={message.id}
-                      className={`message-enter p-2 rounded bg-surface/50 platform-${message.platform} relative group`}
+                      className={`message-enter p-2 rounded platform-${message.platform} relative group ${
+                        message.event && (message.event.type === 'super_chat' || message.event.type === 'super_sticker')
+                          ? '' : 'bg-surface/50'
+                      }`}
+                      style={message.event && (message.event.type === 'super_chat' || message.event.type === 'super_sticker') ? {
+                        background: `${(message.event.metadata?.color as string) || '#FFB300'}22`,
+                        borderColor: (message.event.metadata?.color as string) || '#FFB300',
+                      } : undefined}
                     >
                       {/* YouTube 3-dot context menu button (Report/Block/Moderate) */}
                       {message.platform === 'youtube' && message.metadata?.youtube_context_params && (
@@ -876,6 +956,22 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                           );
                         })()}
                       </div>
+
+                      {/* Super Chat / Super Sticker header */}
+                      {message.event && (message.event.type === 'super_chat' || message.event.type === 'super_sticker') && message.event.value && (
+                        <div
+                          className="text-xs font-semibold px-2 py-1 rounded mb-1"
+                          style={{
+                            background: (message.event.metadata?.color as string) || (
+                              message.event.tier === 'high' ? '#E62117' :
+                              message.event.tier === 'medium' ? '#1E88E5' : '#FFB300'
+                            ),
+                            color: message.event.tier === 'low' ? '#0f0f0f' : '#fff',
+                          }}
+                        >
+                          {message.event.type === 'super_sticker' ? 'Super Sticker' : 'Super Chat'} — {message.event.value.display_text}
+                        </div>
+                      )}
 
                       {/* Message text with emotes */}
                       <div className="text-sm text-text">

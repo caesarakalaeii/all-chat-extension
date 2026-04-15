@@ -23,6 +23,20 @@
  * Used for WebSocket messages and chat rendering.
  */
 
+export interface EventValue {
+  amount: number;
+  currency: string;
+  display_text: string;
+}
+
+export interface EventInfo {
+  type: string;
+  tier: 'high' | 'medium' | 'low';
+  value?: EventValue;
+  duration: number;
+  metadata?: Record<string, unknown>;
+}
+
 export interface ChatMessage {
   id: string;
   overlay_id: string;
@@ -33,6 +47,7 @@ export interface ChatMessage {
   message: MessageInfo;
   timestamp: string;
   metadata: Record<string, unknown>;
+  event?: EventInfo;
 }
 
 export interface UserInfo {

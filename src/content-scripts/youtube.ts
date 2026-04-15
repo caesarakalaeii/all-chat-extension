@@ -597,6 +597,10 @@ function setupGlobalMessageRelay() {
       }
     }
 
+    if (event.data.type === 'OPEN_VIEWER_CARD' && event.data.userId) {
+      window.open(`https://www.youtube.com/channel/${event.data.userId}`, '_blank');
+    }
+
     if (event.origin !== extensionOrigin) return;
 
     if (event.data.type === 'POPOUT_REQUEST' && globalDetector) {

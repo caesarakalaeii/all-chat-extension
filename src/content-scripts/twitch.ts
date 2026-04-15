@@ -486,6 +486,17 @@ function setupGlobalMessageRelay() {
       }
     }
 
+    if (event.data.type === 'OPEN_VIEWER_CARD' && globalDetector) {
+      const channel = globalDetector.extractStreamerUsername();
+      if (channel && event.data.username) {
+        window.open(
+          `https://www.twitch.tv/popout/${channel}/viewercard/${event.data.username}`,
+          '_blank',
+          'width=340,height=500',
+        );
+      }
+    }
+
     // Guard: only handle pop-out messages from the AllChat extension origin
     if (event.origin !== extensionOrigin) return;
 

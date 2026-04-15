@@ -322,6 +322,10 @@ function setupGlobalMessageRelay() {
       }
     }
 
+    if (event.data.type === 'OPEN_VIEWER_CARD' && event.data.username) {
+      window.open(`https://kick.com/${event.data.username}`, '_blank');
+    }
+
     if (event.origin !== extensionOrigin) return;
 
     if (event.data.type === 'POPOUT_REQUEST' && globalDetector) {

@@ -20,6 +20,7 @@ import { UserAvatar } from './UserAvatar';
 import { AllChatBadge } from './AllChatBadge';
 import { PremiumBadge } from './PremiumBadge';
 import { POPOUT_PORT_NAME, POPOUT_MESSAGE_BUFFER_KEY, POPOUT_MAX_MESSAGES } from '../../lib/types/popout';
+import { getDisplayConfig } from '../../lib/compat';
 
 export type Platform = 'twitch' | 'youtube' | 'kick' | 'tiktok';
 
@@ -131,6 +132,12 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   const [isPoppedOut, setIsPoppedOut] = useState(false); // in-page: true when pop-out window is open
   const [tabBarMode, setTabBarMode] = useState(false); // true when platform tab bar controls view (header hidden)
   const [tabBarHideInput, setTabBarHideInput] = useState(true); // true when native input stays visible (Twitch)
+  const [envNotice, setEnvNotice] = useState<ReturnType<typeof getDisplayConfig>>(null);
+
+  useEffect(() => {
+    const cfg = getDisplayConfig();
+    if (cfg) setEnvNotice(cfg);
+  }, []);
 
   // Parse gradient JSON string for use in style — null when absent or invalid
   const parsedGradient = useMemo(
@@ -615,6 +622,20 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
         <div></div>
       )}
 
+      {envNotice && (
+        <div className="px-3 py-2 bg-red-900/80 border-b border-red-700 text-center">
+          <p className="text-xs text-red-200">{envNotice.notice}</p>
+          <a
+            href={envNotice.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-red-100 underline font-semibold"
+          >
+            {envNotice.link}
+          </a>
+        </div>
+      )}
+
       {!isCollapsed && (
         <>
           {isPoppedOut ? (
@@ -734,12 +755,9 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                           )
                         ))}
 
-                        {/* Username */}
+                        {/* Username — clickable for same-platform messages to open native profile */}
                         {(() => {
                           const isOwnMessage = viewerInfo && message.user.username === viewerInfo.username;
-                          // For the viewer's own messages, prefer the locally-stored gradient/color
-                          // (which may differ from what the backend cached).
-                          // For everyone else, use the gradient/color carried in the message itself.
                           const messageGradient = parseNameGradient(message.user.name_gradient);
                           const activeGradient: NameGradient | null = isOwnMessage
                             ? (parsedGradient ?? messageGradient)
@@ -748,13 +766,26 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                             ? viewerNameColor
                             : (message.user.color || '#fff');
 
+                          const isSamePlatform = message.platform === platform;
+                          const handleNameClick = isSamePlatform ? () => {
+                            sendToContentScript({
+                              type: 'OPEN_VIEWER_CARD',
+                              platform: message.platform,
+                              username: message.user.username,
+                              userId: message.user.id,
+                            });
+                          } : undefined;
+                          const clickStyle = isSamePlatform ? { cursor: 'pointer' } : {};
+
                           if (activeGradient) {
                             const gradientCSS = buildGradientCSS(activeGradient);
                             if (gradientCSS) {
                               return (
                                 <span
                                   className="font-semibold text-sm"
+                                  onClick={handleNameClick}
                                   style={{
+                                    ...clickStyle,
                                     backgroundImage: gradientCSS,
                                     backgroundClip: 'text',
                                     WebkitBackgroundClip: 'text',
@@ -770,7 +801,8 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                           return (
                             <span
                               className="font-semibold text-sm"
-                              style={{ color: activeColor }}
+                              onClick={handleNameClick}
+                              style={{ color: activeColor, ...clickStyle }}
                             >
                               {message.user.display_name || message.user.username}
                             </span>

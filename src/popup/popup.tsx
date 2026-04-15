@@ -8,6 +8,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import { getSyncStorage, setSyncStorage, getLocalStorage, setLocalStorage } from '../lib/storage';
 import { ViewerInfo, PlatformEnabled } from '../lib/types/extension';
+import { getDisplayConfig } from '../lib/compat';
 
 const PLATFORM_URLS: Record<string, string[]> = {
   twitch: ['https://www.twitch.tv/*'],
@@ -30,6 +31,12 @@ function Popup() {
   const [saveStatus, setSaveStatus] = useState<'' | 'saving' | 'saved'>('');
   const [currentPlatform, setCurrentPlatform] = useState<string | null>(null);
   const colorSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [envNotice, setEnvNotice] = useState<ReturnType<typeof getDisplayConfig>>(null);
+
+  useEffect(() => {
+    const cfg = getDisplayConfig();
+    if (cfg) setEnvNotice(cfg);
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -186,6 +193,28 @@ function Popup() {
     );
     return null;
   };
+
+  if (envNotice) {
+    return (
+      <div>
+        <div style={{ background: '#7f1d1d', borderBottom: '1px solid #b91c1c', padding: '12px 16px', textAlign: 'center' }}>
+          <p style={{ fontSize: '13px', color: '#fecaca', margin: '0 0 6px' }}>{envNotice.notice}</p>
+          <a
+            href={envNotice.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: '13px', color: '#fff', fontWeight: 600, textDecoration: 'underline' }}
+          >
+            {envNotice.link}
+          </a>
+        </div>
+        <div style={{ padding: '16px', textAlign: 'center', color: '#adadb8', fontSize: '12px' }}>
+          <p>{envNotice.blocked}</p>
+          <p style={{ marginTop: '4px' }}>{envNotice.install}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>

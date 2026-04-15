@@ -476,6 +476,352 @@ function injectNativePopoutSwitchButton(platform: string, streamer: string, disp
   }
 }
 
+// ============================================================
+// InnerTube API helpers — used for per-message moderation
+// (Report, Block, Delete, Timeout, etc.) via YouTube's own API
+// using the viewer's existing YouTube session cookies.
+// No AllChat login required.
+// ============================================================
+
+/** Cached InnerTube config extracted from the YouTube page */
+let innerTubeCache: { apiKey: string; context: Record<string, unknown> } | null = null;
+
+/**
+ * Extract INNERTUBE_API_KEY and INNERTUBE_CONTEXT from YouTube's page-level ytcfg.
+ * Content scripts run in an isolated world so we inject a tiny <script> into the
+ * MAIN world, read ytcfg, and pass the result back via CustomEvent.
+ */
+function getInnerTubeContext(): { apiKey: string; context: Record<string, unknown> } {
+  if (innerTubeCache) return innerTubeCache;
+
+  // Parse ytcfg data directly from YouTube's <script> tags.
+  // YouTube embeds ytcfg.set({...}) calls containing INNERTUBE_API_KEY and
+  // INNERTUBE_CONTEXT. This avoids inline script injection which is blocked
+  // by YouTube's Content Security Policy.
+  let apiKey = '';
+  let context: Record<string, unknown> | null = null;
+
+  const scripts = document.querySelectorAll('script');
+  for (const s of scripts) {
+    const text = s.textContent;
+    if (!text || !text.includes('INNERTUBE_API_KEY')) continue;
+
+    // Extract API key: "INNERTUBE_API_KEY":"AIza..."
+    const keyMatch = text.match(/"INNERTUBE_API_KEY"\s*:\s*"([^"]+)"/);
+    if (keyMatch) apiKey = keyMatch[1];
+
+    // Extract context: "INNERTUBE_CONTEXT":{...}
+    // Find the start position and use bracket matching for the JSON object
+    const ctxMarker = '"INNERTUBE_CONTEXT"';
+    const ctxIdx = text.indexOf(ctxMarker);
+    if (ctxIdx !== -1) {
+      const braceStart = text.indexOf('{', ctxIdx + ctxMarker.length);
+      if (braceStart !== -1) {
+        let depth = 0;
+        let end = braceStart;
+        for (let i = braceStart; i < text.length; i++) {
+          if (text[i] === '{') depth++;
+          else if (text[i] === '}') depth--;
+          if (depth === 0) { end = i; break; }
+        }
+        try {
+          context = JSON.parse(text.slice(braceStart, end + 1));
+        } catch { /* ignore parse error */ }
+      }
+    }
+
+    if (apiKey && context) break;
+  }
+
+  if (!apiKey || !context) {
+    throw new Error('Failed to extract InnerTube context from page scripts');
+  }
+
+  innerTubeCache = { apiKey, context };
+  return innerTubeCache;
+}
+
+/**
+ * Compute SAPISIDHASH for authenticated InnerTube requests.
+ * Reads SAPISID from the viewer's YouTube cookies (no extra permissions needed).
+ */
+async function getSapisidHash(origin: string): Promise<string> {
+  const cookies = document.cookie.split('; ');
+  let sapisid = '';
+  for (const c of cookies) {
+    if (c.startsWith('SAPISID=') || c.startsWith('__Secure-3PAPISID=')) {
+      sapisid = c.split('=')[1];
+      if (c.startsWith('SAPISID=')) break; // prefer SAPISID
+    }
+  }
+  if (!sapisid) throw new Error('YouTube SAPISID cookie not found — viewer may not be logged in');
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const input = `${timestamp} ${sapisid} ${origin}`;
+  const encoder = new TextEncoder();
+  const hashBuffer = await crypto.subtle.digest('SHA-1', encoder.encode(input));
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return `SAPISIDHASH ${timestamp}_${hashHex}`;
+}
+
+/**
+ * Generic InnerTube API request helper.
+ * Uses the viewer's YouTube session (cookies + SAPISIDHASH) for authentication.
+ */
+async function callInnerTubeApi(endpoint: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { apiKey, context } = await getInnerTubeContext();
+  const authHash = await getSapisidHash('https://www.youtube.com');
+
+  const response = await fetch(`https://www.youtube.com/youtubei/v1/${endpoint}?key=${apiKey}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': authHash,
+      'Content-Type': 'application/json',
+      'X-Origin': 'https://www.youtube.com',
+      'X-Goog-AuthUser': '0',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ context, ...body }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`InnerTube ${endpoint} failed: HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+/** A parsed context menu action item */
+interface ContextMenuAction {
+  label: string;
+  iconType: string;
+  /** The full serviceEndpoint object — passed back to execute the action */
+  serviceEndpoint: Record<string, unknown>;
+}
+
+/**
+ * Fetch available context menu actions for a specific chat message.
+ * Returns the list of actions YouTube offers for this viewer (varies by role).
+ */
+async function fetchContextMenuActions(contextParams: string): Promise<ContextMenuAction[]> {
+  const data = await callInnerTubeApi('live_chat/get_item_context_menu', { params: contextParams });
+  const actions: ContextMenuAction[] = [];
+
+  // Navigate: liveChatItemContextMenuSupportedRenderers.menuRenderer.items[]
+  const renderers = (data as Record<string, unknown>).liveChatItemContextMenuSupportedRenderers as Record<string, unknown> | undefined;
+  const menuRenderer = renderers?.menuRenderer as Record<string, unknown> | undefined;
+  const items = menuRenderer?.items as Array<Record<string, unknown>> | undefined;
+
+  if (!items) return actions;
+
+  for (const item of items) {
+    // menuServiceItemRenderer — API-backed actions (Report, Block, Delete, Timeout, etc.)
+    const serviceItem = item.menuServiceItemRenderer as Record<string, unknown> | undefined;
+    if (serviceItem) {
+      const textObj = serviceItem.text as Record<string, unknown> | undefined;
+      const runs = textObj?.runs as Array<{ text: string }> | undefined;
+      const label = runs?.map(r => r.text).join('') || '';
+      const iconObj = serviceItem.icon as Record<string, unknown> | undefined;
+      const iconType = (iconObj?.iconType as string) || '';
+      const serviceEndpoint = serviceItem.serviceEndpoint as Record<string, unknown>;
+      if (label && serviceEndpoint) {
+        actions.push({ label, iconType, serviceEndpoint });
+      }
+    }
+
+    // menuNavigationItemRenderer — URL-based actions (less common in live chat)
+    const navItem = item.menuNavigationItemRenderer as Record<string, unknown> | undefined;
+    if (navItem) {
+      const textObj = navItem.text as Record<string, unknown> | undefined;
+      const runs = textObj?.runs as Array<{ text: string }> | undefined;
+      const label = runs?.map(r => r.text).join('') || '';
+      const iconObj = navItem.icon as Record<string, unknown> | undefined;
+      const iconType = (iconObj?.iconType as string) || '';
+      const navEndpoint = navItem.navigationEndpoint as Record<string, unknown>;
+      if (label && navEndpoint) {
+        actions.push({ label, iconType, serviceEndpoint: { __navigation: true, ...navEndpoint } });
+      }
+    }
+  }
+
+  return actions;
+}
+
+/**
+ * Execute a context menu action (e.g., moderate, flag, block).
+ * Routes to the correct InnerTube endpoint based on the serviceEndpoint type.
+ */
+async function executeMenuAction(action: ContextMenuAction): Promise<void> {
+  const ep = action.serviceEndpoint;
+
+  // Navigation actions — open URL in new tab
+  if (ep.__navigation) {
+    const urlEndpoint = ep.urlEndpoint as Record<string, unknown> | undefined;
+    if (urlEndpoint?.url) {
+      window.open(urlEndpoint.url as string, '_blank');
+      return;
+    }
+  }
+
+  // Moderation actions (delete, timeout, ban/hide)
+  if (ep.moderateLiveChatEndpoint) {
+    const modEp = ep.moderateLiveChatEndpoint as Record<string, unknown>;
+    await callInnerTubeApi('live_chat/moderate', { params: modEp.params });
+    return;
+  }
+
+  // Flag/report actions
+  if (ep.flagEndpoint) {
+    const flagEp = ep.flagEndpoint as Record<string, unknown>;
+    await callInnerTubeApi('flag/flag', { ...flagEp });
+    return;
+  }
+
+  // Get form then flag (multi-step report)
+  if (ep.getReportFormEndpoint) {
+    const formEp = ep.getReportFormEndpoint as Record<string, unknown>;
+    await callInnerTubeApi('flag/get_form', { ...formEp });
+    return;
+  }
+
+  // Generic: try to call the endpoint using liveChatItemContextMenuEndpoint params
+  if (ep.liveChatItemContextMenuEndpoint) {
+    const ctxEp = ep.liveChatItemContextMenuEndpoint as Record<string, unknown>;
+    await callInnerTubeApi('live_chat/get_item_context_menu', { params: ctxEp.params });
+    return;
+  }
+
+  // Fallback: performCommentActionEndpoint (used for some block actions)
+  if (ep.performCommentActionEndpoint) {
+    const actionEp = ep.performCommentActionEndpoint as Record<string, unknown>;
+    await callInnerTubeApi('comment/perform_comment_action', { actions: actionEp.action ? [actionEp.action] : [] });
+    return;
+  }
+
+  console.warn('[AllChat YouTube] Unknown serviceEndpoint type:', Object.keys(ep));
+}
+
+// ============================================================
+// Context Menu Overlay UI
+// ============================================================
+
+/** YouTube's native icon types → inline SVG paths */
+const YT_ICON_PATHS: Record<string, string> = {
+  FLAG: 'M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z',
+  BLOCK: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM4 12c0-4.42 3.58-8 8-8 1.85 0 3.55.63 4.9 1.69L5.69 16.9A7.902 7.902 0 014 12zm8 8c-1.85 0-3.55-.63-4.9-1.69L18.31 7.1A7.902 7.902 0 0120 12c0 4.42-3.58 8-8 8z',
+  DELETE: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
+  HOURGLASS_TOP: 'M6 2v6h.01L6 8.01 10 12l-4 4 .01.01H6V22h12v-5.99h-.01L18 16l-4-4 4-3.99-.01-.01H18V2H6z',
+  REMOVE_CIRCLE: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11H7v-2h10v2z',
+  NOT_INTERESTED: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8 0-1.85.63-3.55 1.69-4.9L16.9 18.31A7.902 7.902 0 0112 20zm6.31-3.1L7.1 5.69A7.902 7.902 0 0112 4c4.42 0 8 3.58 8 8 0 1.85-.63 3.55-1.69 4.9z',
+};
+
+function getIconSvg(iconType: string): string {
+  const path = YT_ICON_PATHS[iconType];
+  if (!path) return '';
+  return `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" style="flex-shrink:0"><path d="${path}"/></svg>`;
+}
+
+/**
+ * Render the YouTube-native context menu as a floating overlay on document.body.
+ * This escapes the AllChat iframe's overflow:hidden constraint.
+ */
+function showYouTubeContextMenu(
+  actions: ContextMenuAction[],
+  pageX: number,
+  pageY: number,
+  iframeSource: Window | null,
+  extensionOrigin: string,
+): void {
+  // Remove existing menu
+  document.getElementById('allchat-yt-context-menu')?.remove();
+
+  if (actions.length === 0) return;
+
+  const light = isLightMode('youtube');
+  const bg = light ? '#fff' : '#282828';
+  const textColor = light ? '#0f0f0f' : '#f1f1f1';
+  const hoverBg = light ? '#f2f2f2' : '#3e3e3e';
+  const borderColor = light ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)';
+
+  // Transparent backdrop for click-to-dismiss
+  const backdrop = document.createElement('div');
+  backdrop.id = 'allchat-yt-context-menu';
+  backdrop.style.cssText = 'position:fixed;inset:0;z-index:99998;';
+
+  // Menu dropdown
+  const menu = document.createElement('div');
+  menu.style.cssText = `
+    position:fixed; z-index:99999; min-width:160px;
+    background:${bg}; color:${textColor};
+    border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.3);
+    border:1px solid ${borderColor};
+    padding:4px 0; font-family:Roboto,Arial,sans-serif; font-size:14px;
+    overflow:hidden;
+  `;
+
+  // Position: prefer below-left of anchor, flip if needed
+  const menuHeight = actions.length * 40 + 8;
+  const top = (pageY + menuHeight > window.innerHeight) ? Math.max(4, pageY - menuHeight) : pageY;
+  const left = (pageX + 160 > window.innerWidth) ? Math.max(4, pageX - 160) : pageX;
+  menu.style.top = `${top}px`;
+  menu.style.left = `${left}px`;
+
+  // Render action items
+  for (const action of actions) {
+    const item = document.createElement('div');
+    item.style.cssText = `
+      display:flex; align-items:center; gap:12px; padding:8px 16px;
+      cursor:pointer; transition:background 0.1s;
+    `;
+    item.innerHTML = `${getIconSvg(action.iconType)}<span>${action.label}</span>`;
+
+    item.addEventListener('mouseenter', () => { item.style.background = hoverBg; });
+    item.addEventListener('mouseleave', () => { item.style.background = 'transparent'; });
+    item.addEventListener('click', async () => {
+      backdrop.remove();
+      try {
+        await executeMenuAction(action);
+        if (iframeSource) {
+          iframeSource.postMessage({
+            type: 'YOUTUBE_ACTION_RESULT',
+            action: action.label,
+            success: true,
+          }, extensionOrigin);
+        }
+      } catch (err: unknown) {
+        console.error('[AllChat YouTube] Action failed:', err);
+        if (iframeSource) {
+          iframeSource.postMessage({
+            type: 'YOUTUBE_ACTION_RESULT',
+            action: action.label,
+            success: false,
+            error: err instanceof Error ? err.message : 'Unknown error',
+          }, extensionOrigin);
+        }
+      }
+    });
+
+    menu.appendChild(item);
+  }
+
+  backdrop.appendChild(menu);
+  document.body.appendChild(backdrop);
+
+  // Dismiss on backdrop click
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) backdrop.remove();
+  });
+
+  // Dismiss on Escape
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      backdrop.remove();
+      document.removeEventListener('keydown', onKey);
+    }
+  };
+  document.addEventListener('keydown', onKey);
+}
+
 // Store detector instance globally
 let globalDetector: YouTubeDetector | null = null;
 
@@ -642,6 +988,34 @@ function setupGlobalMessageRelay() {
           el.contentWindow.postMessage({ type: 'POPOUT_CLOSED' }, extensionOrigin);
         }
       });
+    }
+
+    // Handle YouTube context menu request from AllChat iframe
+    if (event.data.type === 'OPEN_YOUTUBE_CONTEXT_MENU' && event.data.contextParams) {
+      const { contextParams, anchorRect } = event.data;
+      const iframe = document.querySelector('#allchat-container iframe') as HTMLIFrameElement | null;
+      const iframeRect = iframe?.getBoundingClientRect();
+
+      // Translate iframe-local coordinates to page-global
+      const pageX = (anchorRect?.right ?? 0) + (iframeRect?.left ?? 0);
+      const pageY = (anchorRect?.top ?? 0) + (iframeRect?.top ?? 0);
+
+      // Fetch available actions from YouTube and show menu
+      fetchContextMenuActions(contextParams)
+        .then((actions) => {
+          showYouTubeContextMenu(actions, pageX, pageY, event.source as Window | null, extensionOrigin);
+        })
+        .catch((err) => {
+          console.error('[AllChat YouTube] Failed to fetch context menu:', err);
+          if (event.source) {
+            (event.source as Window).postMessage({
+              type: 'YOUTUBE_ACTION_RESULT',
+              action: 'context_menu',
+              success: false,
+              error: err instanceof Error ? err.message : 'Failed to load menu',
+            }, extensionOrigin);
+          }
+        });
     }
   });
 

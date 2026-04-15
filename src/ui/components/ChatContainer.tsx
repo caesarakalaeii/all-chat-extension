@@ -324,6 +324,16 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
       }
     }
 
+    // YouTube context menu action feedback (Report, Block, etc.)
+    if (data.type === 'YOUTUBE_ACTION_RESULT') {
+      const actionName = (data.action as string) || 'Action';
+      if (data.success) {
+        addToast(`${actionName} completed`, 'success');
+      } else {
+        addToast(`${actionName} failed: ${(data.error as string) || 'Unknown error'}`, 'error');
+      }
+    }
+
     // Pop-out state changes
     if (data.type === 'POPOUT_OPENED') {
       setIsPoppedOut(true);
@@ -722,8 +732,31 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                   messages.map((message) => (
                     <div
                       key={message.id}
-                      className={`message-enter p-2 rounded bg-surface/50 platform-${message.platform}`}
+                      className={`message-enter p-2 rounded bg-surface/50 platform-${message.platform} relative group`}
                     >
+                      {/* YouTube 3-dot context menu button (Report/Block/Moderate) */}
+                      {message.platform === 'youtube' && message.metadata?.youtube_context_params && (
+                        <button
+                          className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-150 hover:bg-[var(--color-surface-2)] text-[var(--color-text-sub)]"
+                          onClick={(e) => {
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            sendToContentScript({
+                              type: 'OPEN_YOUTUBE_CONTEXT_MENU',
+                              userId: message.user.id,
+                              username: message.user.display_name || message.user.username,
+                              contextParams: message.metadata.youtube_context_params,
+                              anchorRect: { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left },
+                            });
+                          }}
+                          aria-label="More actions"
+                        >
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                            <circle cx="12" cy="6" r="2" />
+                            <circle cx="12" cy="12" r="2" />
+                            <circle cx="12" cy="18" r="2" />
+                          </svg>
+                        </button>
+                      )}
                       <div className="flex items-center gap-2 mb-1">
                         {/* Avatar (with optional frame and flair) */}
                         <UserAvatar
@@ -787,12 +820,27 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
 
                           const isSamePlatform = message.platform === platform;
                           const handleNameClick = isSamePlatform ? () => {
-                            sendToContentScript({
-                              type: 'OPEN_VIEWER_CARD',
-                              platform: message.platform,
-                              username: message.user.username,
-                              userId: message.user.id,
-                            });
+                            if (isPopOut) {
+                              // Pop-out mode: handle directly (service worker has no OPEN_VIEWER_CARD handler)
+                              if (message.platform === 'twitch') {
+                                window.open(
+                                  `https://www.twitch.tv/popout/${twitchChannel || streamer}/viewercard/${message.user.username}`,
+                                  '_blank',
+                                  'width=340,height=500',
+                                );
+                              } else if (message.platform === 'youtube') {
+                                window.open(`https://www.youtube.com/channel/${message.user.id}`, '_blank');
+                              } else if (message.platform === 'kick') {
+                                window.open(`https://kick.com/${message.user.username}`, '_blank');
+                              }
+                            } else {
+                              sendToContentScript({
+                                type: 'OPEN_VIEWER_CARD',
+                                platform: message.platform,
+                                username: message.user.username,
+                                userId: message.user.id,
+                              });
+                            }
                           } : undefined;
                           const clickStyle = isSamePlatform ? { cursor: 'pointer' } : {};
 

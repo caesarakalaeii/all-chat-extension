@@ -38,7 +38,7 @@ import { UserAvatar } from './UserAvatar';
 import { AllChatBadge } from './AllChatBadge';
 import { PremiumBadge } from './PremiumBadge';
 import { POPOUT_PORT_NAME, POPOUT_MESSAGE_BUFFER_KEY, POPOUT_MAX_MESSAGES } from '../../lib/types/popout';
-import { getDisplayConfig } from '../../lib/compat';
+import { resolveEnv } from '../../lib/compat';
 
 export type Platform = 'twitch' | 'youtube' | 'kick' | 'tiktok';
 
@@ -150,7 +150,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   const [isPoppedOut, setIsPoppedOut] = useState(false); // in-page: true when pop-out window is open
   const [tabBarMode, setTabBarMode] = useState(false); // true when platform tab bar controls view (header hidden)
   const [tabBarHideInput, setTabBarHideInput] = useState(true); // true when native input stays visible (Twitch)
-  const [envNotice, setEnvNotice] = useState<Awaited<ReturnType<typeof getDisplayConfig>>>(null);
+  const [envNotice, setEnvNotice] = useState<Awaited<ReturnType<typeof resolveEnv>>>(null);
 
   // Super Chat / Super Sticker ticker — shows recent paid events as colored pills
   interface TickerItem {
@@ -162,7 +162,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
 
   useEffect(() => {
-    getDisplayConfig().then((cfg) => {
+    resolveEnv().then((cfg) => {
       if (cfg) setEnvNotice(cfg);
     });
   }, []);
@@ -691,14 +691,14 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
 
       {envNotice && (
         <div className="px-3 py-2 bg-red-900/80 border-b border-red-700 text-center">
-          <p className="text-xs text-red-200">{envNotice.notice}</p>
+          <p className="text-xs text-red-200">{envNotice.label}</p>
           <a
-            href={envNotice.link}
+            href={envNotice.href}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs text-red-100 underline font-semibold"
           >
-            {envNotice.link}
+            {envNotice.href}
           </a>
         </div>
       )}

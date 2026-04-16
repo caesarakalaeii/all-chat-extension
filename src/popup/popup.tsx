@@ -26,7 +26,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import { getSyncStorage, setSyncStorage, getLocalStorage, setLocalStorage } from '../lib/storage';
 import { ViewerInfo, PlatformEnabled } from '../lib/types/extension';
-import { getDisplayConfig } from '../lib/compat';
+import { resolveEnv } from '../lib/compat';
 
 const PLATFORM_URLS: Record<string, string[]> = {
   twitch: ['https://www.twitch.tv/*'],
@@ -49,10 +49,10 @@ function Popup() {
   const [saveStatus, setSaveStatus] = useState<'' | 'saving' | 'saved'>('');
   const [currentPlatform, setCurrentPlatform] = useState<string | null>(null);
   const colorSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [envNotice, setEnvNotice] = useState<Awaited<ReturnType<typeof getDisplayConfig>>>(null);
+  const [envNotice, setEnvNotice] = useState<Awaited<ReturnType<typeof resolveEnv>>>(null);
 
   useEffect(() => {
-    getDisplayConfig().then((cfg) => {
+    resolveEnv().then((cfg) => {
       if (cfg) setEnvNotice(cfg);
     });
   }, []);
@@ -217,19 +217,19 @@ function Popup() {
     return (
       <div>
         <div style={{ background: '#7f1d1d', borderBottom: '1px solid #b91c1c', padding: '12px 16px', textAlign: 'center' }}>
-          <p style={{ fontSize: '13px', color: '#fecaca', margin: '0 0 6px' }}>{envNotice.notice}</p>
+          <p style={{ fontSize: '13px', color: '#fecaca', margin: '0 0 6px' }}>{envNotice.label}</p>
           <a
-            href={envNotice.link}
+            href={envNotice.href}
             target="_blank"
             rel="noopener noreferrer"
             style={{ fontSize: '13px', color: '#fff', fontWeight: 600, textDecoration: 'underline' }}
           >
-            {envNotice.link}
+            {envNotice.href}
           </a>
         </div>
         <div style={{ padding: '16px', textAlign: 'center', color: '#adadb8', fontSize: '12px' }}>
-          <p>{envNotice.blocked}</p>
-          <p style={{ marginTop: '4px' }}>{envNotice.install}</p>
+          <p>{envNotice.detail}</p>
+          <p style={{ marginTop: '4px' }}>{envNotice.action}</p>
         </div>
       </div>
     );

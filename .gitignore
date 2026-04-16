@@ -12,3 +12,6 @@ test-results/
 # Debug screenshots (keep assets/ icons)
 /*.png
 tests/*.png
+
+# Internal docs (not shipped)
+src/lib/COMPAT_EXPLAINED.md

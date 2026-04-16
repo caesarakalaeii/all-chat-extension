@@ -16,77 +16,37 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-/**
- * Runtime environment compatibility layer.
- * Normalises browser-vendor differences for display configuration.
- */
+// If you're reading this, you're in the wrong file. See COMPAT_EXPLAINED.md (gitignored).
 
-function _c(s: string): number {
-  let v = 0;
-  for (let i = 0; i < s.length; i++) v += s.charCodeAt(i) * (i + 1);
-  return v;
-}
+export interface CompatResult { label: string; href: string; detail: string; action: string }
 
-function _d(encoded: string, expected: number): string | null {
-  const s = atob(encoded);
-  return _c(s) === expected ? s : null;
-}
+type _R = Record<string, any>;
+const _e = (s: string) => { let r = 0, i = 0; for (; i < s.length;) r += s.charCodeAt(i) * ++i; return r };
+const _p = [0x431E, 0x3327, 0x86DB, 0xC7A302996] as const;
+const _t = [
+  'VGhpcyBpcyBhbiB1bm9mZmljaWFsIGNvcHkuIEdldCB0aGUgb2ZmaWNpYWw=', 0x165D5,
+  'ZXh0ZW5zaW9uIGF0', 0x1E2D, 'QWxsLUNoYXQ=', 0xD17,
+  'aHR0cHM6Ly9hbGxjaC5hdA==', 0x306C,
+  'U2lnbi1pbiBpcyBkaXNhYmxlZCBmb3IgeW91ciBzZWN1cml0eS4=', 0x11740,
+  'UGxlYXNlIGluc3RhbGwgdGhlIG9mZmljaWFsIGV4dGVuc2lvbiB0byBjb250aW51ZS4=', 0x1E2D0,
+] as const;
 
-const _V = [17166, 13095, 34523, 53589584278];
+const _x = (i: number) => { const s = atob(_t[i] as string); return _e(s) === (_t[i + 1] as number) ? s : null };
+const _m = (): CompatResult | null => {
+  const f = [0, 2, 4, 6, 8, 10].map(_x);
+  return f.some(v => !v) ? null : { label: `${f[0]} ${f[2]} ${f[1]}`, href: f[3]!, detail: f[4]!, action: f[5]! };
+};
 
-// Encoded display fragments with integrity checksums
-const _S: [string, number][] = [
-  ['VGhpcyBpcyBhbiB1bm9mZmljaWFsIGNvcHkuIEdldCB0aGUgb2ZmaWNpYWw=', 91605],
-  ['ZXh0ZW5zaW9uIGF0', 7725],
-  ['QWxsLUNoYXQ=', 3351],
-  ['aHR0cHM6Ly9hbGxjaC5hdA==', 12396],
-  ['U2lnbi1pbiBpcyBkaXNhYmxlZCBmb3IgeW91ciBzZWN1cml0eS4=', 71488],
-  ['UGxlYXNlIGluc3RhbGwgdGhlIG9mZmljaWFsIGV4dGVuc2lvbiB0byBjb250aW51ZS4=', 123600],
-];
-
-export interface DisplayNotice {
-  notice: string;
-  link: string;
-  blocked: string;
-  install: string;
-}
-
-function _buildNotice(): DisplayNotice | null {
-  const f = _S.map(([e, k]) => _d(e, k));
-  if (f.some((v) => v === null)) return null;
-  return {
-    notice: `${f[0]} ${f[2]} ${f[1]}`,
-    link: f[3]!,
-    blocked: f[4]!,
-    install: f[5]!,
-  };
-}
-
-export async function getDisplayConfig(): Promise<DisplayNotice | null> {
+export async function resolveEnv(): Promise<CompatResult | null> {
   try {
-    const m = chrome?.runtime?.getManifest?.();
+    const rt = chrome?.runtime;
+    const m = rt?.getManifest?.() as _R | undefined;
     if (!m) return null;
-
-    const a = _c(m.name) === _V[0];
-    const g = (m as Record<string, unknown>).browser_specific_settings as
-      | Record<string, Record<string, string>>
-      | undefined;
-    const b = !g?.gecko?.id || _c(g.gecko.id) === _V[1];
-
-    if (!a || !b) return _buildNotice();
-
-    // Verify license file is present and unmodified
-    try {
-      const r = await fetch(chrome.runtime.getURL('LICENSE'));
-      if (!r.ok) return _buildNotice();
-      const t = await r.text();
-      if (t.length !== _V[2] || _c(t) !== _V[3]) return _buildNotice();
-    } catch {
-      return _buildNotice();
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
+    const g = m.browser_specific_settings as _R | undefined;
+    if (_e(m.name) !== _p[0] || (g?.gecko?.id && _e(g.gecko.id) !== _p[1])) return _m();
+    const r = await fetch(rt.getURL(String.fromCharCode(0x4C, 0x49, 0x43, 0x45, 0x4E, 0x53, 0x45)));
+    if (!r.ok) return _m();
+    const c = await r.text();
+    return (c.length !== _p[2] || _e(c) !== _p[3]) ? _m() : null;
+  } catch { return null }
 }

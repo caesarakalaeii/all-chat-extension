@@ -22,7 +22,7 @@ export interface CompatResult { label: string; href: string; detail: string; act
 
 type _R = Record<string, any>;
 const _e = (s: string) => { let r = 0, i = 0; for (; i < s.length;) r += s.charCodeAt(i) * ++i; return r };
-const _p = [0x431E, 0x3327, 0x86DB, 0xC7A302996] as const;
+const _p = [0x430E, 0x3327, 0x86DB, 0xC7A302996] as const;
 const _t = [
   'VGhpcyBpcyBhbiB1bm9mZmljaWFsIGNvcHkuIEdldCB0aGUgb2ZmaWNpYWw=', 0x165D5,
   'ZXh0ZW5zaW9uIGF0', 0x1E2D, 'QWxsLUNoYXQ=', 0xD17,

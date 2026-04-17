@@ -481,66 +481,6 @@ function showViewerCardOverlay(channel: string, username: string): void {
 }
 
 /**
- * Show the native Twitch viewer card as an inline iframe overlay.
- * Loads the popout viewercard URL in a floating overlay on the page,
- * matching native Twitch's inline viewer card behavior.
- */
-function showViewerCardOverlay(channel: string, username: string) {
-  // Remove existing overlay if any
-  document.getElementById('allchat-viewercard-overlay')?.remove();
-
-  const overlay = document.createElement('div');
-  overlay.id = 'allchat-viewercard-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:flex-end;padding-right:20px;background:rgba(0,0,0,0.5);';
-
-  const card = document.createElement('div');
-  card.style.cssText = 'position:relative;width:340px;height:500px;border-radius:8px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.6);background:#18181b;';
-
-  // Loading spinner — shown immediately while iframe loads
-  const spinner = document.createElement('div');
-  spinner.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;';
-  spinner.innerHTML = `<div style="width:32px;height:32px;border:3px solid rgba(255,255,255,0.15);border-top-color:#9147ff;border-radius:50%;animation:allchat-vc-spin .6s linear infinite;"></div>`;
-
-  // Inject keyframe animation
-  const style = document.createElement('style');
-  style.textContent = '@keyframes allchat-vc-spin{to{transform:rotate(360deg)}}';
-  card.appendChild(style);
-
-  const iframe = document.createElement('iframe');
-  iframe.src = `https://www.twitch.tv/popout/${channel}/viewercard/${username}`;
-  iframe.style.cssText = 'width:100%;height:100%;border:none;opacity:0;transition:opacity .15s ease;';
-  iframe.addEventListener('load', () => {
-    spinner.remove();
-    iframe.style.opacity = '1';
-  });
-
-  const closeBtn = document.createElement('button');
-  closeBtn.textContent = '\u00d7';
-  closeBtn.style.cssText = 'position:absolute;top:4px;right:4px;width:28px;height:28px;border:none;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:1;';
-  closeBtn.addEventListener('click', () => overlay.remove());
-
-  card.appendChild(spinner);
-  card.appendChild(iframe);
-  card.appendChild(closeBtn);
-  overlay.appendChild(card);
-  document.body.appendChild(overlay);
-
-  // Dismiss on backdrop click
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.remove();
-  });
-
-  // Dismiss on Escape
-  const onKey = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      overlay.remove();
-      document.removeEventListener('keydown', onKey);
-    }
-  };
-  document.addEventListener('keydown', onKey);
-}
-
-/**
  * Set up global message relay from service worker to iframe.
  * Called immediately when content script loads to avoid missing messages.
  */

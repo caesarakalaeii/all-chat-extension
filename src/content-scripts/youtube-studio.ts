@@ -308,6 +308,10 @@ function setupGlobalMessageRelay() {
       }
     }
 
+    if (event.data.type === 'OPEN_VIEWER_CARD' && event.data.userId) {
+      window.open(`https://www.youtube.com/channel/${event.data.userId}`, '_blank');
+    }
+
     // Guard: only handle pop-out messages from the AllChat extension origin (T-06-09)
     if (event.origin !== extensionOrigin) return;
 

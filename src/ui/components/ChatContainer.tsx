@@ -42,6 +42,11 @@ import { resolveEnv } from '../../lib/compat';
 
 export type Platform = 'twitch' | 'youtube' | 'kick' | 'tiktok';
 
+/** Rolling buffer size when auto-scrolling (user at bottom). */
+const MAX_MESSAGES_FOLLOWING = 50;
+/** Larger buffer when the user has scrolled up to read history. */
+const MAX_MESSAGES_PAUSED = 200;
+
 function getNativePopoutUrl(platform: Platform, streamer: string, twitchChannel?: string): string | null {
   switch (platform) {
     case 'twitch':
@@ -324,7 +329,8 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
           if (processedMessage.id && prev.some((m) => m.id === processedMessage.id)) {
             return prev; // Already present — discard duplicate delivery
           }
-          return [...prev, processedMessage].slice(-50);
+          const limit = isFollowingChat.current ? MAX_MESSAGES_FOLLOWING : MAX_MESSAGES_PAUSED;
+          return [...prev, processedMessage].slice(-limit);
         });
 
         // Add Super Chat / Super Sticker to the ticker bar
@@ -351,9 +357,10 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
             if (existingIndex !== -1) {
               const updated = [...prev];
               updated[existingIndex] = enrichedMessage;
-              return updated.slice(-50);
+              const limit = isFollowingChat.current ? MAX_MESSAGES_FOLLOWING : MAX_MESSAGES_PAUSED;
+              return updated.slice(-limit);
             }
-            // Message was evicted from the 50-message window before badges resolved — discard
+            // Message was evicted from the buffer before badges resolved — discard
             return prev;
           });
         });
@@ -462,13 +469,31 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   // past a static pixel threshold.
   const isFollowingChat = useRef(true);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   const handleScroll = useCallback(() => {
     const el = messagesContainerRef.current;
     if (!el) return;
     const threshold = 80;
+    const wasFollowing = isFollowingChat.current;
     isFollowingChat.current =
       el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
+
+    setShowScrollToBottom(!isFollowingChat.current);
+
+    // User scrolled back to bottom — trim the paused buffer back down
+    if (!wasFollowing && isFollowingChat.current) {
+      setMessages((prev) => prev.slice(-MAX_MESSAGES_FOLLOWING));
+    }
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    isFollowingChat.current = true;
+    setShowScrollToBottom(false);
+    setMessages((prev) => prev.slice(-MAX_MESSAGES_FOLLOWING));
   }, []);
 
   // Auto-scroll when new messages arrive, but only if the user hasn't scrolled up.
@@ -982,22 +1007,39 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                 )}
               </div>
 
+              {/* Scroll to bottom button */}
+              {showScrollToBottom && (
+                <div className="flex justify-center py-1 bg-surface border-t border-border">
+                  <button
+                    onClick={scrollToBottom}
+                    className="flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-full bg-[var(--color-surface-2)] text-[var(--color-text-sub)] hover:text-text transition-colors"
+                    aria-label="Scroll to latest messages"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                    New messages
+                  </button>
+                </div>
+              )}
+
               {/* Footer / Message Input
-                  - tabBarMode + hideInput (Twitch): hidden entirely, native input stays visible
-                  - tabBarMode + !hideInput (YouTube/Kick): show input if logged in, skip login prompt
-                  - no tabBarMode (pop-out, non-tab platforms): full behavior with login prompt */}
+                  - YouTube/Twitch/Kick: always show input — sends via platform's own
+                    session cookies, no AllChat auth needed
+                  - tabBarMode + hideInput: hidden entirely, native input stays visible
+                  - tiktok / pop-out: AllChat backend path, login prompt if needed */}
               {!(tabBarMode && tabBarHideInput) && (
                 loadingAuth ? (
                   <div className="px-3 py-3 bg-surface border-t border-border text-center">
                     <p className="text-xs text-[var(--color-text-dim)]">Loading...</p>
                   </div>
-                ) : viewerToken ? (
+                ) : (viewerToken || platform === 'youtube' || platform === 'twitch' || platform === 'kick') ? (
                   <MessageInput
                     platform={platform}
                     streamer={streamer}
                     twitchChannel={twitchChannel}
                     videoId={videoId}
-                    token={viewerToken}
+                    token={viewerToken ?? undefined}
                     onAuthError={handleAuthError}
                     onSendSuccess={handleMessageSent}
                   />

@@ -40,6 +40,8 @@ export interface ViewerInfo {
   username: string;
   display_name: string;
   platform: 'twitch' | 'youtube' | 'kick';
+  /** Platforms the viewer has linked to their AllChat account */
+  connected_platforms?: ('twitch' | 'youtube' | 'kick')[];
 }
 
 /**

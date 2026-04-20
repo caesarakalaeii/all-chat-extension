@@ -31,7 +31,8 @@ interface MessageInputProps {
   streamer: string;
   twitchChannel?: string;
   videoId?: string;
-  token: string;
+  /** AllChat viewer JWT. Not required for YouTube (uses InnerTube with YouTube session). */
+  token?: string;
   onSendSuccess?: () => void;
   onAuthError?: () => void;
 }
@@ -169,6 +170,94 @@ export default function MessageInput({
     }, 0);
   };
 
+  /**
+   * Send via the platform's own API through the content script.
+   * The content script has access to the page's session cookies needed for auth.
+   *
+   * - YouTube: InnerTube API (SAPISIDHASH)
+   * - Twitch: GraphQL SendChatMessage (auth-token cookie)
+   * - Kick: REST API /messages/send (session cookies + XSRF-TOKEN)
+   */
+  const sendViaNativePlatform = (trimmed: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        window.removeEventListener('message', handler);
+        reject(new Error('Native send timed out'));
+      }, 15000);
+
+      const handler = (event: MessageEvent) => {
+        if (event.data?.type !== 'SEND_NATIVE_CHAT_RESULT') return;
+        window.removeEventListener('message', handler);
+        clearTimeout(timeout);
+        if (event.data.success) {
+          resolve();
+        } else {
+          reject(new Error(event.data.error || 'Failed to send message'));
+        }
+      };
+
+      window.addEventListener('message', handler);
+      window.parent.postMessage({ type: 'SEND_NATIVE_CHAT', message: trimmed }, '*');
+    });
+  };
+
+  /**
+   * Send via AllChat backend API (used for Twitch, Kick, and fallback).
+   */
+  const sendViaBackendApi = async (trimmed: string, controller: AbortController): Promise<void> => {
+    if (!token) {
+      onAuthError?.();
+      setError({
+        type: ChatErrorType.UNAUTHORIZED,
+        message: 'Not authenticated',
+        userMessage: 'Sign in to send messages.',
+        actionableSteps: ['Sign in from the extension popup'],
+      });
+      throw new Error('API_ERROR_HANDLED');
+    }
+
+    const requestBody: SendMessageRequest = {
+      streamer_username: streamer,
+      message: trimmed,
+      platform,
+      ...(videoId ? { video_id: videoId } : {}),
+    };
+
+    const response = await fetch(`${API_BASE}/api/v1/auth/viewer/chat/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    });
+
+    // Try to parse JSON response first (for all status codes)
+    let data: any = null;
+    const contentType = response.headers.get('content-type');
+    if (contentType?.includes('application/json')) {
+      try {
+        data = await response.json();
+      } catch (e) {
+        console.warn('[AllChat MessageInput] Failed to parse response JSON');
+      }
+    }
+
+    // Handle error responses using smart error parser
+    if (!response.ok) {
+      const parsedError = parseApiError(response, data);
+
+      // Trigger auth error callback for authentication errors
+      if (parsedError.type === 'UNAUTHORIZED' || parsedError.type === 'TOKEN_EXPIRED') {
+        onAuthError?.();
+      }
+
+      setError(parsedError);
+      throw new Error('API_ERROR_HANDLED');
+    }
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -194,45 +283,13 @@ export default function MessageInput({
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
-      const requestBody: SendMessageRequest = {
-        streamer_username: streamer,
-        message: trimmed,
-        platform,
-        ...(videoId ? { video_id: videoId } : {}),
-      };
-
-      const response = await fetch(`${API_BASE}/api/v1/auth/viewer/chat/send`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
-
-      // Try to parse JSON response first (for all status codes)
-      let data: any = null;
-      const contentType = response.headers.get('content-type');
-      if (contentType?.includes('application/json')) {
-        try {
-          data = await response.json();
-        } catch (e) {
-          console.warn('[AllChat MessageInput] Failed to parse response JSON');
-        }
-      }
-
-      // Handle error responses using smart error parser
-      if (!response.ok) {
-        const parsedError = parseApiError(response, data);
-
-        // Trigger auth error callback for authentication errors
-        if (parsedError.type === 'UNAUTHORIZED' || parsedError.type === 'TOKEN_EXPIRED') {
-          onAuthError?.();
-        }
-
-        setError(parsedError);
-        return;
+      // Send via the platform's own API (uses the viewer's platform session,
+      // no AllChat auth required). Fall back to backend API only for tiktok
+      // or if a platform's native flow fails.
+      if (platform === 'youtube' || platform === 'twitch' || platform === 'kick') {
+        await sendViaNativePlatform(trimmed);
+      } else {
+        await sendViaBackendApi(trimmed, controller);
       }
 
       // Success!
@@ -255,6 +312,9 @@ export default function MessageInput({
         inputRef.current?.focus();
       }, 0);
     } catch (err) {
+      // Skip if error was already set by sendViaBackendApi
+      if (err instanceof Error && err.message === 'API_ERROR_HANDLED') return;
+
       console.error('[AllChat MessageInput] Error sending message:', err);
       const parsedError = parseFetchError(err);
       setError(parsedError);

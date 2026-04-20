@@ -702,6 +702,77 @@ async function executeMenuAction(action: ContextMenuAction): Promise<void> {
 }
 
 // ============================================================
+// InnerTube Chat Sending — send messages via YouTube's own API
+// using the viewer's existing YouTube session cookies.
+// ============================================================
+
+/** Cached send-message params (pre-built by YouTube, encodes the liveChatId). */
+let cachedSendParams: string | null = null;
+/** Video ID the cached params belong to — invalidates cache on navigation. */
+let cachedSendParamsVideoId: string | null = null;
+
+/**
+ * Fetch the pre-built sendLiveChatMessageEndpoint.params from YouTube's
+ * /live_chat page HTML. YouTube generates this server-side — it's a base64
+ * protobuf encoding the liveChatId with all the fields YouTube's frontend
+ * uses, so we don't have to build it ourselves.
+ */
+async function getSendMessageParams(): Promise<string> {
+  const videoId = new URLSearchParams(window.location.search).get('v')
+    || window.location.pathname.match(/\/live\/([^/?]+)/)?.[1]
+    || null;
+
+  if (!videoId) {
+    throw new Error('No video ID in URL — is this a live stream?');
+  }
+
+  if (cachedSendParams && cachedSendParamsVideoId === videoId) {
+    return cachedSendParams;
+  }
+
+  const resp = await fetch(
+    `https://www.youtube.com/live_chat?v=${videoId}&is_popout=1`,
+    { credentials: 'include' },
+  );
+  if (!resp.ok) {
+    throw new Error(`Failed to load live chat page: HTTP ${resp.status}`);
+  }
+  const html = await resp.text();
+
+  const match = html.match(/"sendLiveChatMessageEndpoint"\s*:\s*\{\s*"params"\s*:\s*"([^"]+)"/);
+  if (!match) {
+    // Common cause: stream doesn't have chat enabled, or user not signed in to YouTube
+    if (!html.includes('liveChatRenderer')) {
+      throw new Error('Live chat is not available for this stream');
+    }
+    throw new Error('Could not find send-message params — are you signed in to YouTube?');
+  }
+
+  // YouTube URL-encodes the params in the HTML (%3D for trailing =). Decode it.
+  cachedSendParams = decodeURIComponent(match[1]);
+  cachedSendParamsVideoId = videoId;
+  return cachedSendParams;
+}
+
+/**
+ * Send a chat message via YouTube's InnerTube API.
+ * Uses the viewer's YouTube session (cookies + SAPISIDHASH).
+ */
+async function sendYouTubeChatMessage(message: string): Promise<void> {
+  const params = await getSendMessageParams();
+
+  const clientMessageId = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+
+  await callInnerTubeApi('live_chat/send_message', {
+    params,
+    clientMessageId,
+    richMessage: {
+      textSegments: [{ text: message }],
+    },
+  });
+}
+
+// ============================================================
 // Context Menu Overlay UI
 // ============================================================
 
@@ -990,6 +1061,24 @@ function setupGlobalMessageRelay() {
       });
     }
 
+    // Handle native chat sending via InnerTube API
+    if (event.data.type === 'SEND_NATIVE_CHAT' && event.data.message && event.source) {
+      const source = event.source as Window;
+      (async () => {
+        try {
+          await sendYouTubeChatMessage(event.data.message);
+          source.postMessage({ type: 'SEND_NATIVE_CHAT_RESULT', success: true }, extensionOrigin);
+        } catch (err: unknown) {
+          console.error('[AllChat YouTube] Native send failed:', err);
+          source.postMessage({
+            type: 'SEND_NATIVE_CHAT_RESULT',
+            success: false,
+            error: err instanceof Error ? err.message : 'Failed to send message',
+          }, extensionOrigin);
+        }
+      })();
+    }
+
     // Handle YouTube context menu request from AllChat iframe
     if (event.data.type === 'OPEN_YOUTUBE_CONTEXT_MENU' && event.data.contextParams) {
       const { contextParams, anchorRect } = event.data;
@@ -1031,6 +1120,10 @@ function setupUrlWatcher(): void {
     activeUrl = url;
 
     console.log('[AllChat YouTube] Navigation detected, tearing down...');
+    // Clear cached InnerTube data for the previous stream
+    innerTubeCache = null;
+    cachedSendParams = null;
+    cachedSendParamsVideoId = null;
     globalDetector?.teardown();
 
     if (globalDetector?.isLiveStream()) {

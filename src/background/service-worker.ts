@@ -288,9 +288,11 @@ async function fetchStreamerInfo(username: string): Promise<StreamerInfo> {
  * and does not expose the secret overlay ID
  */
 async function connectWebSocket(streamerUsername: string): Promise<void> {
-  // If already connected to this streamer, do nothing
+  // If already connected to this streamer, re-broadcast current state so newly
+  // created tab bars / iframes pick it up (e.g. after SPA navigation).
   if (wsConnection && wsConnection.readyState === WebSocket.OPEN && wsStreamerUsername === streamerUsername) {
     console.log('[AllChat] Already connected to streamer:', streamerUsername);
+    broadcastConnectionState('connected');
     return;
   }
 

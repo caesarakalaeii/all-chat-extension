@@ -267,12 +267,23 @@ function Popup() {
           <div className="status-label">Viewer Identity</div>
           {viewerInfo ? (
             <>
-              <div className="status-value" style={{ marginBottom: '8px' }}>
+              <div className="status-value" style={{ marginBottom: '4px' }}>
                 {viewerInfo.display_name}
                 <span style={{ fontSize: '11px', color: '#adadb8', marginLeft: '6px' }}>
                   via {platformLabel[viewerInfo.platform] ?? viewerInfo.platform}
                 </span>
               </div>
+              {viewerInfo.connected_platforms && viewerInfo.connected_platforms.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', fontSize: '11px', color: '#adadb8' }}>
+                  <span>Connected:</span>
+                  {viewerInfo.connected_platforms.map((p) => (
+                    <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '1px 6px', background: '#26262c', borderRadius: '4px', fontSize: '11px' }}>
+                      <PlatformIcon platform={p} />
+                      {platformLabel[p] ?? p}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                 <label style={{ fontSize: '12px', color: '#adadb8' }}>Name Color</label>
                 {(() => {

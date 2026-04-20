@@ -35,6 +35,60 @@ import { getSyncStorage } from '../lib/storage';
 // Guard observer — watches for Next.js removing our injected elements
 let guardObserver: MutationObserver | null = null;
 
+// ============================================================
+// Kick Chat Sending — use Kick's own REST API with the viewer's
+// existing session cookies. No AllChat auth required.
+// ============================================================
+
+/** Cache: channel slug → chatroom ID (required by the send endpoint). */
+const kickChatroomIdCache = new Map<string, number>();
+
+function getCookie(name: string): string | null {
+  const cookie = document.cookie.split(';')
+    .map(c => c.trim())
+    .find(c => c.startsWith(name + '='));
+  return cookie ? decodeURIComponent(cookie.substring(name.length + 1)) : null;
+}
+
+async function resolveKickChatroomId(slug: string): Promise<number> {
+  const cached = kickChatroomIdCache.get(slug);
+  if (cached) return cached;
+
+  const resp = await fetch(`https://kick.com/api/v2/channels/${slug}`, { credentials: 'include' });
+  if (!resp.ok) throw new Error(`Kick channel lookup failed: HTTP ${resp.status}`);
+  const data = await resp.json();
+  const id = data?.chatroom?.id;
+  if (typeof id !== 'number') throw new Error(`Kick channel "${slug}" has no chatroom`);
+  kickChatroomIdCache.set(slug, id);
+  return id;
+}
+
+async function sendKickChatMessage(channelSlug: string, message: string): Promise<void> {
+  const chatroomId = await resolveKickChatroomId(channelSlug);
+
+  // Kick uses Laravel's XSRF protection on its web API.
+  const xsrfToken = getCookie('XSRF-TOKEN');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  };
+  if (xsrfToken) headers['X-XSRF-TOKEN'] = xsrfToken;
+
+  const resp = await fetch(`https://kick.com/api/v2/messages/send/${chatroomId}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify({ content: message, type: 'message' }),
+  });
+
+  if (resp.status === 401 || resp.status === 403) {
+    throw new Error('Not signed in to Kick — sign in to kick.com to send messages');
+  }
+  if (!resp.ok) {
+    throw new Error(`Kick send failed: HTTP ${resp.status}`);
+  }
+}
+
 /**
  * Activate the Kick Chat tab: hide AllChat, show native Kick chat.
  */
@@ -202,7 +256,7 @@ class KickDetector extends PlatformDetector {
       watchThemeChanges('kick', (theme) => {
         const iframe = document.querySelector('#allchat-container iframe') as HTMLIFrameElement | null;
         if (iframe?.contentWindow) {
-          iframe.contentWindow.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: false, theme }, '*');
+          iframe.contentWindow.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: true, theme }, '*');
         }
       });
 
@@ -234,7 +288,7 @@ class KickDetector extends PlatformDetector {
 
   protected onIframeCreated(iframe: HTMLIFrameElement): void {
     iframe.addEventListener('load', () => {
-      iframe.contentWindow?.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: false, theme: isLightMode('kick') ? 'light' : 'dark' }, '*');
+      iframe.contentWindow?.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: true, theme: isLightMode('kick') ? 'light' : 'dark' }, '*');
       console.log('[AllChat Kick] Sent TAB_BAR_MODE to iframe');
     });
   }
@@ -342,6 +396,26 @@ function setupGlobalMessageRelay() {
 
     if (event.data.type === 'OPEN_VIEWER_CARD' && event.data.username) {
       window.open(`https://kick.com/${event.data.username}`, '_blank');
+    }
+
+    // Native chat sending via Kick's own REST API
+    if (event.data.type === 'SEND_NATIVE_CHAT' && event.data.message && event.source) {
+      const source = event.source as Window;
+      const channel = globalDetector?.extractStreamerUsername();
+      (async () => {
+        try {
+          if (!channel) throw new Error('Could not determine channel');
+          await sendKickChatMessage(channel, event.data.message);
+          source.postMessage({ type: 'SEND_NATIVE_CHAT_RESULT', success: true }, extensionOrigin);
+        } catch (err: unknown) {
+          console.error('[AllChat Kick] Native send failed:', err);
+          source.postMessage({
+            type: 'SEND_NATIVE_CHAT_RESULT',
+            success: false,
+            error: err instanceof Error ? err.message : 'Failed to send message',
+          }, extensionOrigin);
+        }
+      })();
     }
 
     if (event.origin !== extensionOrigin) return;

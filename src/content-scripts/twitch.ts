@@ -49,6 +49,74 @@ let lastCheckedStreamer: string | null = null;
 // Guard against duplicate message relay registration
 let messageRelaySetup = false;
 
+// ============================================================
+// Twitch Chat Sending — use Twitch's own GraphQL API with the
+// viewer's existing auth-token cookie. No AllChat auth required.
+// ============================================================
+
+const TWITCH_GQL_URL = 'https://gql.twitch.tv/gql';
+/** Public client ID Twitch's own frontend uses. Safe to hardcode. */
+const TWITCH_WEB_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
+
+/** Cache: channel login name → numeric channel ID (required by sendChatMessage). */
+const twitchChannelIdCache = new Map<string, string>();
+
+function getTwitchAuthToken(): string | null {
+  const cookie = document.cookie.split(';')
+    .map(c => c.trim())
+    .find(c => c.startsWith('auth-token='));
+  return cookie ? cookie.substring('auth-token='.length) : null;
+}
+
+async function twitchGql<T = unknown>(authToken: string, query: string, variables?: Record<string, unknown>): Promise<T> {
+  const resp = await fetch(TWITCH_GQL_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `OAuth ${authToken}`,
+      'Client-Id': TWITCH_WEB_CLIENT_ID,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  if (!resp.ok) throw new Error(`Twitch GraphQL HTTP ${resp.status}`);
+  const data = await resp.json();
+  if (data.errors?.length) {
+    throw new Error(data.errors.map((e: { message: string }) => e.message).join('; '));
+  }
+  return data.data as T;
+}
+
+async function resolveTwitchChannelId(authToken: string, login: string): Promise<string> {
+  const key = login.toLowerCase();
+  const cached = twitchChannelIdCache.get(key);
+  if (cached) return cached;
+
+  const data = await twitchGql<{ user: { id: string } | null }>(
+    authToken,
+    'query($login: String!) { user(login: $login) { id } }',
+    { login: key },
+  );
+  if (!data.user?.id) throw new Error(`Twitch channel "${login}" not found`);
+  twitchChannelIdCache.set(key, data.user.id);
+  return data.user.id;
+}
+
+async function sendTwitchChatMessage(channelLogin: string, message: string): Promise<void> {
+  const authToken = getTwitchAuthToken();
+  if (!authToken) {
+    throw new Error('Not signed in to Twitch — sign in to twitch.tv to send messages');
+  }
+
+  const channelID = await resolveTwitchChannelId(authToken, channelLogin);
+  const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+  await twitchGql(
+    authToken,
+    'mutation SendChat($input: SendChatMessageInput!) { sendChatMessage(input: $input) { __typename } }',
+    { input: { channelID, message, nonce } },
+  );
+}
+
 /**
  * Find the native message list element inside .chat-room__content.
  * This is the flex-growing child that contains the scrollable chat messages.
@@ -573,6 +641,26 @@ function setupGlobalMessageRelay() {
       if (channel && event.data.username) {
         showViewerCardOverlay(channel, event.data.username);
       }
+    }
+
+    // Native chat sending via Twitch's own GraphQL API
+    if (event.data.type === 'SEND_NATIVE_CHAT' && event.data.message && event.source) {
+      const source = event.source as Window;
+      const channel = globalDetector?.extractStreamerUsername();
+      (async () => {
+        try {
+          if (!channel) throw new Error('Could not determine channel');
+          await sendTwitchChatMessage(channel, event.data.message);
+          source.postMessage({ type: 'SEND_NATIVE_CHAT_RESULT', success: true }, extensionOrigin);
+        } catch (err: unknown) {
+          console.error('[AllChat Twitch] Native send failed:', err);
+          source.postMessage({
+            type: 'SEND_NATIVE_CHAT_RESULT',
+            success: false,
+            error: err instanceof Error ? err.message : 'Failed to send message',
+          }, extensionOrigin);
+        }
+      })();
     }
 
     // Guard: only handle pop-out messages from the AllChat extension origin

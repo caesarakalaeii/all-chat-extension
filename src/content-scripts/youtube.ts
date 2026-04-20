@@ -262,18 +262,28 @@ class YouTubeDetector extends PlatformDetector {
     // Capture the parent's current height before hiding, so it doesn't collapse.
     // YouTube sizes #chat-container based on ytd-live-chat-frame — without this
     // the container shrinks to ~0px when the chat frame is removed from flow.
-    const chatFrame = document.querySelector('ytd-live-chat-frame');
+    const chatFrame = document.querySelector('ytd-live-chat-frame') as HTMLElement | null;
     const parent = chatFrame?.parentElement;
     if (parent) {
       const currentHeight = parent.getBoundingClientRect().height;
       if (currentHeight > 100) {
         parent.style.minHeight = currentHeight + 'px';
       }
+      // Positioning context so the frame can float as an absolute popout panel
+      // when a picker (emoji / super chat / reactions) opens.
+      if (getComputedStyle(parent).position === 'static') {
+        parent.style.position = 'relative';
+      }
     }
 
     // Collapse the native chat frame to show ONLY its input bar at the bottom.
     // CSS inside the iframe hides the messages list; AllChat renders the messages.
     // This avoids AllChat ever touching the user's YouTube session token.
+    //
+    // When a picker opens inside the iframe, input-renderer grows. A
+    // ResizeObserver (see setupPickerPopout) toggles `.allchat-picker-open`
+    // on the frame, which switches it to an absolute-positioned floating
+    // panel anchored at the bottom of the sidebar and overlaying AllChat.
     const style = document.createElement('style');
     style.id = 'allchat-hide-native-style';
     style.textContent = `
@@ -283,9 +293,24 @@ class YouTubeDetector extends PlatformDetector {
         min-height: 52px !important;
         max-height: 52px !important;
         border-top: 1px solid rgba(255,255,255,0.1);
+        transition: height 120ms ease-out, box-shadow 120ms ease-out;
       }
       ytd-live-chat-frame iframe {
-        height: 52px !important;
+        height: 100% !important;
+        width: 100% !important;
+      }
+      ytd-live-chat-frame.allchat-picker-open {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        z-index: 10 !important;
+        box-shadow: 0 -8px 24px rgba(0,0,0,0.45);
+        background: #0f0f0f !important;
       }
       #allchat-container {
         flex: 1 1 auto !important;
@@ -318,6 +343,11 @@ class YouTubeDetector extends PlatformDetector {
    * input panel. Same-origin (youtube.com → youtube.com/live_chat) lets us
    * reach into the iframe's document. Safe-retry: we poll briefly because the
    * iframe document may not be ready yet.
+   *
+   * In the collapsed 52px state, only the pinned input row is visible. When a
+   * picker opens (emoji / super chat / reactions) the outer frame pops out to
+   * fill the chat-container (see .allchat-picker-open CSS) so the full iframe
+   * viewport is available for the picker to render naturally below the input.
    */
   private applyIframeTrim(attempt = 0): void {
     const iframe = document.querySelector('ytd-live-chat-frame iframe') as HTMLIFrameElement | null;
@@ -326,51 +356,224 @@ class YouTubeDetector extends PlatformDetector {
       if (attempt < 10) setTimeout(() => this.applyIframeTrim(attempt + 1), 300);
       return;
     }
-    if (doc.getElementById('allchat-yt-trim')) return;
+    if (!doc.getElementById('allchat-yt-trim')) {
+      const style = doc.createElement('style');
+      style.id = 'allchat-yt-trim';
+      style.textContent = `
+        /* Hide message list + header — AllChat renders the cross-platform feed */
+        yt-live-chat-header-renderer,
+        yt-live-chat-banner-manager,
+        yt-live-chat-ticker-renderer,
+        #ticker,
+        yt-live-chat-renderer #chat,
+        yt-live-chat-renderer #chat-messages #contents > div#chat {
+          display: none !important;
+        }
+        html, body {
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow: hidden !important;
+          background: var(--yt-live-chat-background-color, #0f0f0f) !important;
+        }
+        /* COLLAPSED state (no .allchat-popout-open on body): pin the input
+           row at the top of the 52px iframe. YouTube uses different renderers
+           depending on chat mode — message-input-renderer for standard chat,
+           restricted-participation-renderer for subscriber-only mode. */
+        body:not(.allchat-popout-open) yt-live-chat-message-input-renderer,
+        body:not(.allchat-popout-open) yt-live-chat-restricted-participation-renderer {
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: auto !important;
+          width: 100% !important;
+          padding: 8px 12px !important;
+          box-sizing: border-box !important;
+          z-index: 2147483647 !important;
+          background: var(--yt-live-chat-background-color, #0f0f0f) !important;
+        }
+        /* POPOUT state: the input area is pinned at the BOTTOM of
+           yt-live-chat-renderer with position:absolute (no z-index — that
+           would create a stacking context which hides product-picker paint).
+           This keeps the user's visual anchor at the bottom of the sidebar
+           even when the frame expands to cover AllChat, so the reaction and
+           super-chat buttons don't jump to the top of the panel when the
+           popout opens. */
+        body.allchat-popout-open yt-live-chat-message-input-renderer,
+        body.allchat-popout-open yt-live-chat-restricted-participation-renderer {
+          position: absolute !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          top: auto !important;
+          width: 100% !important;
+          padding: 8px 12px !important;
+          box-sizing: border-box !important;
+          background: var(--yt-live-chat-background-color, #0f0f0f) !important;
+        }
+        /* Pickers render above the input row in popout. Iron-pages is a
+           child of #container which is inside the input area — use
+           flex-column-reverse so #pickers appears visually above #top
+           (the input row). */
+        body.allchat-popout-open yt-live-chat-message-input-renderer #container,
+        body.allchat-popout-open yt-live-chat-restricted-participation-renderer #container {
+          display: flex !important;
+          flex-direction: column-reverse !important;
+        }
+      `;
+      doc.head.appendChild(style);
+    }
 
-    const style = doc.createElement('style');
-    style.id = 'allchat-yt-trim';
-    style.textContent = `
-      /* Hide the message list and header — AllChat renders cross-platform messages above */
-      yt-live-chat-header-renderer,
-      yt-live-chat-banner-manager,
-      yt-live-chat-ticker-renderer,
-      #ticker,
-      yt-live-chat-renderer #chat,
-      yt-live-chat-renderer #chat-messages #contents > div#chat {
-        display: none !important;
+    this.setupPickerPopout(doc, iframe!);
+    this.watchInputAreaSwaps(doc, iframe!);
+  }
+
+  /**
+   * Watch yt-live-chat-renderer for child changes so we can re-bind the
+   * picker observer when YouTube swaps between message-input-renderer and
+   * restricted-participation-renderer (subscribers-only flag change). Runs
+   * independent of the first setupPickerPopout call so it fires even when
+   * neither renderer exists yet at injection time.
+   */
+  private watchInputAreaSwaps(doc: Document, iframe: HTMLIFrameElement): void {
+    const win = iframe.contentWindow as (Window & typeof globalThis) | null;
+    if (!win) return;
+    const poll = (attempt = 0) => {
+      const liveChatRenderer = doc.querySelector('yt-live-chat-renderer');
+      if (!liveChatRenderer) {
+        if (attempt < 20) setTimeout(() => poll(attempt + 1), 300);
+        return;
       }
-      html, body {
-        background: transparent !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        overflow: hidden !important;
+      if ((liveChatRenderer as unknown as { _allchatModeWatcherBound?: boolean })._allchatModeWatcherBound) return;
+      (liveChatRenderer as unknown as { _allchatModeWatcherBound?: boolean })._allchatModeWatcherBound = true;
+      const tryBind = () => {
+        const present = doc.querySelector('yt-live-chat-message-input-renderer')
+          || doc.querySelector('yt-live-chat-restricted-participation-renderer');
+        if (present && !(present as unknown as { _allchatPopoutBound?: boolean })._allchatPopoutBound) {
+          this.setupPickerPopout(doc, iframe);
+        }
+      };
+      const ObserverCtor = win.MutationObserver;
+      new ObserverCtor(tryBind).observe(liveChatRenderer, { childList: true, subtree: true });
+      // Also bind immediately in case the renderer is already present —
+      // MutationObserver only fires on future changes.
+      tryBind();
+    };
+    poll();
+  }
+
+  /**
+   * Pops the native input area out as a floating panel whenever any picker
+   * (emoji, super chat / product-picker, or live reactions) is open.
+   *
+   * Detection is visibility-based because the three pickers live in different
+   * places and use different positioning:
+   * - emoji picker is flex-flowed inside #pickers
+   * - product-picker is position:absolute and anchored to the button
+   * - reaction panel grows in-place when expanded
+   *
+   * A single MutationObserver on the input-renderer subtree (style/class/attr
+   * mutations) plus a capture-phase click listener is enough to re-evaluate
+   * visibility on every open/close.
+   */
+  private setupPickerPopout(doc: Document, iframe: HTMLIFrameElement): void {
+    const win = iframe.contentWindow as (Window & typeof globalThis) | null;
+    if (!win) return;
+    const frame = document.querySelector('ytd-live-chat-frame') as HTMLElement | null;
+    // YouTube uses two different input-area renderers depending on the chat
+    // mode — standard (message-input-renderer) and subscribers-only
+    // (restricted-participation-renderer). Both host a #pickers iron-pages and
+    // the reaction overlay, so we observe whichever exists.
+    const inputArea = (doc.querySelector('yt-live-chat-message-input-renderer')
+      || doc.querySelector('yt-live-chat-restricted-participation-renderer')) as HTMLElement | null;
+    if (!frame || !inputArea) {
+      setTimeout(() => this.setupPickerPopout(doc, iframe), 300);
+      return;
+    }
+    if ((inputArea as unknown as { _allchatPopoutBound?: boolean })._allchatPopoutBound) return;
+    (inputArea as unknown as { _allchatPopoutBound?: boolean })._allchatPopoutBound = true;
+
+    const isVisible = (el: Element | null): boolean => {
+      if (!el || !(el as HTMLElement).isConnected) return false;
+      const cs = win.getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    };
+
+    const REACTION_EXPANDED_MIN_HEIGHT = 60; // closed panel is ~36px; expanded stacks 6 buttons
+
+    const update = () => {
+      let open = false;
+
+      // Emoji / product-picker live as children of iron-pages#pickers
+      const pickers = doc.getElementById('pickers');
+      if (pickers) {
+        for (const child of Array.from(pickers.children)) {
+          if (isVisible(child)) { open = true; break; }
+        }
       }
-      /* Pin the input renderer to the top of the iframe viewport.
-         Without this, YouTube's internal absolute layout leaves a 0-height
-         parent so the input falls outside the visible 70px window. */
-      yt-live-chat-message-input-renderer {
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        width: 100% !important;
-        padding: 8px 12px !important;
-        box-sizing: border-box !important;
-        z-index: 2147483647 !important;
-        background: var(--yt-live-chat-background-color, #0f0f0f) !important;
+
+      // Live reactions: overlay panel expands in place when button is clicked
+      if (!open) {
+        const reactionPanel = doc.querySelector('yt-reaction-control-panel-view-model');
+        if (reactionPanel) {
+          const r = reactionPanel.getBoundingClientRect();
+          if (r.height > REACTION_EXPANDED_MIN_HEIGHT) open = true;
+        }
       }
-    `;
-    doc.head.appendChild(style);
+
+      frame.classList.toggle('allchat-picker-open', open);
+      // Iframe body class controls whether input-renderer stays pinned (collapsed)
+      // or returns to YouTube's native layout (popout). The switch avoids the
+      // position:fixed stacking-context that was hiding the product-picker paint.
+      doc.body?.classList.toggle('allchat-popout-open', open);
+    };
+
+    let rafScheduled = false;
+    const schedule = () => {
+      if (rafScheduled) return;
+      rafScheduled = true;
+      win.requestAnimationFrame(() => { rafScheduled = false; update(); });
+    };
+
+    const ObserverCtor = win.MutationObserver;
+    new ObserverCtor(schedule).observe(inputArea, {
+      attributes: true,
+      subtree: true,
+      attributeFilter: ['style', 'class', 'selected', 'hidden', 'aria-expanded'],
+    });
+    // Clicks anywhere in the input area (picker triggers, emoji selection,
+    // reaction buttons) may open/close a picker — re-evaluate on the next frame.
+    inputArea.addEventListener('click', schedule, true);
+    // Live reactions expand purely via :hover CSS — no attribute mutation
+    // fires. Track pointer enter/leave so we re-evaluate when the user
+    // hovers or leaves the reaction cluster (or the whole input area).
+    inputArea.addEventListener('pointerover', schedule, true);
+    inputArea.addEventListener('pointerout', schedule, true);
+    inputArea.addEventListener('pointerleave', schedule, true);
+
+    // Extra safety: ResizeObserver on the reaction panel catches its
+    // :hover-driven size change (MutationObserver misses pure-CSS state
+    // changes). Only exists when reactions are enabled.
+    const ResizeObsCtor = win.ResizeObserver;
+    const reactionPanel = doc.querySelector('yt-reaction-control-panel-view-model');
+    if (ResizeObsCtor && reactionPanel) {
+      new ResizeObsCtor(schedule).observe(reactionPanel);
+    }
+
+    update();
   }
 
   showNativeChat(): void {
-    // Clear the forced min-height we set when hiding
-    const chatFrame = document.querySelector('ytd-live-chat-frame');
+    // Clear the forced min-height and positioning context we set when hiding
+    const chatFrame = document.querySelector('ytd-live-chat-frame') as HTMLElement | null;
     const parent = chatFrame?.parentElement;
     if (parent) {
       parent.style.minHeight = '';
+      parent.style.position = '';
     }
+    chatFrame?.classList.remove('allchat-picker-open');
     const style = document.getElementById('allchat-hide-native-style');
     if (style) {
       style.remove();
@@ -380,6 +583,17 @@ class YouTubeDetector extends PlatformDetector {
     const iframe = chatFrame?.querySelector('iframe') as HTMLIFrameElement | null;
     const doc = iframe?.contentDocument;
     doc?.getElementById('allchat-yt-trim')?.remove();
+    // Let the popout observer re-bind next time we hide again
+    doc?.body?.classList.remove('allchat-popout-open');
+    const inputArea = doc?.querySelector('yt-live-chat-message-input-renderer')
+      || doc?.querySelector('yt-live-chat-restricted-participation-renderer');
+    if (inputArea) {
+      delete (inputArea as unknown as { _allchatPopoutBound?: boolean })._allchatPopoutBound;
+    }
+    const liveChatRenderer = doc?.querySelector('yt-live-chat-renderer');
+    if (liveChatRenderer) {
+      delete (liveChatRenderer as unknown as { _allchatModeWatcherBound?: boolean })._allchatModeWatcherBound;
+    }
   }
 
   removeAllChatUI(): void {

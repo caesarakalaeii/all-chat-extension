@@ -38,10 +38,12 @@ let guardObserver: MutationObserver | null = null;
 /**
  * Activate the YouTube Chat tab: hide AllChat, show native YouTube chat.
  */
-function handleSwitchToYouTube(): void {
+function handleSwitchToYouTube(detector: YouTubeDetector): void {
   const container = document.getElementById('allchat-container');
   if (container) container.style.display = 'none';
-  document.getElementById('allchat-hide-native-style')?.remove();
+  // showNativeChat() removes both the outer frame-shrink style AND the
+  // in-iframe trim style so the full native chat UI returns.
+  detector.showNativeChat();
   switchToNativeTab();
   console.log('[AllChat YouTube] Switched to YouTube Chat tab');
 }
@@ -454,7 +456,7 @@ class YouTubeDetector extends PlatformDetector {
       // Wire tab switching
       const detector = this;
       setupTabSwitching(
-        () => handleSwitchToYouTube(),
+        () => handleSwitchToYouTube(detector),
         () => handleSwitchToAllChat(detector),
       );
 
@@ -1111,7 +1113,7 @@ function setupGlobalMessageRelay() {
     }
 
     if (event.data.type === 'SWITCH_TO_NATIVE' && globalDetector) {
-      handleSwitchToYouTube();
+      handleSwitchToYouTube(globalDetector);
     }
 
     if (event.data.type === 'SWITCH_TO_ALLCHAT' && globalDetector) {

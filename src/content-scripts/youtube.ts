@@ -277,13 +277,13 @@ class YouTubeDetector extends PlatformDetector {
     style.textContent = `
       ytd-live-chat-frame {
         flex: 0 0 auto !important;
-        height: 70px !important;
-        min-height: 70px !important;
-        max-height: 70px !important;
+        height: 52px !important;
+        min-height: 52px !important;
+        max-height: 52px !important;
         border-top: 1px solid rgba(255,255,255,0.1);
       }
       ytd-live-chat-frame iframe {
-        height: 70px !important;
+        height: 52px !important;
       }
       #allchat-container {
         flex: 1 1 auto !important;
@@ -353,7 +353,7 @@ class YouTubeDetector extends PlatformDetector {
         left: 0 !important;
         right: 0 !important;
         width: 100% !important;
-        padding: 0 12px !important;
+        padding: 8px 12px !important;
         box-sizing: border-box !important;
         z-index: 2147483647 !important;
         background: var(--yt-live-chat-background-color, #0f0f0f) !important;

@@ -269,20 +269,22 @@ class YouTubeDetector extends PlatformDetector {
       }
     }
 
+    // Collapse the native chat frame to show ONLY its input bar at the bottom.
+    // CSS inside the iframe hides the messages list; AllChat renders the messages.
+    // This avoids AllChat ever touching the user's YouTube session token.
     const style = document.createElement('style');
     style.id = 'allchat-hide-native-style';
     style.textContent = `
-      /* Hide native YouTube chat — use visibility+position instead of display:none
-         so YouTube's layout engine doesn't recalculate and collapse the parent */
       ytd-live-chat-frame {
-        visibility: hidden !important;
-        position: absolute !important;
-        width: 0 !important;
-        height: 0 !important;
-        overflow: hidden !important;
-        pointer-events: none !important;
+        flex: 0 0 auto !important;
+        height: 70px !important;
+        min-height: 70px !important;
+        max-height: 70px !important;
+        border-top: 1px solid rgba(255,255,255,0.1);
       }
-      /* Ensure AllChat fills the space */
+      ytd-live-chat-frame iframe {
+        height: 70px !important;
+      }
       #allchat-container {
         flex: 1 1 auto !important;
         min-height: 0 !important;
@@ -295,7 +297,69 @@ class YouTubeDetector extends PlatformDetector {
       }
     `;
     document.head.appendChild(style);
-    console.log('[AllChat YouTube] Injected CSS to hide native chat');
+
+    // Inject trim CSS into the iframe to hide everything except the input
+    this.applyIframeTrim();
+
+    // Re-apply on iframe navigation (SPA) / reload
+    const iframe = chatFrame?.querySelector('iframe') as HTMLIFrameElement | null;
+    if (iframe && !iframe.dataset.allchatTrimWired) {
+      iframe.dataset.allchatTrimWired = '1';
+      iframe.addEventListener('load', () => this.applyIframeTrim());
+    }
+
+    console.log('[AllChat YouTube] Collapsed native chat to input-only');
+  }
+
+  /**
+   * Inject CSS into YouTube's live-chat iframe to hide everything except the
+   * input panel. Same-origin (youtube.com → youtube.com/live_chat) lets us
+   * reach into the iframe's document. Safe-retry: we poll briefly because the
+   * iframe document may not be ready yet.
+   */
+  private applyIframeTrim(attempt = 0): void {
+    const iframe = document.querySelector('ytd-live-chat-frame iframe') as HTMLIFrameElement | null;
+    const doc = iframe?.contentDocument;
+    if (!doc || !doc.head) {
+      if (attempt < 10) setTimeout(() => this.applyIframeTrim(attempt + 1), 300);
+      return;
+    }
+    if (doc.getElementById('allchat-yt-trim')) return;
+
+    const style = doc.createElement('style');
+    style.id = 'allchat-yt-trim';
+    style.textContent = `
+      /* Hide the message list and header — AllChat renders cross-platform messages above */
+      yt-live-chat-header-renderer,
+      yt-live-chat-banner-manager,
+      yt-live-chat-ticker-renderer,
+      #ticker,
+      yt-live-chat-renderer #chat,
+      yt-live-chat-renderer #chat-messages #contents > div#chat {
+        display: none !important;
+      }
+      html, body {
+        background: transparent !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+      }
+      /* Pin the input renderer to the top of the iframe viewport.
+         Without this, YouTube's internal absolute layout leaves a 0-height
+         parent so the input falls outside the visible 70px window. */
+      yt-live-chat-message-input-renderer {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        padding: 0 12px !important;
+        box-sizing: border-box !important;
+        z-index: 2147483647 !important;
+        background: var(--yt-live-chat-background-color, #0f0f0f) !important;
+      }
+    `;
+    doc.head.appendChild(style);
   }
 
   showNativeChat(): void {
@@ -310,6 +374,10 @@ class YouTubeDetector extends PlatformDetector {
       style.remove();
       console.log('[AllChat YouTube] Removed CSS, native chat restored');
     }
+    // Remove the iframe trim so the full chat UI returns
+    const iframe = chatFrame?.querySelector('iframe') as HTMLIFrameElement | null;
+    const doc = iframe?.contentDocument;
+    doc?.getElementById('allchat-yt-trim')?.remove();
   }
 
   removeAllChatUI(): void {
@@ -394,7 +462,7 @@ class YouTubeDetector extends PlatformDetector {
       watchThemeChanges('youtube', (theme) => {
         const iframe = document.querySelector('#allchat-container iframe') as HTMLIFrameElement | null;
         if (iframe?.contentWindow) {
-          iframe.contentWindow.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: false, theme }, '*');
+          iframe.contentWindow.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: true, theme }, '*');
         }
       });
 
@@ -422,7 +490,7 @@ class YouTubeDetector extends PlatformDetector {
 
   protected onIframeCreated(iframe: HTMLIFrameElement): void {
     iframe.addEventListener('load', () => {
-      iframe.contentWindow?.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: false, theme: isLightMode('youtube') ? 'light' : 'dark' }, '*');
+      iframe.contentWindow?.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: true, theme: isLightMode('youtube') ? 'light' : 'dark' }, '*');
       console.log('[AllChat YouTube] Sent TAB_BAR_MODE to iframe');
     });
   }

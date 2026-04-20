@@ -35,13 +35,13 @@
     "css-loader": "^6.8.1",
     "eslint": "^9.39.4",
     "html-webpack-plugin": "^5.6.6",
-    "postcss": "^8.5.9",
+    "postcss": "^8.5.10",
     "postcss-loader": "^7.3.3",
     "style-loader": "^3.3.3",
     "tailwindcss": "^4.2.2",
     "ts-loader": "^9.5.7",
     "typescript": "^5.3.3",
-    "webpack": "^5.106.1",
+    "webpack": "^5.106.2",
     "webpack-cli": "^5.1.4",
     "ws": "^8.20.0"
   }

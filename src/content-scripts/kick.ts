@@ -185,14 +185,18 @@ class KickDetector extends PlatformDetector {
   hideNativeChat(): void {
     if (document.getElementById('allchat-hide-native-style')) return;
 
+    // Surgical: hide ONLY the native message-list wrapper, marked with
+    // data-allchat-msg-wrap="1" by createInjectionPoint. Leaves chat header
+    // (settings, user count, dropdown menu), announcements strip, and
+    // #chatroom-footer (input box, emote picker, send button, pinned
+    // messages) visible so the viewer can still use every native Kick
+    // chat feature even while AllChat is active.
     const style = document.createElement('style');
     style.id = 'allchat-hide-native-style';
     style.textContent = `
-      /* Hide all native Kick chat children except AllChat elements */
-      #channel-chatroom > *:not(#allchat-container):not(#allchat-tab-bar) {
+      #channel-chatroom [data-allchat-msg-wrap="1"] {
         display: none !important;
       }
-      /* Ensure AllChat fills the space */
       #allchat-container {
         flex: 1 1 auto !important;
         min-height: 0 !important;
@@ -205,14 +209,14 @@ class KickDetector extends PlatformDetector {
       }
     `;
     document.head.appendChild(style);
-    console.log('[AllChat Kick] Injected CSS to hide native chat');
+    console.log('[AllChat Kick] Injected CSS to hide native message list');
   }
 
   showNativeChat(): void {
     const style = document.getElementById('allchat-hide-native-style');
     if (style) {
       style.remove();
-      console.log('[AllChat Kick] Removed CSS, native chat restored');
+      console.log('[AllChat Kick] Removed CSS, native message list restored');
     }
   }
 
@@ -226,23 +230,54 @@ class KickDetector extends PlatformDetector {
     this.showNativeChat();
   }
 
+  /**
+   * Find the native message-list wrapper inside #channel-chatroom.
+   * Kick (Next.js build, 2026-04) nests as:
+   *   #channel-chatroom
+   *     > chat-header   (flex min-h-[38px] …)
+   *     > .relative.flex.flex-1.flex-col   (native body — STAYS)
+   *         > .overflow-hidden               (pinned announcements)
+   *         > .relative.shrink.grow.overflow-hidden.bg-surface-lowest  ← target
+   *              > #chatroom-messages (the scrollable list)
+   *         > #chatroom-footer               (input + emote picker + send)
+   *
+   * We only want to hide the message-list wrapper. Everything else is
+   * native UI (settings button, emote picker, pinned messages, send
+   * button, slow-mode badge …) and must remain visible.
+   */
+  private findMessageListWrapper(slot: HTMLElement): HTMLElement | null {
+    const msgList = slot.querySelector('#chatroom-messages') as HTMLElement | null;
+    const wrap = msgList?.parentElement as HTMLElement | null;
+    if (wrap && slot.contains(wrap)) return wrap;
+    return null;
+  }
+
   async createInjectionPoint(): Promise<HTMLElement | null> {
     try {
       const slot = await this.waitForElement('#channel-chatroom');
+      const msgWrap = this.findMessageListWrapper(slot);
+      if (!msgWrap) {
+        console.warn('[AllChat Kick] #chatroom-messages wrapper not found — aborting to avoid obscuring native UI');
+        return null;
+      }
+      msgWrap.dataset.allchatMsgWrap = '1';
 
-      // 1. Create and inject tab bar as first child
+      // 1. Create and inject tab bar as a sibling directly above the
+      //    message wrapper so it visually labels the switch between the
+      //    two message feeds. Chat header (above) and chatroom-footer
+      //    (below) stay untouched in their native positions.
       const tabBar = createTabBar('Kick Chat', 'kick');
-      slot.insertBefore(tabBar, slot.firstChild);
+      msgWrap.insertAdjacentElement('beforebegin', tabBar);
 
-      // 2. Create #allchat-container
+      // 2. Create #allchat-container as a sibling of the message wrapper,
+      //    inheriting the same flex slot so it grows to the same height
+      //    the native message list would have used.
       const container = document.createElement('div');
       container.id = 'allchat-container';
       container.style.cssText = 'flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;';
+      msgWrap.insertAdjacentElement('afterend', container);
 
-      // Insert after tab bar
-      tabBar.insertAdjacentElement('afterend', container);
-
-      // 3. Hide native children — AllChat starts as active tab
+      // 3. Hide native message list — AllChat starts as active tab
       this.hideNativeChat();
 
       // 4. Wire tab switching
@@ -260,24 +295,36 @@ class KickDetector extends PlatformDetector {
         }
       });
 
-      // 5. Guard against Next.js re-renders removing our elements
+      // 5. Guard against Next.js re-renders removing our elements or
+      //    swapping the message wrapper. When the wrapper is re-created
+      //    we re-mark it and re-anchor our injected elements around it.
       guardObserver?.disconnect();
-      guardObserver = new MutationObserver(() => {
-        if (!slot.contains(container) && document.contains(slot)) {
-          console.log('[AllChat Kick] Container removed by Next.js — re-injecting');
-          const bar = document.getElementById('allchat-tab-bar');
-          if (bar) {
-            bar.insertAdjacentElement('afterend', container);
-          } else {
-            slot.insertBefore(container, slot.firstChild);
-          }
+      const msgWrapParent = msgWrap.parentElement as HTMLElement | null;
+      const reanchor = () => {
+        const currentWrap = this.findMessageListWrapper(slot);
+        if (!currentWrap) return;
+        if (!currentWrap.dataset.allchatMsgWrap) currentWrap.dataset.allchatMsgWrap = '1';
+        if (!currentWrap.parentElement) return;
+        if (currentWrap.previousElementSibling !== tabBar) {
+          currentWrap.insertAdjacentElement('beforebegin', tabBar);
         }
-        if (!slot.contains(tabBar) && document.contains(slot)) {
-          console.log('[AllChat Kick] Tab bar removed by Next.js — re-injecting');
-          slot.insertBefore(tabBar, slot.firstChild);
+        if (currentWrap.nextElementSibling !== container) {
+          currentWrap.insertAdjacentElement('afterend', container);
+        }
+      };
+      guardObserver = new MutationObserver(() => {
+        if (!document.contains(slot)) return;
+        const wrapStillThere = this.findMessageListWrapper(slot);
+        if (!wrapStillThere) return;
+        if (wrapStillThere.previousElementSibling !== tabBar || wrapStillThere.nextElementSibling !== container) {
+          console.log('[AllChat Kick] Anchor disturbed — re-anchoring around message wrapper');
+          reanchor();
         }
       });
-      guardObserver.observe(slot, { childList: true });
+      if (msgWrapParent) {
+        guardObserver.observe(msgWrapParent, { childList: true });
+      }
+      guardObserver.observe(slot, { childList: true, subtree: true });
 
       return container;
     } catch {
@@ -297,6 +344,10 @@ class KickDetector extends PlatformDetector {
     removeTabBar();
     guardObserver?.disconnect();
     guardObserver = null;
+    // Clear the marker so a fresh injection on URL change starts clean.
+    document.querySelectorAll('#channel-chatroom [data-allchat-msg-wrap="1"]').forEach((el) => {
+      delete (el as HTMLElement).dataset.allchatMsgWrap;
+    });
     this.showNativeChat();
     super.teardown();
   }

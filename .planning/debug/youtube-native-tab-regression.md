@@ -1,16 +1,16 @@
 ---
-status: open
+status: fixed-awaiting-live-verification
 trigger: "YouTube: switching to the native Chat tab leaves AllChat's overlay visible over the native messages area — native messages (and the pinned banner band above them) are painted but hidden behind the AllChat 'Waiting for messages' placeholder."
 created: 2026-04-21T14:50:00Z
-updated: 2026-04-21T14:50:00Z
+updated: 2026-04-22T09:00:00Z
 ---
 
 ## Current Focus
 
-hypothesis: CONFIRMED — `#allchat-container { display: flex !important }` in the outer `allchat-hide-native-style` stylesheet overrides the inline `style.display = 'none'` set by `handleSwitchToYouTube`. The overlay is still drawn at z-index:2 over the full-height native frame, so native messages render underneath but are invisible.
-test: Read `#allchat-container`'s computed `display` right after clicking the YouTube Chat tab — it is `flex`, not `none`.
-expecting: After the fix below, computed `display` becomes `none` on switch-to-native and the native message list (and pinned banner) fills the column.
-next_action: Apply the CSS-and-switch-handler fix described below, rebuild, reload extension, re-verify.
+hypothesis: CONFIRMED — `#allchat-container { display: flex !important }` in the outer `allchat-hide-native-style` stylesheet overrode the inline `style.display = 'none'` set by `handleSwitchToYouTube`. The overlay was drawn at z-index:2 over the full-height native frame, so native messages rendered underneath but were invisible.
+test: Read `#allchat-container`'s computed `display` right after clicking the YouTube Chat tab — was `flex`, should now be `none`.
+fix_applied: 2026-04-22 — dropped the `display: flex !important` line from the `#allchat-container` rule in `hideNativeChat()`. Inline `display: flex` from `createInjectionPoint` (and re-asserted by `handleSwitchToAllChat`) still supplies the initial flex layout; the inline `display: none` from `handleSwitchToYouTube` now wins unchallenged. Other `!important` rules (position:absolute, z-index:2, flex-direction, min-height) kept.
+next_action: Live-verify on a YouTube live stream — switch to YT Chat tab, confirm native messages + pinned banner visible; switch back to AllChat, confirm overlay returns.
 
 ## Symptoms
 

@@ -340,7 +340,9 @@ class YouTubeDetector extends PlatformDetector {
           left: 0 !important;
           right: 0 !important;
           z-index: 2 !important;
-          display: flex !important;
+          /* display is controlled by inline style ('flex' on AllChat tab,
+             'none' on YouTube tab) — no !important here so handleSwitchToYouTube
+             can actually hide the overlay. */
           flex-direction: column !important;
           min-height: 0 !important;
         }

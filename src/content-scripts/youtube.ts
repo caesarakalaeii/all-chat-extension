@@ -47,6 +47,12 @@ let ytPickerResizeObserver: ResizeObserver | null = null;
 // Watches #overlay-dialog — where super-chat purchase dialog and
 // membership dialogs mount outside the #pickers iron-pages.
 let ytOverlayDialogObserver: MutationObserver | null = null;
+// Watches #panel-pages — the outermost iron-pages inside the chat
+// iframe. Super-chat / super-sticker / donation / gift-sub / q&a /
+// poll flows all activate by swapping the iron-selected class from
+// #input-panel to one of its siblings here. Picking this up lets us
+// flip the frame z-index over AllChat when any purchase flow opens.
+let ytPanelPagesObserver: MutationObserver | null = null;
 
 /**
  * Activate the YouTube Chat tab: hide AllChat, show native YouTube chat.
@@ -576,28 +582,45 @@ class YouTubeDetector extends PlatformDetector {
     const updatePickerState = () => {
       let userPicker = false;
 
-      // Case 1: iron-pages #pickers has a child with `iron-selected`
-      // class. Polymer iron-pages marks the active page via this class
-      // on the child — the `selected` attribute on the parent is often
-      // a property-only reflection that doesn't appear in the DOM, so
-      // we can't rely on getAttribute('selected'). Children include:
-      //   - yt-emoji-picker-renderer (emoji)
-      //   - yt-live-chat-product-picker-panel-view-model (super-chat tiers)
-      const pickers = doc.getElementById('pickers') as HTMLElement | null;
-      if (pickers) {
-        const activeChild = [...pickers.children].find(c => c.classList.contains('iron-selected')) as HTMLElement | null;
-        if (activeChild && isVisible(activeChild)) {
+      // Case 1 (most common): #panel-pages swapped away from #input-panel.
+      // This is the outermost iron-pages inside the chat iframe — the
+      // slot that hosts the whole input row by default, and swaps to a
+      // purchase flow (#buy-flow for super-chat, #super-sticker-buy-flow,
+      // #donation-flow, #sponsorships-gift-buy-flow, #qna-start-panel,
+      // #poll-editor-panel) when the user clicks the corresponding button.
+      // When iron-selected flips OFF #input-panel onto any sibling, the
+      // whole chat area is now a user-opened modal.
+      const panelPages = doc.getElementById('panel-pages') as HTMLElement | null;
+      if (panelPages) {
+        const activePanel = [...panelPages.children].find(c => c.classList.contains('iron-selected')) as HTMLElement | null;
+        if (activePanel && activePanel.id && activePanel.id !== 'input-panel') {
           userPicker = true;
         }
       }
 
-      // Case 2: #overlay-dialog gets populated for super-chat purchase
-      // phase 2, dialog-based modals, and membership purchase flows. It
-      // starts empty (childElementCount === 0) — any mounted child means
-      // a user-opened overlay is active. Don't dimension-check the
-      // overlay-dialog element itself: it's position:static with 0 height
-      // by default and its children are positioned absolutely inside,
-      // so the container's own rect never reflects the dialog's size.
+      // Case 2: iron-pages #pickers has a child with `iron-selected`
+      // class. This is the INNER picker (emoji / super-chat tier selector)
+      // that opens above the input without replacing the whole panel.
+      // Polymer iron-pages marks the active page via the class on the
+      // child — `selected` attribute on the parent is a property-only
+      // reflection in some builds, so we can't rely on getAttribute.
+      if (!userPicker) {
+        const pickers = doc.getElementById('pickers') as HTMLElement | null;
+        if (pickers) {
+          const activeChild = [...pickers.children].find(c => c.classList.contains('iron-selected')) as HTMLElement | null;
+          if (activeChild && isVisible(activeChild)) {
+            userPicker = true;
+          }
+        }
+      }
+
+      // Case 3: #overlay-dialog gets populated for super-chat purchase
+      // phase 2 (payment modal), membership dialogs, error dialogs. It
+      // starts empty — any mounted child means a user-opened overlay is
+      // active. Don't dimension-check the overlay-dialog element itself:
+      // it's position:static with 0 height and children are absolutely
+      // positioned inside, so the container's rect never reflects the
+      // dialog's size.
       if (!userPicker) {
         const overlayDialog = doc.getElementById('overlay-dialog');
         if (overlayDialog && overlayDialog.childElementCount > 0) {
@@ -637,11 +660,13 @@ class YouTubeDetector extends PlatformDetector {
     ytPickerMutationObserver?.disconnect();
     ytPickerResizeObserver?.disconnect();
     ytOverlayDialogObserver?.disconnect();
+    ytPanelPagesObserver?.disconnect();
     ytStackResizeObserver = null;
     ytStackMutationObserver = null;
     ytPickerMutationObserver = null;
     ytPickerResizeObserver = null;
     ytOverlayDialogObserver = null;
+    ytPanelPagesObserver = null;
 
     const RO = win.ResizeObserver;
     const MO = win.MutationObserver;
@@ -726,6 +751,27 @@ class YouTubeDetector extends PlatformDetector {
       ytOverlayDialogObserver.observe(overlayDialog, { childList: true });
     }
 
+    // Watch #panel-pages for iron-selected class flips on its children.
+    // This catches the most common user-picker activation — clicking
+    // the super-chat / super-sticker / donation / gift-sub / q&a / poll
+    // button swaps the iron-selected class from #input-panel onto the
+    // matching sibling panel, which YT then fills with the flow UI.
+    // subtree:false, attributes:true, attributeFilter:['class'] would
+    // only fire on the panel-pages element itself — we need subtree:true
+    // so class changes on DIRECT children reach us. That does mean we
+    // also see class changes on deeper descendants (input-panel's own
+    // subtree) but those are rare and the callback is a cheap state
+    // recompute.
+    const panelPages2 = doc.getElementById('panel-pages');
+    if (MO && panelPages2 && !ytPanelPagesObserver) {
+      ytPanelPagesObserver = new MO(schedulePickerCheck);
+      ytPanelPagesObserver.observe(panelPages2, {
+        attributes: true,
+        subtree: true,
+        attributeFilter: ['class'],
+      });
+    }
+
     // Scoped renderer-swap observer: watches the #input-panel slot for
     // childList changes in its subtree. That's where YouTube swaps
     // yt-live-chat-message-input-renderer ↔ yt-live-chat-restricted-participation-renderer
@@ -774,11 +820,13 @@ class YouTubeDetector extends PlatformDetector {
     ytPickerMutationObserver?.disconnect();
     ytPickerResizeObserver?.disconnect();
     ytOverlayDialogObserver?.disconnect();
+    ytPanelPagesObserver?.disconnect();
     ytStackResizeObserver = null;
     ytStackMutationObserver = null;
     ytPickerMutationObserver = null;
     ytPickerResizeObserver = null;
     ytOverlayDialogObserver = null;
+    ytPanelPagesObserver = null;
 
     const chatFrame = document.querySelector('ytd-live-chat-frame') as HTMLElement | null;
     chatFrame?.classList.remove('allchat-picker-active');

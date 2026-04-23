@@ -504,6 +504,10 @@ class YouTubeDetector extends PlatformDetector {
     };
 
     // ---- Picker visibility detection ----
+    // YouTube's picker container is a tp-yt-iron-pages#pickers. Iron-pages
+    // exposes which child is active via its `selected` attribute. Fast path:
+    // empty/null string → nothing open. Only on ambiguous state do we fall
+    // back to the expensive per-child visibility probe.
     const REACTION_EXPANDED_MIN_H = 60; // closed panel ~36px, expanded stacks 6 buttons
     const isVisible = (el: Element | null): boolean => {
       if (!el || !(el as HTMLElement).isConnected) return false;
@@ -514,10 +518,15 @@ class YouTubeDetector extends PlatformDetector {
     };
     const updatePickerState = () => {
       let open = false;
-      const pickers = doc.getElementById('pickers');
+      const pickers = doc.getElementById('pickers') as HTMLElement | null;
       if (pickers) {
-        for (const child of Array.from(pickers.children)) {
-          if (isVisible(child)) { open = true; break; }
+        const selected = pickers.getAttribute('selected');
+        if (selected) {
+          // Active iron-page index is set — verify the chosen child actually paints
+          // (iron-pages sometimes keeps `selected` after close transitions).
+          const idx = Number(selected);
+          const child = Number.isFinite(idx) ? pickers.children[idx] : null;
+          open = child ? isVisible(child) : isVisible(pickers);
         }
       }
       if (!open) {
@@ -529,7 +538,7 @@ class YouTubeDetector extends PlatformDetector {
       frame.classList.toggle('allchat-picker-active', open);
     };
 
-    // ---- Bind observers (idempotent) ----
+    // ---- Bind observers ----
     ytStackResizeObserver?.disconnect();
     ytStackMutationObserver?.disconnect();
     ytPickerMutationObserver?.disconnect();
@@ -537,73 +546,93 @@ class YouTubeDetector extends PlatformDetector {
 
     const RO = win.ResizeObserver;
     const MO = win.MutationObserver;
+    const schedulePickerCheck = () => win.requestAnimationFrame(updatePickerState);
 
-    const bindObservers = () => {
-      const alignTargets = [
-        'yt-live-chat-header-renderer',
-        'yt-live-chat-banner-manager',
-        'yt-live-chat-ticker-renderer',
-        'yt-live-chat-message-input-renderer',
-        'yt-live-chat-restricted-participation-renderer',
-      ].map(sel => doc.querySelector(sel)).filter(Boolean) as Element[];
+    // ResizeObserver on the native stack targets handles almost every case:
+    // header height changes, banner pin/unpin, ticker growing as super-chats
+    // arrive, and input renderer swaps. Bind once — the targets only go away
+    // on a full panel teardown, which runs showNativeChat() anyway.
+    const alignTargets = [
+      'yt-live-chat-header-renderer',
+      'yt-live-chat-banner-manager',
+      'yt-live-chat-ticker-renderer',
+      'yt-live-chat-message-input-renderer',
+      'yt-live-chat-restricted-participation-renderer',
+    ].map(sel => doc.querySelector(sel)).filter(Boolean) as Element[];
 
-      if (RO) {
-        ytStackResizeObserver = new RO(() => { alignOverlay(); updatePickerState(); });
-        alignTargets.forEach(el => ytStackResizeObserver!.observe(el));
-      }
-
-      // Watch the input renderer (which also hosts #pickers and reactions)
-      // for attribute/DOM mutations that signal a picker open/close.
-      const inputArea = (doc.querySelector('yt-live-chat-message-input-renderer')
-        || doc.querySelector('yt-live-chat-restricted-participation-renderer')) as HTMLElement | null;
-      if (MO && inputArea) {
-        ytPickerMutationObserver = new MO(() => {
-          alignOverlay();
-          updatePickerState();
-        });
-        ytPickerMutationObserver.observe(inputArea, {
-          attributes: true,
-          subtree: true,
-          childList: true,
-          attributeFilter: ['style', 'class', 'selected', 'hidden', 'aria-expanded'],
-        });
-        // Live reactions expand via :hover — MutationObserver misses
-        // pure-CSS hover transitions. Pointer events catch those, and a
-        // ResizeObserver on the reaction panel catches the actual size
-        // change the flip depends on.
-        const schedulePickerCheck = () => win.requestAnimationFrame(updatePickerState);
-        inputArea.addEventListener('click', schedulePickerCheck, true);
-        inputArea.addEventListener('pointerover', schedulePickerCheck, true);
-        inputArea.addEventListener('pointerout', schedulePickerCheck, true);
-        inputArea.addEventListener('pointerleave', schedulePickerCheck, true);
-
-        const reactionPanel = doc.querySelector('yt-reaction-control-panel-view-model');
-        if (RO && reactionPanel) {
-          ytPickerResizeObserver = new RO(schedulePickerCheck);
-          ytPickerResizeObserver.observe(reactionPanel);
-        }
-      }
-    };
-
-    // Rebind observers when YouTube swaps input-renderer ↔ restricted-
-    // participation-renderer (subscribers-only flag flipped) or reloads
-    // the chat panel.
-    const renderer = doc.querySelector('yt-live-chat-renderer');
-    if (MO && renderer) {
-      ytStackMutationObserver = new MO(() => {
-        bindObservers();
-        alignOverlay();
-        updatePickerState();
-      });
-      ytStackMutationObserver.observe(renderer, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['hidden', 'style', 'class'],
-      });
+    if (RO) {
+      ytStackResizeObserver = new RO(() => { alignOverlay(); schedulePickerCheck(); });
+      alignTargets.forEach(el => ytStackResizeObserver!.observe(el));
     }
 
-    bindObservers();
+    // Scoped picker observer: watches ONLY the #pickers iron-pages, for the
+    // `selected` attribute flip (picker open/close) and childList churn
+    // (new picker panel added). Previously this observed the whole input
+    // renderer subtree with a broad attribute filter, which pulled in every
+    // keystroke and every render tick. #pickers only mutates when a picker
+    // actually opens or closes — rarely.
+    //
+    // YouTube lazy-mounts #pickers on first picker open, so this may be a
+    // no-op on initial setup. bindPickerObserver() is idempotent and called
+    // again from the input-panel mutation observer whenever DOM changes
+    // bring #pickers into existence.
+    const bindPickerObserver = () => {
+      if (ytPickerMutationObserver) return; // already bound
+      const pickers = doc.getElementById('pickers') as HTMLElement | null;
+      if (!MO || !pickers) return;
+      ytPickerMutationObserver = new MO(schedulePickerCheck);
+      ytPickerMutationObserver.observe(pickers, {
+        attributes: true,
+        childList: true,
+        attributeFilter: ['selected'],
+      });
+    };
+    bindPickerObserver();
+
+    // Same pattern for the reaction-panel ResizeObserver — may mount late.
+    const bindReactionObserver = () => {
+      if (ytPickerResizeObserver) return;
+      const reactionPanel = doc.querySelector('yt-reaction-control-panel-view-model') as HTMLElement | null;
+      if (!reactionPanel) return;
+      if (RO) {
+        ytPickerResizeObserver = new RO(schedulePickerCheck);
+        ytPickerResizeObserver.observe(reactionPanel);
+      }
+      // Live reactions expand via :hover — MutationObserver misses pure-CSS
+      // hover transitions. Pointer events on the single reaction panel
+      // (not the whole input area) give us a cheap trigger for edge cases
+      // the RO misses.
+      reactionPanel.addEventListener('pointerover', schedulePickerCheck, true);
+      reactionPanel.addEventListener('pointerleave', schedulePickerCheck, true);
+    };
+    bindReactionObserver();
+
+    // Scoped renderer-swap observer: watches the #input-panel slot for
+    // childList changes in its subtree. That's where YouTube swaps
+    // yt-live-chat-message-input-renderer ↔ yt-live-chat-restricted-participation-renderer
+    // (subscribers-only mode flip) and where #pickers is lazy-mounted
+    // on first picker open. We use `childList: true, subtree: true` but
+    // NO attribute observation — the hot per-keystroke/per-hover attribute
+    // churn stays invisible to us. The message-list churn (40 mutations/sec
+    // on a busy stream) is in a sibling subtree, so nothing from there
+    // reaches this observer.
+    const inputPanel = doc.getElementById('input-panel');
+    if (MO && inputPanel) {
+      ytStackMutationObserver = new MO(() => {
+        // On renderer swap / #pickers mount / reaction-panel mount: rebind
+        // the observers that depend on those elements existing. Binding is
+        // idempotent so repeat fires are cheap.
+        const newInput = (doc.querySelector('yt-live-chat-message-input-renderer')
+          || doc.querySelector('yt-live-chat-restricted-participation-renderer')) as Element | null;
+        if (newInput && ytStackResizeObserver) ytStackResizeObserver.observe(newInput);
+        bindPickerObserver();
+        bindReactionObserver();
+        alignOverlay();
+        schedulePickerCheck();
+      });
+      ytStackMutationObserver.observe(inputPanel, { childList: true, subtree: true });
+    }
+
     alignOverlay();
     updatePickerState();
     // Delayed alignment passes: header/ticker often resolve their natural

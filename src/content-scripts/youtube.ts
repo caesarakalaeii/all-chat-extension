@@ -44,6 +44,9 @@ let ytStackResizeObserver: ResizeObserver | null = null;
 let ytStackMutationObserver: MutationObserver | null = null;
 let ytPickerMutationObserver: MutationObserver | null = null;
 let ytPickerResizeObserver: ResizeObserver | null = null;
+// Watches #overlay-dialog — where super-chat purchase dialog and
+// membership dialogs mount outside the #pickers iron-pages.
+let ytOverlayDialogObserver: MutationObserver | null = null;
 
 /**
  * Activate the YouTube Chat tab: hide AllChat, show native YouTube chat.
@@ -572,6 +575,9 @@ class YouTubeDetector extends PlatformDetector {
     };
     const updatePickerState = () => {
       let userPicker = false;
+
+      // Case 1: iron-pages #pickers has a child selected (emoji picker,
+      // product-picker-panel-view-model for super-chat phase 1, etc.)
       const pickers = doc.getElementById('pickers') as HTMLElement | null;
       if (pickers) {
         const selected = pickers.getAttribute('selected');
@@ -579,6 +585,20 @@ class YouTubeDetector extends PlatformDetector {
           const idx = Number(selected);
           const child = Number.isFinite(idx) ? pickers.children[idx] : null;
           userPicker = child ? isVisible(child) : isVisible(pickers);
+        }
+      }
+
+      // Case 2: #overlay-dialog gets populated for super-chat purchase
+      // phase 2, dialog-based modals, and membership purchase flows. It
+      // starts empty (childElementCount === 0) — any mounted child means
+      // a user-opened overlay is active. Don't dimension-check the
+      // overlay-dialog element itself: it's position:static with 0 height
+      // by default and its children are positioned absolutely inside,
+      // so the container's own rect never reflects the dialog's size.
+      if (!userPicker) {
+        const overlayDialog = doc.getElementById('overlay-dialog');
+        if (overlayDialog && overlayDialog.childElementCount > 0) {
+          userPicker = true;
         }
       }
 
@@ -608,6 +628,8 @@ class YouTubeDetector extends PlatformDetector {
     ytStackMutationObserver?.disconnect();
     ytPickerMutationObserver?.disconnect();
     ytPickerResizeObserver?.disconnect();
+    ytOverlayDialogObserver?.disconnect();
+    ytOverlayDialogObserver = null;
 
     const RO = win.ResizeObserver;
     const MO = win.MutationObserver;
@@ -672,6 +694,19 @@ class YouTubeDetector extends PlatformDetector {
     };
     bindReactionObserver();
 
+    // Watch #overlay-dialog for children mounting. Super-chat purchase
+    // dialogs, membership purchase modals, and other "full takeover"
+    // overlays inject here (it starts empty and gets populated on
+    // activation). When that happens we need to flip the frame's z-index
+    // above AllChat so the dialog is actually visible — otherwise it's
+    // hidden behind our messages and the user sees "nothing happens" or
+    // "dialog opens blank".
+    const overlayDialog = doc.getElementById('overlay-dialog');
+    if (MO && overlayDialog && !ytOverlayDialogObserver) {
+      ytOverlayDialogObserver = new MO(schedulePickerCheck);
+      ytOverlayDialogObserver.observe(overlayDialog, { childList: true });
+    }
+
     // Scoped renderer-swap observer: watches the #input-panel slot for
     // childList changes in its subtree. That's where YouTube swaps
     // yt-live-chat-message-input-renderer ↔ yt-live-chat-restricted-participation-renderer
@@ -719,13 +754,17 @@ class YouTubeDetector extends PlatformDetector {
     ytStackMutationObserver?.disconnect();
     ytPickerMutationObserver?.disconnect();
     ytPickerResizeObserver?.disconnect();
+    ytOverlayDialogObserver?.disconnect();
     ytStackResizeObserver = null;
     ytStackMutationObserver = null;
     ytPickerMutationObserver = null;
     ytPickerResizeObserver = null;
+    ytOverlayDialogObserver = null;
 
     const chatFrame = document.querySelector('ytd-live-chat-frame') as HTMLElement | null;
     chatFrame?.classList.remove('allchat-picker-active');
+    const allchatContainer = document.getElementById('allchat-container');
+    if (allchatContainer) allchatContainer.style.clipPath = '';
     const iframe = chatFrame?.querySelector('iframe') as HTMLIFrameElement | null;
     const doc = iframe?.contentDocument;
     doc?.getElementById('allchat-yt-trim')?.remove();

@@ -525,11 +525,28 @@ class YouTubeDetector extends PlatformDetector {
     };
 
     // ---- Picker visibility detection ----
-    // YouTube's picker container is a tp-yt-iron-pages#pickers. Iron-pages
-    // exposes which child is active via its `selected` attribute. Fast path:
-    // empty/null string → nothing open. Only on ambiguous state do we fall
-    // back to the expensive per-child visibility probe.
+    // Two kinds of "picker" behave very differently and need different
+    // overlay treatments:
+    //
+    //   USER_PICKER (emoji, super-chat, product-picker): user clicked the
+    //   icon to open — the panel is large and needs to cover the chat
+    //   column. Fine to flip the frame's z-index above AllChat; matches
+    //   native YouTube behavior where the message list is hidden while
+    //   the picker is open.
+    //
+    //   REACTION (hover-expanded live-reactions panel): a skinny vertical
+    //   column of 6 buttons (~48px wide × ~216px tall) pinned to the
+    //   right side of the input. Expanded transiently on hover. Flipping
+    //   the whole frame z-index for this would blank all messages; the
+    //   user complained about exactly that.
+    //
+    // So: for USER_PICKER we add `allchat-picker-active` to the frame
+    // (existing behavior). For REACTION we add `allchat-reaction-active`
+    // to the container and apply a clip-path hole that exposes the right
+    // ~60px column where reactions actually render — AllChat messages
+    // stay visible everywhere else.
     const REACTION_EXPANDED_MIN_H = 60; // closed panel ~36px, expanded stacks 6 buttons
+    const REACTION_GUTTER_PX = 60;      // width of the clip-path hole
     const isVisible = (el: Element | null): boolean => {
       if (!el || !(el as HTMLElement).isConnected) return false;
       const cs = win.getComputedStyle(el);
@@ -538,25 +555,36 @@ class YouTubeDetector extends PlatformDetector {
       return r.width > 0 && r.height > 0;
     };
     const updatePickerState = () => {
-      let open = false;
+      let userPicker = false;
       const pickers = doc.getElementById('pickers') as HTMLElement | null;
       if (pickers) {
         const selected = pickers.getAttribute('selected');
         if (selected) {
-          // Active iron-page index is set — verify the chosen child actually paints
-          // (iron-pages sometimes keeps `selected` after close transitions).
           const idx = Number(selected);
           const child = Number.isFinite(idx) ? pickers.children[idx] : null;
-          open = child ? isVisible(child) : isVisible(pickers);
+          userPicker = child ? isVisible(child) : isVisible(pickers);
         }
       }
-      if (!open) {
+
+      let reactionExpanded = false;
+      if (!userPicker) {
         const reactionPanel = doc.querySelector('yt-reaction-control-panel-view-model');
         if (reactionPanel && reactionPanel.getBoundingClientRect().height > REACTION_EXPANDED_MIN_H) {
-          open = true;
+          reactionExpanded = true;
         }
       }
-      frame.classList.toggle('allchat-picker-active', open);
+
+      frame.classList.toggle('allchat-picker-active', userPicker);
+      if (reactionExpanded) {
+        // Clip a vertical strip on the right so the expanded reaction
+        // panel (which is inside the iframe at z-index:1) shows through.
+        // AllChat messages stay visible on the left ~340px.
+        container.style.clipPath =
+          `polygon(0 0, calc(100% - ${REACTION_GUTTER_PX}px) 0, ` +
+          `calc(100% - ${REACTION_GUTTER_PX}px) 100%, 0 100%)`;
+      } else {
+        container.style.clipPath = '';
+      }
     };
 
     // ---- Bind observers ----

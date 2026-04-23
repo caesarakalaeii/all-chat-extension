@@ -407,6 +407,23 @@ class YouTubeDetector extends PlatformDetector {
         yt-live-chat-item-list-renderer {
           display: none !important;
         }
+        /* Make #panel-pages fill the space #chat used to occupy. By default
+           panel-pages is a static-positioned iron-pages whose height collapses
+           to its active child's height — with #input-panel active (and its
+           input renderer pulled out of flow via position:absolute below), that
+           collapses to ~1px. When YouTube swaps panel-pages to #buy-flow,
+           #donation-flow, #super-sticker-buy-flow, or any other purchase /
+           poll / q&a flow, the activated panel needs the full contents height
+           to render the modal UI — otherwise the user sees a ~100px-tall
+           stump at the bottom of the iframe while the "real" content thinks
+           it's painting into an invisibly-small box. Force flex-grow + a
+           positioning context so iron-pages can absolutely position its
+           iron-selected child into a sized frame. */
+        yt-live-chat-renderer #chat-messages > #contents > tp-yt-iron-pages#panel-pages {
+          flex: 1 1 auto !important;
+          min-height: 0 !important;
+          position: relative !important;
+        }
         html, body {
           margin: 0 !important;
           padding: 0 !important;

@@ -424,7 +424,11 @@ class YouTubeDetector extends PlatformDetector {
           right: 0 !important;
           bottom: 0 !important;
           top: auto !important;
-          width: 100% !important;
+          /* No width:100% — input renderer is box-sizing: content-box with
+             24px horizontal padding, so width:100% expands to 400+48=448px
+             inside a 400px iframe and clips the rightmost action button
+             (reactions). left:0 + right:0 already fits the element to its
+             containing block while respecting padding. */
           z-index: 2 !important;
           background: var(--yt-live-chat-background-color, #0f0f0f) !important;
         }
@@ -491,13 +495,30 @@ class YouTubeDetector extends PlatformDetector {
     };
 
     let alignRaf = false;
+    // Remember the input-area height measured when no picker is active.
+    // When a picker opens (emoji / super-chat / reactions) the input
+    // renderer grows taller — if we followed that growth, the AllChat
+    // overlay's bottom offset would balloon and visibly push the
+    // cross-platform messages upward every time the user even hovered
+    // over the reaction button. Instead we freeze to the idle value and
+    // rely on the frame's z-index flip (.allchat-picker-active) to float
+    // the picker above AllChat.
+    let lastIdleBotH = 0;
     const alignOverlay = () => {
       if (alignRaf) return;
       alignRaf = true;
       win.requestAnimationFrame(() => {
         alignRaf = false;
         const topH = getTopStackH();
-        const botH = getInputH();
+        const pickerActive = frame.classList.contains('allchat-picker-active');
+        const measuredBotH = getInputH();
+        let botH: number;
+        if (pickerActive) {
+          botH = lastIdleBotH || measuredBotH;
+        } else {
+          lastIdleBotH = measuredBotH;
+          botH = measuredBotH;
+        }
         container.style.top = `${tabBarH + topH}px`;
         container.style.bottom = `${botH}px`;
       });

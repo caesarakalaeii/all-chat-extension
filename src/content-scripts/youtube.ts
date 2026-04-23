@@ -576,15 +576,18 @@ class YouTubeDetector extends PlatformDetector {
     const updatePickerState = () => {
       let userPicker = false;
 
-      // Case 1: iron-pages #pickers has a child selected (emoji picker,
-      // product-picker-panel-view-model for super-chat phase 1, etc.)
+      // Case 1: iron-pages #pickers has a child with `iron-selected`
+      // class. Polymer iron-pages marks the active page via this class
+      // on the child — the `selected` attribute on the parent is often
+      // a property-only reflection that doesn't appear in the DOM, so
+      // we can't rely on getAttribute('selected'). Children include:
+      //   - yt-emoji-picker-renderer (emoji)
+      //   - yt-live-chat-product-picker-panel-view-model (super-chat tiers)
       const pickers = doc.getElementById('pickers') as HTMLElement | null;
       if (pickers) {
-        const selected = pickers.getAttribute('selected');
-        if (selected) {
-          const idx = Number(selected);
-          const child = Number.isFinite(idx) ? pickers.children[idx] : null;
-          userPicker = child ? isVisible(child) : isVisible(pickers);
+        const activeChild = [...pickers.children].find(c => c.classList.contains('iron-selected')) as HTMLElement | null;
+        if (activeChild && isVisible(activeChild)) {
+          userPicker = true;
         }
       }
 
@@ -624,11 +627,20 @@ class YouTubeDetector extends PlatformDetector {
     };
 
     // ---- Bind observers ----
+    // Disconnect AND null the references. The bind helpers below are
+    // idempotent via `if (ytXxxObserver) return`, so leaving stale truthy
+    // references here would make them skip the rebind silently and we'd
+    // keep a disconnected observer forever — picker/super-chat detection
+    // would stop working on the second init (SPA nav, iframe reload, …).
     ytStackResizeObserver?.disconnect();
     ytStackMutationObserver?.disconnect();
     ytPickerMutationObserver?.disconnect();
     ytPickerResizeObserver?.disconnect();
     ytOverlayDialogObserver?.disconnect();
+    ytStackResizeObserver = null;
+    ytStackMutationObserver = null;
+    ytPickerMutationObserver = null;
+    ytPickerResizeObserver = null;
     ytOverlayDialogObserver = null;
 
     const RO = win.ResizeObserver;
@@ -668,10 +680,17 @@ class YouTubeDetector extends PlatformDetector {
       const pickers = doc.getElementById('pickers') as HTMLElement | null;
       if (!MO || !pickers) return;
       ytPickerMutationObserver = new MO(schedulePickerCheck);
+      // Iron-pages flips an `iron-selected` class on the child that is
+      // currently active. We watch children for `class` attribute changes
+      // (subtree but SHALLOW — only direct children get class-tracked via
+      // the default subtree traversal; since the pickers element only
+      // mutates when a picker is switched or mounted, the callback rate
+      // stays ~0/sec during idle chat).
       ytPickerMutationObserver.observe(pickers, {
         attributes: true,
+        subtree: true,
         childList: true,
-        attributeFilter: ['selected'],
+        attributeFilter: ['class'],
       });
     };
     bindPickerObserver();

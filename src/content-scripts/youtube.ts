@@ -488,21 +488,37 @@ class YouTubeDetector extends PlatformDetector {
            + (banner?.offsetHeight || 0)
            + (ticker?.offsetHeight || 0);
     };
-    const getInputH = (): number => {
+    // The AllChat container's bottom offset needs to align with the input
+    // row's TOP edge, measured in parent-document coordinates. Using just
+    // `input.offsetHeight` is wrong when the parent (#chat-container)
+    // extends further than the frame — typically YouTube leaves ~16px of
+    // padding below the frame, so `bottom: 56px` (= input height) leaves
+    // a 17px overlap that clips the top of the input row.
+    //
+    // Correct formula: container's bottom (as CSS `bottom:` value) =
+    //   parent.rect.bottom - input_top_in_parent_coords
+    // which gives the exact distance from the parent's bottom edge to
+    // where the input begins.
+    const parentEl = container.parentElement as HTMLElement | null;
+    const getInputBottomOffset = (): number => {
       const input = (doc.querySelector('yt-live-chat-message-input-renderer')
         || doc.querySelector('yt-live-chat-restricted-participation-renderer')) as HTMLElement | null;
-      return input?.offsetHeight || 0;
+      if (!input || !parentEl) return input?.offsetHeight || 0;
+      const parentRect = parentEl.getBoundingClientRect();
+      const iframeRect = iframe.getBoundingClientRect();
+      const inputRect = input.getBoundingClientRect();
+      const inputTopInParent = iframeRect.top + inputRect.top;
+      return Math.max(0, Math.round(parentRect.bottom - inputTopInParent));
     };
 
     let alignRaf = false;
-    // Remember the input-area height measured when no picker is active.
-    // When a picker opens (emoji / super-chat / reactions) the input
-    // renderer grows taller — if we followed that growth, the AllChat
+    // Remember the input-area bottom offset measured when no picker is
+    // active. When a user picker opens (emoji / super-chat) the input
+    // renderer grows taller — if we followed that growth the AllChat
     // overlay's bottom offset would balloon and visibly push the
-    // cross-platform messages upward every time the user even hovered
-    // over the reaction button. Instead we freeze to the idle value and
-    // rely on the frame's z-index flip (.allchat-picker-active) to float
-    // the picker above AllChat.
+    // cross-platform messages upward. Instead we freeze to the idle
+    // value and rely on the frame's z-index flip (.allchat-picker-active)
+    // to float the picker above AllChat.
     let lastIdleBotH = 0;
     const alignOverlay = () => {
       if (alignRaf) return;
@@ -511,7 +527,7 @@ class YouTubeDetector extends PlatformDetector {
         alignRaf = false;
         const topH = getTopStackH();
         const pickerActive = frame.classList.contains('allchat-picker-active');
-        const measuredBotH = getInputH();
+        const measuredBotH = getInputBottomOffset();
         let botH: number;
         if (pickerActive) {
           botH = lastIdleBotH || measuredBotH;

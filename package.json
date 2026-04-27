@@ -16,7 +16,7 @@
     "@fontsource/dm-mono": "^5.2.7",
     "@fontsource/inter": "^5.2.8",
     "@playwright/test": "^1.59.1",
-    "@tailwindcss/postcss": "^4.2.2",
+    "@tailwindcss/postcss": "^4.2.4",
     "clsx": "^2.1.0",
     "mini-css-extract-plugin": "^2.10.2",
     "react": "^18.3.0",

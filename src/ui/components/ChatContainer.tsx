@@ -22,7 +22,7 @@
  * Main component that manages WebSocket connection and message state
  */
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { ChatMessage } from '../../lib/types/message';
 import { ViewerInfo } from '../../lib/types/extension';
 import { renderMessageContent } from '../../lib/renderMessage';
@@ -386,6 +386,15 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
     if (data.type === 'POPOUT_CLOSED') {
       setIsPoppedOut(false);
     }
+
+    // Firefox fallback for "Bring back chat": content scripts can't reliably
+    // close the pop-out window via the window.open() return reference, so the
+    // SW broadcasts POPOUT_SELF_CLOSE over the port and the pop-out closes
+    // itself. window.close() is always allowed on a script-opened window from
+    // its own document.
+    if (data.type === 'POPOUT_SELF_CLOSE' && isPopOut) {
+      window.close();
+    }
   };
 
   useEffect(() => {
@@ -463,27 +472,35 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
     return () => clearTimeout(timer);
   }, [reconnectCountdown]);
 
-  // Track whether the user is "following" chat (scrolled to bottom).
-  // We flip this off when the user scrolls up, and back on when they
-  // scroll back near the bottom — so async image loads can't drift us
-  // past a static pixel threshold.
+  // Whether the user is currently pinned to the bottom of the chat.
+  //
+  // The pieces that make this race-free under high-volume bursts:
+  //  - Auto-scroll runs in useLayoutEffect — synchronous between commit and
+  //    paint, so scrollTop is always updated before the browser samples it.
+  //    Without this, the browser paints with a stale scroll position and
+  //    handleScroll measures bogus diffs.
+  //  - handleScroll fires synchronously on the scroll event, so a real user
+  //    wheel/touch flips this BEFORE the next inbound message's
+  //    useLayoutEffect would otherwise scroll us back to the bottom.
   const isFollowingChat = useRef(true);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
-  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  // Messages received while the user was scrolled up. The indicator
+  // shows this; auto-following keeps it at zero by definition.
+  const [unreadCount, setUnreadCount] = useState(0);
+  const prevMessageCount = useRef(0);
 
   const handleScroll = useCallback(() => {
     const el = messagesContainerRef.current;
     if (!el) return;
-    const threshold = 80;
+    const max = el.scrollHeight - el.clientHeight;
     const wasFollowing = isFollowingChat.current;
-    isFollowingChat.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
-
-    setShowScrollToBottom(!isFollowingChat.current);
-
-    // User scrolled back to bottom — trim the paused buffer back down
-    if (!wasFollowing && isFollowingChat.current) {
-      setMessages((prev) => prev.slice(-MAX_MESSAGES_FOLLOWING));
+    const atBottom = el.scrollTop >= max - 80;
+    isFollowingChat.current = atBottom;
+    if (atBottom) {
+      setUnreadCount(0);
+      if (!wasFollowing) {
+        setMessages((prev) => prev.slice(-MAX_MESSAGES_FOLLOWING));
+      }
     }
   }, []);
 
@@ -492,16 +509,26 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
     if (!el) return;
     el.scrollTop = el.scrollHeight;
     isFollowingChat.current = true;
-    setShowScrollToBottom(false);
+    setUnreadCount(0);
     setMessages((prev) => prev.slice(-MAX_MESSAGES_FOLLOWING));
   }, []);
 
-  // Auto-scroll when new messages arrive, but only if the user hasn't scrolled up.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = messagesContainerRef.current;
     if (el && isFollowingChat.current) {
       el.scrollTop = el.scrollHeight;
     }
+  }, [messages]);
+
+  // Count messages that arrive while the user is paused. Length-diff
+  // handles both new arrivals (+1) and auto-scroll trims (negative,
+  // ignored) without needing to inspect message identity.
+  useEffect(() => {
+    const delta = messages.length - prevMessageCount.current;
+    if (delta > 0 && !isFollowingChat.current) {
+      setUnreadCount((c) => c + delta);
+    }
+    prevMessageCount.current = messages.length;
   }, [messages]);
 
   // Add toast notification
@@ -919,9 +946,14 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                           const activeGradient: NameGradient | null = isOwnMessage
                             ? (parsedGradient ?? messageGradient)
                             : messageGradient;
+                          // Fall back to the theme-aware text color so unknown-color
+                          // usernames (common on YouTube, where the backend only supplies
+                          // colours for a small fraction of accounts) stay legible in
+                          // light mode. Hardcoding '#fff' left them invisible on the
+                          // white surface when the host page is in light theme.
                           const activeColor: string = isOwnMessage && viewerNameColor
                             ? viewerNameColor
-                            : (message.user.color || '#fff');
+                            : (message.user.color || 'var(--color-text)');
 
                           const isSamePlatform = message.platform === platform;
                           const handleNameClick = isSamePlatform ? () => {
@@ -1007,8 +1039,9 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                 )}
               </div>
 
-              {/* Scroll to bottom button */}
-              {showScrollToBottom && (
+              {/* Scroll to bottom button — shown only when messages arrived
+                  while the user was scrolled up. */}
+              {unreadCount > 0 && (
                 <div className="flex justify-center py-1 bg-surface border-t border-border">
                   <button
                     onClick={scrollToBottom}
@@ -1018,7 +1051,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="6 9 12 15 18 9" />
                     </svg>
-                    New messages
+                    {unreadCount === 1 ? '1 new message' : `${unreadCount} new messages`}
                   </button>
                 </div>
               )}
@@ -1040,6 +1073,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                     twitchChannel={twitchChannel}
                     videoId={videoId}
                     token={viewerToken ?? undefined}
+                    isPopOut={isPopOut}
                     onAuthError={handleAuthError}
                     onSendSuccess={handleMessageSent}
                   />

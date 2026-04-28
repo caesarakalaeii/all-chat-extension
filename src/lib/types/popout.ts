@@ -54,6 +54,17 @@ export interface ClosePopoutMessage {
   type: 'CLOSE_POPOUT';
 }
 
+/**
+ * SW → pop-out (via port): tell the pop-out window to close itself.
+ * Firefox content scripts cannot reliably call `popoutWindow.close()`
+ * on an extension-page popup due to cross-origin restrictions, so the
+ * content script asks the SW to broadcast a self-close to the popup,
+ * which calls `window.close()` on its own document (always allowed).
+ */
+export interface PopoutSelfCloseMessage {
+  type: 'POPOUT_SELF_CLOSE';
+}
+
 /** native chat DOM → content script: user clicked "Switch to AllChat" button */
 export interface SwitchToAllChatMessage {
   type: 'SWITCH_TO_ALLCHAT';

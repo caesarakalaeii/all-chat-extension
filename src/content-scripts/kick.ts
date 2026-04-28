@@ -429,6 +429,11 @@ function setupGlobalMessageRelay() {
         updateTabBarConnDot(message.data.state);
       }
     }
+
+    if (message.type === 'POPOUT_CLOSED_REMOTE' && globalDetector) {
+      globalDetector.notifyPopoutClosedExternally('iframe[data-platform="kick"]');
+    }
+
     return false;
   });
 

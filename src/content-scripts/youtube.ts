@@ -1557,6 +1557,13 @@ function setupGlobalMessageRelay() {
       }
     }
 
+    // SW-driven pop-out close signal (Firefox: polling can't detect close
+    // because `this.popoutWindow.closed` throws on a dead cross-compartment
+    // wrapper — the SW watches port-disconnect and fans out POPOUT_CLOSED_REMOTE).
+    if (message.type === 'POPOUT_CLOSED_REMOTE' && globalDetector) {
+      globalDetector.notifyPopoutClosedExternally('iframe[data-platform="youtube"]');
+    }
+
     // Pop-out windows are top-level and can't postMessage into this tab,
     // but they can reach the service worker via chrome.runtime.sendMessage.
     // The SW forwards SEND_NATIVE_CHAT to us (the tab that owns the live
@@ -1631,7 +1638,37 @@ function setupGlobalMessageRelay() {
       window.open(`https://www.youtube.com/channel/${event.data.userId}`, '_blank');
     }
 
-    if (event.origin !== extensionOrigin) return;
+    // Gate for handlers below: accept only messages coming from our own
+    // AllChat iframe. We used to gate on `event.origin === extensionOrigin`,
+    // but Firefox content scripts observe `event.origin` as the parent
+    // page's origin (youtube.com) rather than the iframe's moz-extension
+    // origin — see the mirror-comment in ChatContainer.tsx. That origin-only
+    // check silently dropped OPEN_YOUTUBE_CONTEXT_MENU, SEND_NATIVE_CHAT,
+    // POPOUT_REQUEST, CLOSE_POPOUT, etc. on Firefox, so the three-dot
+    // block/report menu never appeared. Identity via `event.source` matches
+    // the exact iframe we embedded, is cross-browser safe, and is strictly
+    // stricter than an origin check (other extension-origin frames no
+    // longer pass). Keep the origin check as a fallback for edge cases
+    // where the iframe handle is momentarily unavailable (e.g. mid re-mount).
+    let fromOurIframe = !!event.source && Array.from(
+      document.querySelectorAll('iframe[data-platform="youtube"]'),
+    ).some(f => (f as HTMLIFrameElement).contentWindow === event.source);
+    // Firefox fallback: in some content-script contexts the
+    // `contentWindow === event.source` comparison misses because the
+    // two references flow through different Xray wrappers even though
+    // they point at the same underlying Window. Fall back to reading
+    // the iframe element straight off the event source's frameElement —
+    // if that element carries our data-platform tag, the message is
+    // from our own iframe regardless of wrapper identity.
+    if (!fromOurIframe && event.source) {
+      try {
+        const fe = (event.source as Window).frameElement as HTMLElement | null;
+        if (fe?.getAttribute('data-platform') === 'youtube') {
+          fromOurIframe = true;
+        }
+      } catch { /* cross-origin frameElement access blocked — ignore */ }
+    }
+    if (!fromOurIframe && event.origin !== extensionOrigin) return;
 
     if (event.data.type === 'POPOUT_REQUEST' && globalDetector) {
       globalDetector.handlePopoutRequest(event.data);

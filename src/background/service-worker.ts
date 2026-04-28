@@ -120,6 +120,23 @@ chrome.runtime.onConnect.addListener((port) => {
   port.onDisconnect.addListener(() => {
     console.log('[AllChat] Pop-out window disconnected');
     popoutPorts.delete(port);
+
+    // Firefox authoritative close signal: the content script's Window reference
+    // from `window.open()` is a dead cross-compartment wrapper, so it can't
+    // detect the close via polling. The port disconnect is the only reliable
+    // lifecycle event when the pop-out goes away (self-close, user X, navigate).
+    // Broadcast POPOUT_CLOSED to all platform tabs so the in-page iframes
+    // restore their normal view. Tabs with no active pop-out ignore the message
+    // (their iframes aren't in the "popped out" banner state).
+    chrome.tabs.query({
+      url: ['https://www.twitch.tv/*', 'https://www.youtube.com/*', 'https://kick.com/*', 'https://studio.youtube.com/*'],
+    }, (tabs) => {
+      tabs.forEach((tab) => {
+        if (tab.id) {
+          chrome.tabs.sendMessage(tab.id, { type: 'POPOUT_CLOSED_REMOTE' }).catch(() => { /* tab not listening */ });
+        }
+      });
+    });
   });
 });
 
@@ -320,6 +337,13 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
               maxAttempts: WS_MAX_RECONNECT_ATTEMPTS
             }
           });
+          break;
+
+        case 'CLOSE_POPOUT_WINDOWS':
+          // Firefox fallback: content scripts can't reliably call `popoutWindow.close()`
+          // on an extension-page popup. Tell every connected pop-out to self-close.
+          broadcastToPorts({ type: 'POPOUT_SELF_CLOSE' });
+          sendResponse({ success: true });
           break;
 
         default:

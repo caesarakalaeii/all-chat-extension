@@ -258,6 +258,11 @@ function setupGlobalMessageRelay() {
         }
       });
     }
+
+    if (message.type === 'POPOUT_CLOSED_REMOTE' && globalDetector) {
+      globalDetector.notifyPopoutClosedExternally('iframe[data-platform="youtube"]');
+    }
+
     return false;
   });
 

@@ -53,6 +53,17 @@ let ytOverlayDialogObserver: MutationObserver | null = null;
 // #input-panel to one of its siblings here. Picking this up lets us
 // flip the frame z-index over AllChat when any purchase flow opens.
 let ytPanelPagesObserver: MutationObserver | null = null;
+// Watches ytd-live-chat-frame for the native X click, which sets
+// `collapsed` + `hide-chat-frame` attributes. The `hide-chat-frame`
+// attribute triggers YT's own `display: none` on the whole frame,
+// leaving our pinned parent column as an empty bordered box. We strip
+// `hide-chat-frame` so the native collapsed state renders its own
+// #show-hide-button widget, and we shed our host-column chrome while
+// collapsed so the column can shrink to the widget.
+let ytFrameCollapseObserver: MutationObserver | null = null;
+// The parent column's original pinned min-height, cached so we can
+// restore it when the user re-expands chat via YT's widget.
+let pinnedHostMinHeight = '';
 
 /**
  * Activate the YouTube Chat tab: hide AllChat, show native YouTube chat.
@@ -71,6 +82,11 @@ function handleSwitchToYouTube(detector: YouTubeDetector): void {
  * Activate the AllChat tab: show AllChat, hide native YouTube chat.
  */
 function handleSwitchToAllChat(detector: YouTubeDetector): void {
+  // If the user collapsed the native chat from the YouTube tab, the
+  // frame still has `collapsed` (and possibly `hide-chat-frame`) set.
+  // Uncollapse first so the iframe's header/ticker/input regain their
+  // natural heights before hideNativeChat measures them.
+  detector.expandIfCollapsed();
   const container = document.getElementById('allchat-container');
   if (container) container.style.display = 'flex';
   detector.hideNativeChat();
@@ -308,16 +324,60 @@ class YouTubeDetector extends PlatformDetector {
       const h = parent.getBoundingClientRect().height;
       if (h > 100 && !parent.style.minHeight) {
         parent.style.minHeight = `${h}px`;
+        pinnedHostMinHeight = parent.style.minHeight;
+      } else if (parent.style.minHeight) {
+        pinnedHostMinHeight = parent.style.minHeight;
       }
       if (getComputedStyle(parent).position === 'static') {
         parent.style.position = 'relative';
       }
+      // Brand class used by the injected style block below to paint a
+      // rounded 1px border around the whole panel (tab bar + overlay +
+      // frame). Stripped in resetOverlayLayout on teardown.
+      parent.classList.add('allchat-overlay-host');
     }
+
+    this.wireCollapseObserver(chatFrame, parent);
 
     if (!document.getElementById('allchat-hide-native-style')) {
       const style = document.createElement('style');
       style.id = 'allchat-hide-native-style';
       style.textContent = `
+        /* Restore the 1px rounded panel border native YouTube paints
+           around the live chat frame. We shift it up to the parent so
+           the border wraps the WHOLE panel — tab bar + overlay +
+           frame — instead of only the frame, and we strip the frame's
+           own border to avoid a double outline. Colours match YT's
+           theme (light = black/10%, dark = white/10%). */
+        .allchat-overlay-host {
+          border: 1px solid rgba(0, 0, 0, 0.1);
+          border-radius: 12px;
+          overflow: hidden;
+          box-sizing: border-box;
+        }
+        html[dark] .allchat-overlay-host {
+          border-color: rgba(255, 255, 255, 0.1);
+        }
+        .allchat-overlay-host ytd-live-chat-frame {
+          border: 0 !important;
+          border-radius: 0 !important;
+        }
+        /* Collapsed state (user clicked native X). Shed the bordered
+           panel chrome and let the parent column shrink to fit just the
+           native show-hide-button strip + our tab bar. The observer in
+           wireCollapseObserver additionally strips the hide-chat-frame
+           attribute YT sets alongside collapsed, so the native widget
+           inside the frame (#show-hide-button, "Chat anzeigen") stays
+           visible and clickable for re-expansion. */
+        .allchat-overlay-host.allchat-frame-collapsed {
+          border: 0 !important;
+          border-radius: 0 !important;
+          overflow: visible !important;
+          min-height: 0 !important;
+        }
+        .allchat-overlay-host.allchat-frame-collapsed #allchat-container {
+          display: none !important;
+        }
         ytd-live-chat-frame {
           position: absolute !important;
           left: 0 !important;
@@ -333,6 +393,14 @@ class YouTubeDetector extends PlatformDetector {
           max-height: none !important;
           min-height: 0 !important;
           transition: z-index 0s !important;
+        }
+        /* While collapsed, drop the absolute positioning so the frame
+           flows inline inside the (now short) parent column and renders
+           at the native show-hide-button's intrinsic size. */
+        ytd-live-chat-frame[collapsed] {
+          position: relative !important;
+          top: auto !important;
+          bottom: auto !important;
         }
         ytd-live-chat-frame.allchat-picker-active {
           z-index: 3 !important;
@@ -370,10 +438,77 @@ class YouTubeDetector extends PlatformDetector {
     const iframe = document.querySelector('ytd-live-chat-frame iframe') as HTMLIFrameElement | null;
     if (iframe && !iframe.dataset.allchatTrimWired) {
       iframe.dataset.allchatTrimWired = '1';
-      iframe.addEventListener('load', () => this.applyIframeTrim());
+      iframe.addEventListener('load', () => {
+        // Only re-trim if AllChat is still the active tab. YouTube
+        // reloads the iframe on uncollapse / subscribers-only mode
+        // flip / SPA nav — without this guard the load handler would
+        // re-inject the trim CSS while the user is in the native tab,
+        // hiding the YT message list and stripping the header chrome
+        // (Top Chat dropdown, kebab, X) exactly when they want them.
+        const container = document.getElementById('allchat-container');
+        if (!container || getComputedStyle(container).display === 'none') return;
+        this.applyIframeTrim();
+      });
     }
 
     console.log('[AllChat YouTube] Overlay active — native stack visible, messages hidden, pickers layered above AllChat');
+  }
+
+  /**
+   * Make the native X (yt-live-chat-header-renderer > #close-button) work
+   * with our overlay.
+   *
+   * What YouTube does on X click:
+   *   - Adds `collapsed` → CSS rule `ytd-live-chat-frame[collapsed] iframe
+   *     { max-height: 0 }` zeroes the chat list so only the native
+   *     #show-hide-button (a "Chat anzeigen" / "Show chat" widget living
+   *     inside the frame) remains. This is the state we want.
+   *   - Adds `hide-chat-frame` → CSS rule
+   *     `ytd-live-chat-frame[hide-chat-frame] { display: none }` removes
+   *     the frame entirely, taking the show-hide-button with it. Combined
+   *     with our pinned min-height on the parent column, that left the
+   *     user staring at an empty bordered box with no way to re-open.
+   *
+   * Fix: strip `hide-chat-frame` whenever YT sets it, and toggle a
+   * `allchat-frame-collapsed` class on the host column so our CSS drops
+   * the bordered panel + tabs + pinned min-height while collapsed. The
+   * native show-hide-button then renders at its intrinsic size and the
+   * user can click it to re-expand.
+   */
+  private wireCollapseObserver(frame: HTMLElement | null, parent: HTMLElement | null): void {
+    if (!frame || !parent) return;
+    ytFrameCollapseObserver?.disconnect();
+    ytFrameCollapseObserver = null;
+
+    const apply = () => {
+      if (frame.hasAttribute('hide-chat-frame')) {
+        // Keep collapsed but drop the attribute that nukes the frame.
+        frame.removeAttribute('hide-chat-frame');
+      }
+      const collapsed = frame.hasAttribute('collapsed');
+      parent.classList.toggle('allchat-frame-collapsed', collapsed);
+    };
+
+    apply();
+    ytFrameCollapseObserver = new MutationObserver(apply);
+    ytFrameCollapseObserver.observe(frame, {
+      attributes: true,
+      attributeFilter: ['collapsed', 'hide-chat-frame'],
+    });
+  }
+
+  /**
+   * Force the frame out of its collapsed state. Called when the user
+   * switches back to the AllChat tab — without this, the iframe's
+   * `max-height: 0` would hide the header/ticker/input we rely on for
+   * the overlay alignment.
+   */
+  expandIfCollapsed(): void {
+    const frame = document.querySelector('ytd-live-chat-frame') as HTMLElement | null;
+    if (!frame) return;
+    if (frame.hasAttribute('collapsed')) frame.removeAttribute('collapsed');
+    if (frame.hasAttribute('hide-chat-frame')) frame.removeAttribute('hide-chat-frame');
+    frame.parentElement?.classList.remove('allchat-frame-collapsed');
   }
 
   /**
@@ -405,6 +540,18 @@ class YouTubeDetector extends PlatformDetector {
         yt-live-chat-renderer #contents > #chat,
         yt-live-chat-renderer #item-list,
         yt-live-chat-item-list-renderer {
+          display: none !important;
+        }
+        /* Hide header chrome that does not apply to an AllChat-driven
+           column: the Top Chat / Live Chat sort dropdown (AllChat drives
+           the feed so mode selection makes no sense), the "more options"
+           three-dot menu, and the close X. The XP leaderboard entry
+           (#viewer-leaderboard-entry-point) stays — users still earn XP
+           by watching. Scoped to the header so overlay-dialog / product-
+           picker close buttons (same #close-button id) are untouched. */
+        yt-live-chat-header-renderer #view-selector,
+        yt-live-chat-header-renderer #live-chat-header-context-menu,
+        yt-live-chat-header-renderer > #close-button {
           display: none !important;
         }
         /* Make #panel-pages fill the space #chat used to occupy. By default
@@ -456,6 +603,17 @@ class YouTubeDetector extends PlatformDetector {
              (reactions). left:0 + right:0 already fits the element to its
              containing block while respecting padding. */
           z-index: 2 !important;
+          /* YouTube ships the input renderer with overflow:auto/hidden
+             because it normally expands to contain any open picker. With
+             our position:absolute pin the renderer's intrinsic height
+             collapses to the static content (the input row), while the
+             picker panels (#product-picker aka super-chat/support, #emoji)
+             are absolute with negative top anchoring up from the
+             renderer's bottom edge. Any non-visible overflow on the host
+             clips those panels entirely — the super-chat popup opens but
+             renders blank behind the chat column. Force overflow:visible
+             so those panels escape the 0-height pin box. */
+          overflow: visible !important;
           background: var(--yt-live-chat-background-color, #0f0f0f) !important;
         }
         /* Match the platform's dark/light surface on the parts that DO
@@ -539,24 +697,34 @@ class YouTubeDetector extends PlatformDetector {
 
     let alignRaf = false;
     // Remember the input-area bottom offset measured when no picker is
-    // active. When a user picker opens (emoji / super-chat) the input
-    // renderer grows taller — if we followed that growth the AllChat
-    // overlay's bottom offset would balloon and visibly push the
-    // cross-platform messages upward. Instead we freeze to the idle
-    // value and rely on the frame's z-index flip (.allchat-picker-active)
-    // to float the picker above AllChat.
+    // active. During a modal takeover (buy-flow / overlay-dialog) the
+    // input renderer collapses to 0 — if we followed that the AllChat
+    // overlay's bottom offset would balloon. Freeze to the idle value
+    // and rely on the frame's z-index flip to float the modal above.
     let lastIdleBotH = 0;
+    // When a bottom-anchored picker (emoji / super-chat menu) is open,
+    // updatePickerState writes the picker's top edge here in parent-
+    // document coordinates so alignOverlay can shrink the AllChat
+    // container just above the picker. This keeps AllChat messages
+    // visible in the remaining top band instead of the previous
+    // behaviour of hiding every message behind a z-index bump.
+    let pickerBotOffset: number | null = null;
     const alignOverlay = () => {
       if (alignRaf) return;
       alignRaf = true;
       win.requestAnimationFrame(() => {
         alignRaf = false;
         const topH = getTopStackH();
-        const pickerActive = frame.classList.contains('allchat-picker-active');
+        const modalActive = frame.classList.contains('allchat-picker-active');
         const measuredBotH = getInputBottomOffset();
         let botH: number;
-        if (pickerActive) {
+        if (modalActive) {
           botH = lastIdleBotH || measuredBotH;
+        } else if (pickerBotOffset != null) {
+          // Shrink AllChat to end at the picker's top edge. Leaves
+          // `lastIdleBotH` untouched so reopening the input restores
+          // the pre-picker layout cleanly.
+          botH = pickerBotOffset;
         } else {
           lastIdleBotH = measuredBotH;
           botH = measuredBotH;
@@ -565,28 +733,70 @@ class YouTubeDetector extends PlatformDetector {
         container.style.bottom = `${botH}px`;
       });
     };
+    // Convert the active picker's visible top edge to the AllChat
+    // container's `bottom:` value (parent-document coords).
+    //
+    // The two picker renderers lay out very differently and we have to
+    // accommodate both:
+    //   - Emoji picker (`#emoji`, position:relative): participates in
+    //     the input-renderer's flex flow. The renderer *expands* upward
+    //     to hold the input row (top) + picker grid (bottom). The
+    //     visible top edge of the bottom stack is the renderer's top —
+    //     using the picker's rect.top instead would cover the input row
+    //     and leave the user unable to close the picker or send chat.
+    //   - Product picker (`#product-picker`, position:absolute with
+    //     `top:-330px; bottom:8px`): floats upward out of a collapsed
+    //     0-height renderer. Native YouTube intentionally hides the
+    //     input row during this menu phase. The renderer's rect.top
+    //     sits at the very bottom, so its top edge is useless — the
+    //     picker's own rect.top is the visible top edge.
+    //
+    // Taking the minimum of the two rect.tops picks the correct anchor
+    // in both cases (and ignores the renderer when it is collapsed).
+    const measurePickerBotOffset = (pickerEl: HTMLElement): number | null => {
+      if (!parentEl) return null;
+      const parentRect = parentEl.getBoundingClientRect();
+      const iframeRect = iframe.getBoundingClientRect();
+      const pickerRect = pickerEl.getBoundingClientRect();
+      let topInIframe = pickerRect.top;
+      const inputRenderer = doc.querySelector('yt-live-chat-message-input-renderer') as HTMLElement | null;
+      if (inputRenderer) {
+        const inputRect = inputRenderer.getBoundingClientRect();
+        if (inputRect.height > 0 && inputRect.top < topInIframe) {
+          topInIframe = inputRect.top;
+        }
+      }
+      const topInParent = iframeRect.top + topInIframe;
+      return Math.max(0, Math.round(parentRect.bottom - topInParent));
+    };
 
     // ---- Picker visibility detection ----
-    // Two kinds of "picker" behave very differently and need different
-    // overlay treatments:
+    // Three overlay treatments, picked by how much of the chat column
+    // the native UI takes over:
     //
-    //   USER_PICKER (emoji, super-chat, product-picker): user clicked the
-    //   icon to open — the panel is large and needs to cover the chat
-    //   column. Fine to flip the frame's z-index above AllChat; matches
-    //   native YouTube behavior where the message list is hidden while
-    //   the picker is open.
+    //   MODAL (full-column takeover): #panel-pages swapped off
+    //   #input-panel (buy-flow / donation-flow / super-sticker-buy-flow
+    //   / gift-sub / q&a / poll) OR #overlay-dialog populated (phase-2
+    //   purchase, membership, error dialogs). The native UI fills the
+    //   entire column from ticker to input, so there is no room to keep
+    //   AllChat visible. Toggle `.allchat-picker-active` on the frame
+    //   to flip z-index above AllChat — the messages disappear, which
+    //   matches both native YouTube behaviour and the user's focus
+    //   during a payment flow.
     //
-    //   REACTION (hover-expanded live-reactions panel): a skinny vertical
-    //   column of 6 buttons (~48px wide × ~216px tall) pinned to the
-    //   right side of the input. Expanded transiently on hover. Flipping
-    //   the whole frame z-index for this would blank all messages; the
-    //   user complained about exactly that.
+    //   PICKER (bottom-anchored partial overlay): #pickers iron-pages
+    //   marks emoji / product-picker iron-selected. These panels are
+    //   ~300-340px tall and pinned above the input row; they do not
+    //   cover the top of the chat column. Rather than hiding every
+    //   AllChat message behind a z-index bump, we shrink the AllChat
+    //   container so its bottom sits right on top of the picker. The
+    //   frame stays at z:1 and the picker renders inside it untouched,
+    //   while AllChat messages remain visible in the band above.
     //
-    // So: for USER_PICKER we add `allchat-picker-active` to the frame
-    // (existing behavior). For REACTION we add `allchat-reaction-active`
-    // to the container and apply a clip-path hole that exposes the right
-    // ~60px column where reactions actually render — AllChat messages
-    // stay visible everywhere else.
+    //   REACTION (hover-expanded live-reactions panel): a skinny
+    //   vertical column pinned to the right of the input. Clip a
+    //   ~60px gutter on the right so the expanded panel shows
+    //   through, AllChat messages stay visible on the left.
     const REACTION_EXPANDED_MIN_H = 60; // closed panel ~36px, expanded stacks 6 buttons
     const REACTION_GUTTER_PX = 60;      // width of the clip-path hole
     const isVisible = (el: Element | null): boolean => {
@@ -597,63 +807,68 @@ class YouTubeDetector extends PlatformDetector {
       return r.width > 0 && r.height > 0;
     };
     const updatePickerState = () => {
-      let userPicker = false;
+      let modalActive = false;
+      let pickerEl: HTMLElement | null = null;
 
-      // Case 1 (most common): #panel-pages swapped away from #input-panel.
+      // Case 1: #panel-pages swapped away from #input-panel → MODAL.
       // This is the outermost iron-pages inside the chat iframe — the
       // slot that hosts the whole input row by default, and swaps to a
       // purchase flow (#buy-flow for super-chat, #super-sticker-buy-flow,
       // #donation-flow, #sponsorships-gift-buy-flow, #qna-start-panel,
       // #poll-editor-panel) when the user clicks the corresponding button.
-      // When iron-selected flips OFF #input-panel onto any sibling, the
-      // whole chat area is now a user-opened modal.
+      // These fill the whole chat column from ticker to input.
       const panelPages = doc.getElementById('panel-pages') as HTMLElement | null;
       if (panelPages) {
-        const activePanel = [...panelPages.children].find(c => c.classList.contains('iron-selected')) as HTMLElement | null;
+        const activePanel = Array.from(panelPages.children).find(c => c.classList.contains('iron-selected')) as HTMLElement | null;
         if (activePanel && activePanel.id && activePanel.id !== 'input-panel') {
-          userPicker = true;
+          modalActive = true;
         }
       }
 
-      // Case 2: iron-pages #pickers has a child with `iron-selected`
-      // class. This is the INNER picker (emoji / super-chat tier selector)
-      // that opens above the input without replacing the whole panel.
-      // Polymer iron-pages marks the active page via the class on the
-      // child — `selected` attribute on the parent is a property-only
-      // reflection in some builds, so we can't rely on getAttribute.
-      if (!userPicker) {
+      // Case 2: #pickers iron-pages has a child with `iron-selected` →
+      // PICKER. This is the INNER picker (emoji / super-chat menu) that
+      // opens above the input without replacing the whole panel. Polymer
+      // iron-pages marks the active page via the class on the child —
+      // `selected` attribute on the parent is a property-only reflection
+      // in some builds, so we can't rely on getAttribute.
+      if (!modalActive) {
         const pickers = doc.getElementById('pickers') as HTMLElement | null;
         if (pickers) {
-          const activeChild = [...pickers.children].find(c => c.classList.contains('iron-selected')) as HTMLElement | null;
+          const activeChild = Array.from(pickers.children).find(c => c.classList.contains('iron-selected')) as HTMLElement | null;
           if (activeChild && isVisible(activeChild)) {
-            userPicker = true;
+            pickerEl = activeChild;
           }
         }
       }
 
-      // Case 3: #overlay-dialog gets populated for super-chat purchase
-      // phase 2 (payment modal), membership dialogs, error dialogs. It
-      // starts empty — any mounted child means a user-opened overlay is
-      // active. Don't dimension-check the overlay-dialog element itself:
-      // it's position:static with 0 height and children are absolutely
-      // positioned inside, so the container's rect never reflects the
-      // dialog's size.
-      if (!userPicker) {
+      // Case 3: #overlay-dialog populated → MODAL. Super-chat purchase
+      // phase 2 (payment modal), membership dialogs, error dialogs mount
+      // here. It starts empty — any mounted child means a user-opened
+      // overlay is active. Don't dimension-check the overlay-dialog
+      // element itself: it's position:static with 0 height and children
+      // are absolutely positioned inside, so the container's rect never
+      // reflects the dialog's size.
+      if (!modalActive && !pickerEl) {
         const overlayDialog = doc.getElementById('overlay-dialog');
         if (overlayDialog && overlayDialog.childElementCount > 0) {
-          userPicker = true;
+          modalActive = true;
         }
       }
 
       let reactionExpanded = false;
-      if (!userPicker) {
+      if (!modalActive && !pickerEl) {
         const reactionPanel = doc.querySelector('yt-reaction-control-panel-view-model');
         if (reactionPanel && reactionPanel.getBoundingClientRect().height > REACTION_EXPANDED_MIN_H) {
           reactionExpanded = true;
         }
       }
 
-      frame.classList.toggle('allchat-picker-active', userPicker);
+      frame.classList.toggle('allchat-picker-active', modalActive);
+      // Stash the picker-top offset for alignOverlay to consume. Setting
+      // it to null when no picker is active lets alignOverlay fall back
+      // to the normal "align to input top" formula.
+      pickerBotOffset = pickerEl ? measurePickerBotOffset(pickerEl) : null;
+
       if (reactionExpanded) {
         // Clip a vertical strip on the right so the expanded reaction
         // panel (which is inside the iframe at z-index:1) shows through.
@@ -664,6 +879,10 @@ class YouTubeDetector extends PlatformDetector {
       } else {
         container.style.clipPath = '';
       }
+
+      // Kick alignOverlay so the new pickerBotOffset takes effect on
+      // the same frame, not one frame later when the next resize fires.
+      alignOverlay();
     };
 
     // ---- Bind observers ----
@@ -852,6 +1071,27 @@ class YouTubeDetector extends PlatformDetector {
     const iframe = chatFrame?.querySelector('iframe') as HTMLIFrameElement | null;
     const doc = iframe?.contentDocument;
     doc?.getElementById('allchat-yt-trim')?.remove();
+
+    // Kick YT's virtual scroller. While the AllChat tab was active we
+    // had `yt-live-chat-item-list-renderer` as `display: none`, so the
+    // virtual scroller stopped rendering rows and its scrollHeight
+    // collapsed to clientHeight (typically ~441px on a ~500-row feed).
+    // Un-hiding alone leaves it in that stale state — the user sees
+    // only a handful of messages and the feed appears frozen until the
+    // next new message scrolls it back into life. Forcing scrollTop to
+    // scrollHeight rehydrates the full item list in one pass and lands
+    // the viewer at the live edge.
+    const scroller = doc?.querySelector('yt-live-chat-item-list-renderer #item-scroller') as HTMLElement | null;
+    if (scroller) {
+      scroller.scrollTop = scroller.scrollHeight;
+      // Follow-up ticks: YT re-measures rows over the next frame or two
+      // and sometimes snaps back to an earlier scroll position. Re-pin
+      // to the bottom after the rehydration settles.
+      const win = iframe?.contentWindow;
+      win?.requestAnimationFrame?.(() => { scroller.scrollTop = scroller.scrollHeight; });
+      win?.setTimeout?.(() => { scroller.scrollTop = scroller.scrollHeight; }, 100);
+    }
+
     console.log('[AllChat YouTube] Native tab — overlay torn down, messages restored');
   }
 
@@ -860,11 +1100,16 @@ class YouTubeDetector extends PlatformDetector {
    * Called on URL change / extension disable; leaves no trace on the page.
    */
   private resetOverlayLayout(): void {
+    ytFrameCollapseObserver?.disconnect();
+    ytFrameCollapseObserver = null;
+    pinnedHostMinHeight = '';
     const chatFrame = document.querySelector('ytd-live-chat-frame') as HTMLElement | null;
     const parent = chatFrame?.parentElement;
     if (parent) {
       parent.style.minHeight = '';
       parent.style.position = '';
+      parent.classList.remove('allchat-overlay-host');
+      parent.classList.remove('allchat-frame-collapsed');
     }
     if (chatFrame) {
       chatFrame.style.top = '';
@@ -1075,7 +1320,7 @@ function getInnerTubeContext(): { apiKey: string; context: Record<string, unknow
   let context: Record<string, unknown> | null = null;
 
   const scripts = document.querySelectorAll('script');
-  for (const s of scripts) {
+  for (const s of Array.from(scripts)) {
     const text = s.textContent;
     if (!text || !text.includes('INNERTUBE_API_KEY')) continue;
 

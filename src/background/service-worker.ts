@@ -66,6 +66,50 @@ const KEEPALIVE_ALARM = 'allchat-ws-keepalive';
 // service worker restarts. Session storage is cleared when the browser closes.
 const SESSION_STREAMER_KEY = 'ws_active_streamer';
 
+/**
+ * Locate the content-script-owning tab for a pop-out native-send request.
+ *
+ * We prefer a tab whose URL references the same video_id (for YouTube,
+ * that's the /watch?v= or /live/ path segment). On the other platforms
+ * the tab URL contains the streamer login instead. Returns the most
+ * recently focused matching tab so users with multiple streams open get
+ * the one they're actively watching.
+ */
+async function findNativeSendTab(
+  platform: 'youtube' | 'twitch' | 'kick' | 'tiktok',
+  videoId: string | undefined,
+  streamer: string,
+): Promise<number | null> {
+  const urlPatterns: Record<typeof platform, string[]> = {
+    youtube: ['*://www.youtube.com/watch*', '*://www.youtube.com/live/*'],
+    twitch: ['*://www.twitch.tv/*'],
+    kick: ['*://kick.com/*'],
+    tiktok: [],
+  };
+  const patterns = urlPatterns[platform];
+  if (patterns.length === 0) return null;
+
+  const tabs = await chrome.tabs.query({ url: patterns });
+  if (tabs.length === 0) return null;
+
+  // For YouTube, match by videoId first — multiple streams may be open.
+  if (platform === 'youtube' && videoId) {
+    const match = tabs.find(
+      t => t.url?.includes(`v=${videoId}`) || t.url?.includes(`/live/${videoId}`),
+    );
+    if (match?.id != null) return match.id;
+  }
+
+  // Otherwise match by streamer handle in the URL path.
+  const streamerLower = streamer.toLowerCase();
+  const byStreamer = tabs.find(t => t.url?.toLowerCase().includes(`/${streamerLower}`));
+  if (byStreamer?.id != null) return byStreamer.id;
+
+  // Fall back to the most-recently-focused tab of the platform.
+  tabs.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0));
+  return tabs[0]?.id ?? null;
+}
+
 // Handle pop-out window port connections
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== POPOUT_PORT_NAME) return;
@@ -150,6 +194,35 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           await sendChatMessage(message.streamerUsername, message.message);
           sendResponse({ success: true });
           break;
+
+        case 'SEND_NATIVE_CHAT': {
+          // Pop-out path: the pop-out window has no parent tab to
+          // postMessage to, so it asks us to route the send through the
+          // content script on the original YouTube tab. Using the
+          // content script keeps the InnerTube call inside a document
+          // that owns YouTube's cookies (SAPISID for the auth hash).
+          try {
+            const tabId = await findNativeSendTab(message.platform, message.videoId, message.streamer);
+            if (tabId == null) {
+              sendResponse({
+                success: false,
+                error: 'Open the stream in a YouTube tab to send native-style messages from the pop-out',
+              });
+              break;
+            }
+            const result = await chrome.tabs.sendMessage(tabId, {
+              type: 'SEND_NATIVE_CHAT',
+              message: message.message,
+            });
+            sendResponse(result ?? { success: false, error: 'No response from content script' });
+          } catch (err: unknown) {
+            sendResponse({
+              success: false,
+              error: err instanceof Error ? err.message : 'Failed to route pop-out send',
+            });
+          }
+          break;
+        }
 
         case 'DO_LOGIN': {
           const loginUrl = await initiateAuthUrl(message.platform, message.streamerUsername);

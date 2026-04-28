@@ -1556,6 +1556,28 @@ function setupGlobalMessageRelay() {
         updateTabBarConnDot(message.data.state);
       }
     }
+
+    // Pop-out windows are top-level and can't postMessage into this tab,
+    // but they can reach the service worker via chrome.runtime.sendMessage.
+    // The SW forwards SEND_NATIVE_CHAT to us (the tab that owns the live
+    // chat frame for this video) and we run the same InnerTube flow the
+    // in-page iframe uses — same session, same auth, same behaviour.
+    if (message.type === 'SEND_NATIVE_CHAT' && typeof message.message === 'string') {
+      (async () => {
+        try {
+          await sendYouTubeChatMessage(message.message);
+          sendResponse({ success: true });
+        } catch (err: unknown) {
+          console.error('[AllChat YouTube] Pop-out-routed send failed:', err);
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : 'Failed to send message',
+          });
+        }
+      })();
+      return true; // keep the port open for the async sendResponse
+    }
+
     return false;
   });
 

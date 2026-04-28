@@ -62,7 +62,15 @@ export type ExtensionMessage =
   | { type: 'SAVE_NAME_COLOR'; color: string | null }
   | { type: 'SAVE_NAME_GRADIENT'; gradient: string | null }
   | { type: 'SET_CURRENT_PLATFORM'; platform: string }
-  | { type: 'EXTENSION_STATE_CHANGED'; enabled: boolean };
+  | { type: 'EXTENSION_STATE_CHANGED'; enabled: boolean }
+  | { type: 'CLOSE_POPOUT_WINDOWS' }
+  | {
+      type: 'SEND_NATIVE_CHAT';
+      platform: 'youtube' | 'twitch' | 'kick' | 'tiktok';
+      streamer: string;
+      videoId?: string;
+      message: string;
+    };
 
 export type ExtensionResponse =
   | { success: true; data?: any }

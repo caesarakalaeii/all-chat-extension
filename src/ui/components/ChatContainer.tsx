@@ -867,7 +867,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                       } : undefined}
                     >
                       {/* YouTube 3-dot context menu button (Report/Block/Moderate) */}
-                      {message.platform === 'youtube' && message.metadata?.youtube_context_params && (
+                      {message.platform === 'youtube' && Boolean(message.metadata?.youtube_context_params) && (
                         <button
                           className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-150 hover:bg-[var(--color-surface-2)] text-[var(--color-text-sub)]"
                           onClick={(e) => {

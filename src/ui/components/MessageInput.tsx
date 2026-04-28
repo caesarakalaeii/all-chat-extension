@@ -33,6 +33,14 @@ interface MessageInputProps {
   videoId?: string;
   /** AllChat viewer JWT. Not required for YouTube (uses InnerTube with YouTube session). */
   token?: string;
+  /**
+   * True when rendering inside the pop-out window. Pop-out windows are
+   * top-level (no content-script parent), so postMessage delivery fails;
+   * instead we route native-platform sends through the service worker
+   * via `chrome.runtime.sendMessage`, which forwards to the original
+   * tab's content script to run the same InnerTube/GraphQL call.
+   */
+  isPopOut?: boolean;
   onSendSuccess?: () => void;
   onAuthError?: () => void;
 }
@@ -46,6 +54,7 @@ export default function MessageInput({
   twitchChannel,
   videoId,
   token,
+  isPopOut,
   onSendSuccess,
   onAuthError
 }: MessageInputProps) {
@@ -177,9 +186,35 @@ export default function MessageInput({
    * - YouTube: InnerTube API (SAPISIDHASH)
    * - Twitch: GraphQL SendChatMessage (auth-token cookie)
    * - Kick: REST API /messages/send (session cookies + XSRF-TOKEN)
+   *
+   * Two delivery paths for the same backing call:
+   *   - In-page iframe: postMessage to window.parent — the content
+   *     script listens on window.message and runs the native call.
+   *   - Pop-out window: window.parent === window (top-level), so
+   *     postMessage goes nowhere. Route via the service worker, which
+   *     chrome.tabs.sendMessage's the original platform tab so the
+   *     content script there runs the same native call with full
+   *     session access.
    */
-  const sendViaNativePlatform = (trimmed: string): Promise<void> => {
-    return new Promise((resolve, reject) => {
+  const sendViaNativePlatform = async (trimmed: string): Promise<void> => {
+    if (isPopOut) {
+      const response = await chrome.runtime.sendMessage({
+        type: 'SEND_NATIVE_CHAT',
+        platform,
+        streamer,
+        videoId,
+        message: trimmed,
+      }) as { success: boolean; error?: string } | undefined;
+      if (!response) {
+        throw new Error('Native send failed: no response from service worker');
+      }
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to send message');
+      }
+      return;
+    }
+
+    return new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         window.removeEventListener('message', handler);
         reject(new Error('Native send timed out'));
@@ -209,6 +244,7 @@ export default function MessageInput({
       onAuthError?.();
       setError({
         type: ChatErrorType.UNAUTHORIZED,
+        platform,
         message: 'Not authenticated',
         userMessage: 'Sign in to send messages.',
         actionableSteps: ['Sign in from the extension popup'],

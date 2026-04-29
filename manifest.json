@@ -98,6 +98,6 @@
   },
 
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://allch.at wss://allch.at"
+    "extension_pages": "script-src 'self'; object-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://allch.at wss://allch.at https://7tv.io https://api.frankerfacez.com https://api.betterttv.net"
   }
 }

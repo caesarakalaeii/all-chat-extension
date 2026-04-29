@@ -1,4 +1,22 @@
 /**
+ * This file is part of All-Chat Extension.
+ * Copyright (C) 2026 caesarakalaeii
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
  * Extension-specific types for communication between components
  */
 
@@ -22,6 +40,8 @@ export interface ViewerInfo {
   username: string;
   display_name: string;
   platform: 'twitch' | 'youtube' | 'kick';
+  /** Platforms the viewer has linked to their AllChat account */
+  connected_platforms?: ('twitch' | 'youtube' | 'kick')[];
 }
 
 /**
@@ -42,7 +62,15 @@ export type ExtensionMessage =
   | { type: 'SAVE_NAME_COLOR'; color: string | null }
   | { type: 'SAVE_NAME_GRADIENT'; gradient: string | null }
   | { type: 'SET_CURRENT_PLATFORM'; platform: string }
-  | { type: 'EXTENSION_STATE_CHANGED'; enabled: boolean };
+  | { type: 'EXTENSION_STATE_CHANGED'; enabled: boolean }
+  | { type: 'CLOSE_POPOUT_WINDOWS' }
+  | {
+      type: 'SEND_NATIVE_CHAT';
+      platform: 'youtube' | 'twitch' | 'kick' | 'tiktok';
+      streamer: string;
+      videoId?: string;
+      message: string;
+    };
 
 export type ExtensionResponse =
   | { success: true; data?: any }

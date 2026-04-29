@@ -1,4 +1,22 @@
 /**
+ * This file is part of All-Chat Extension.
+ * Copyright (C) 2026 caesarakalaeii
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
  * Base Platform Detector
  *
  * Abstract class that all platform-specific content scripts extend.
@@ -125,11 +143,17 @@ export abstract class PlatformDetector {
    * close polling (D-10).
    */
   async handlePopoutRequest(data: PopoutRequestMessage): Promise<void> {
-    // Prevent opening multiple pop-outs
-    if (this.popoutWindow && !this.popoutWindow.closed) {
-      this.popoutWindow.focus();
+    // Prevent opening multiple pop-outs — guarded against Firefox dead-object
+    // throws on the cross-compartment Window wrapper.
+    let alreadyOpen = false;
+    try {
+      alreadyOpen = !!this.popoutWindow && !this.popoutWindow.closed;
+    } catch { alreadyOpen = false; }
+    if (alreadyOpen) {
+      try { this.popoutWindow!.focus(); } catch { /* dead object */ }
       return;
     }
+    this.popoutWindow = null;
 
     // D-08: Write message buffer to storage before opening window
     if (data.messages && data.messages.length > 0) {
@@ -200,6 +224,12 @@ export abstract class PlatformDetector {
    * Poll the pop-out window to:
    * - Save dimensions every 2s (D-07)
    * - Detect close and restore in-page AllChat (D-10)
+   *
+   * On Firefox, `window.open()` from a content script returns a cross-compartment
+   * wrapper that typically becomes a "dead object" before the first tick fires —
+   * any property access (including `.closed`) throws. The port-disconnect path in
+   * the service worker is the authoritative close signal on Firefox; polling here
+   * stays for Chrome's dimension persistence only, with every access guarded.
    */
   private startPopoutPolling(iframe: HTMLIFrameElement | null, extensionOrigin: string): void {
     if (this.popoutPollInterval) {
@@ -209,12 +239,27 @@ export abstract class PlatformDetector {
     let dimensionSaveCounter = 0;
 
     this.popoutPollInterval = setInterval(() => {
-      if (!this.popoutWindow || this.popoutWindow.closed) {
-        // D-10: Pop-out closed — restore in-page AllChat
+      let isClosed = false;
+      let deadReference = false;
+      try {
+        isClosed = !this.popoutWindow || this.popoutWindow.closed;
+      } catch {
+        // Firefox "can't access dead object": the Window wrapper is unusable.
+        // Close detection in this environment is driven by SW port-disconnect,
+        // so stop polling rather than spamming the console.
+        deadReference = true;
+      }
+
+      if (deadReference) {
+        clearInterval(this.popoutPollInterval!);
+        this.popoutPollInterval = null;
+        return;
+      }
+
+      if (isClosed) {
         clearInterval(this.popoutPollInterval!);
         this.popoutPollInterval = null;
         this.popoutWindow = null;
-
         if (iframe?.contentWindow) {
           iframe.contentWindow.postMessage({ type: 'POPOUT_CLOSED' }, extensionOrigin);
         }
@@ -222,19 +267,18 @@ export abstract class PlatformDetector {
         return;
       }
 
-      // D-07: Save dimensions every 2s (4 polls at 500ms interval)
       dimensionSaveCounter++;
       if (dimensionSaveCounter >= 4) {
         dimensionSaveCounter = 0;
         try {
           chrome.storage.local.set({
-            popout_window_width: this.popoutWindow.outerWidth,
-            popout_window_height: this.popoutWindow.outerHeight,
-            popout_window_x: this.popoutWindow.screenX,
-            popout_window_y: this.popoutWindow.screenY,
+            popout_window_width: this.popoutWindow!.outerWidth,
+            popout_window_height: this.popoutWindow!.outerHeight,
+            popout_window_x: this.popoutWindow!.screenX,
+            popout_window_y: this.popoutWindow!.screenY,
           });
         } catch {
-          // Cross-origin access may fail if window navigated away — ignore
+          // Cross-origin / dead-object access — SW broadcast persists dims elsewhere on Firefox.
         }
       }
     }, POPOUT_CLOSE_POLL_MS);
@@ -242,20 +286,34 @@ export abstract class PlatformDetector {
 
   /**
    * Close the pop-out window programmatically (e.g., "Bring back chat" button).
+   *
+   * On Firefox the `window.open()` return value is a dead cross-compartment
+   * wrapper: even reading `.closed` throws. We therefore do NOT rely on the
+   * reference at all — the service worker broadcasts POPOUT_SELF_CLOSE over
+   * the pop-out port and the pop-out closes itself (self-close on a
+   * script-opened window is always permitted). The direct `.close()` stays
+   * only as a Chrome fast path, fully guarded.
    */
   closePopout(): void {
-    if (this.popoutWindow && !this.popoutWindow.closed) {
-      // Save final dimensions before closing
+    let isOpen = false;
+    try {
+      isOpen = !!this.popoutWindow && !this.popoutWindow.closed;
+    } catch { /* Firefox dead object — skip the Chrome fast path */ }
+
+    if (isOpen) {
       try {
         chrome.storage.local.set({
-          popout_window_width: this.popoutWindow.outerWidth,
-          popout_window_height: this.popoutWindow.outerHeight,
-          popout_window_x: this.popoutWindow.screenX,
-          popout_window_y: this.popoutWindow.screenY,
+          popout_window_width: this.popoutWindow!.outerWidth,
+          popout_window_height: this.popoutWindow!.outerHeight,
+          popout_window_x: this.popoutWindow!.screenX,
+          popout_window_y: this.popoutWindow!.screenY,
         });
       } catch { /* ignore */ }
-      this.popoutWindow.close();
+      try { this.popoutWindow!.close(); } catch { /* restricted — SW broadcast below */ }
     }
+
+    chrome.runtime.sendMessage({ type: 'CLOSE_POPOUT_WINDOWS' }).catch(() => { /* best-effort */ });
+
     this.popoutWindow = null;
     if (this.popoutPollInterval) {
       clearInterval(this.popoutPollInterval);
@@ -264,8 +322,29 @@ export abstract class PlatformDetector {
   }
 
   /**
+   * Called when the service worker reports that the pop-out port disconnected
+   * (Firefox-authoritative close detection). Restores in-page AllChat state
+   * without touching the dead `popoutWindow` reference.
+   */
+  notifyPopoutClosedExternally(iframeSelector: string): void {
+    this.popoutWindow = null;
+    if (this.popoutPollInterval) {
+      clearInterval(this.popoutPollInterval);
+      this.popoutPollInterval = null;
+    }
+    const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
+    document.querySelectorAll(iframeSelector).forEach((iframe) => {
+      const el = iframe as HTMLIFrameElement;
+      if (el.contentWindow) {
+        el.contentWindow.postMessage({ type: 'POPOUT_CLOSED' }, extensionOrigin);
+      }
+    });
+  }
+
+  /**
    * Handle "Switch to native" request from in-page AllChat iframe (D-14).
    * Hides AllChat and shows native chat. Injects "Switch to AllChat" button into native chat.
+   * When a tab bar exists (Twitch), the tab bar handles view switching — skip button injection.
    */
   handleSwitchToNative(): void {
     const container = document.getElementById('allchat-container');
@@ -274,12 +353,16 @@ export abstract class PlatformDetector {
       this.allchatHidden = true;
     }
     this.showNativeChat();
-    this.injectSwitchToAllChatButton();
+    // Only inject the fallback button if no tab bar exists (Twitch uses tab bar instead)
+    if (!document.getElementById('allchat-tab-bar')) {
+      this.injectSwitchToAllChatButton();
+    }
     console.log(`[AllChat ${this.platform}] Switched to native chat (AllChat hidden)`);
   }
 
   /**
    * Handle "Switch to AllChat" — restore AllChat iframe and hide native chat (D-14 reverse).
+   * When a tab bar exists (Twitch), the tab bar handles view switching — skip button removal.
    */
   handleSwitchToAllChat(): void {
     const container = document.getElementById('allchat-container');
@@ -288,7 +371,10 @@ export abstract class PlatformDetector {
       this.allchatHidden = false;
     }
     this.hideNativeChat();
-    this.removeSwitchToAllChatButton();
+    // Only remove the fallback button if no tab bar exists
+    if (!document.getElementById('allchat-tab-bar')) {
+      this.removeSwitchToAllChatButton();
+    }
     console.log(`[AllChat ${this.platform}] Switched back to AllChat`);
   }
 
@@ -458,7 +544,19 @@ export abstract class PlatformDetector {
 
     container.appendChild(iframe);
 
+    // Allow subclasses to hook into iframe creation (e.g. TwitchDetector sends TAB_BAR_MODE)
+    this.onIframeCreated(iframe);
+
     console.log(`[AllChat ${this.platform}] UI injected`);
+  }
+
+  /**
+   * Called immediately after the iframe element is created and appended.
+   * Subclasses may override to attach load listeners or send postMessages.
+   * Default implementation is a no-op.
+   */
+  protected onIframeCreated(_iframe: HTMLIFrameElement): void {
+    // no-op by default
   }
 
   /**

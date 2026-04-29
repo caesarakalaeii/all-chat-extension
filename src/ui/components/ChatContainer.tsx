@@ -1,10 +1,28 @@
 /**
+ * This file is part of All-Chat Extension.
+ * Copyright (C) 2026 caesarakalaeii
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
  * Chat Container Component
  *
  * Main component that manages WebSocket connection and message state
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { ChatMessage } from '../../lib/types/message';
 import { ViewerInfo } from '../../lib/types/extension';
 import { renderMessageContent } from '../../lib/renderMessage';
@@ -20,8 +38,14 @@ import { UserAvatar } from './UserAvatar';
 import { AllChatBadge } from './AllChatBadge';
 import { PremiumBadge } from './PremiumBadge';
 import { POPOUT_PORT_NAME, POPOUT_MESSAGE_BUFFER_KEY, POPOUT_MAX_MESSAGES } from '../../lib/types/popout';
+import { resolveEnv } from '../../lib/compat';
 
 export type Platform = 'twitch' | 'youtube' | 'kick' | 'tiktok';
+
+/** Rolling buffer size when auto-scrolling (user at bottom). */
+const MAX_MESSAGES_FOLLOWING = 50;
+/** Larger buffer when the user has scrolled up to read history. */
+const MAX_MESSAGES_PAUSED = 200;
 
 function getNativePopoutUrl(platform: Platform, streamer: string, twitchChannel?: string): string | null {
   switch (platform) {
@@ -129,6 +153,35 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   const [viewerNameColor, setViewerNameColor] = useState<string | null>(null);
   const [viewerNameGradient, setViewerNameGradient] = useState<string | null>(null);
   const [isPoppedOut, setIsPoppedOut] = useState(false); // in-page: true when pop-out window is open
+  const [tabBarMode, setTabBarMode] = useState(false); // true when platform tab bar controls view (header hidden)
+  const [tabBarHideInput, setTabBarHideInput] = useState(true); // true when native input stays visible (Twitch)
+  const [envNotice, setEnvNotice] = useState<Awaited<ReturnType<typeof resolveEnv>>>(null);
+
+  // Super Chat / Super Sticker ticker — shows recent paid events as colored pills
+  interface TickerItem {
+    id: string;
+    user: ChatMessage['user'];
+    event: NonNullable<ChatMessage['event']>;
+    expiresAt: number; // Date.now() + duration * 1000
+  }
+  const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
+
+  useEffect(() => {
+    resolveEnv().then((cfg) => {
+      if (cfg) setEnvNotice(cfg);
+    });
+  }, []);
+
+  // Auto-expire ticker items
+  useEffect(() => {
+    if (tickerItems.length === 0) return;
+    const nextExpiry = Math.min(...tickerItems.map((t) => t.expiresAt));
+    const delay = Math.max(nextExpiry - Date.now(), 500);
+    const timer = setTimeout(() => {
+      setTickerItems((prev) => prev.filter((t) => t.expiresAt > Date.now()));
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [tickerItems]);
 
   // Parse gradient JSON string for use in style — null when absent or invalid
   const parsedGradient = useMemo(
@@ -221,6 +274,28 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
 
     console.log('[AllChat UI] Received message:', data.type, data);
 
+    // Handle tab bar mode toggle (platform tab bar replaces iframe header)
+    if (data.type === 'TAB_BAR_MODE') {
+      setTabBarMode(data.enabled as boolean);
+      setTabBarHideInput((data as any).hideInput !== false); // default true for backward compat
+      // Apply platform + theme to match host appearance
+      // data-platform drives dark palette overrides, data-theme="light" adds light overrides
+      document.documentElement.setAttribute('data-platform', platform);
+      const theme = (data as any).theme;
+      if (theme === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+      }
+      return;
+    }
+
+    // Handle pop-out trigger from tab bar button
+    if (data.type === 'TRIGGER_POPOUT') {
+      handlePopOut();
+      return;
+    }
+
     // Handle connection state updates
     if (data.type === 'CONNECTION_STATE') {
       const status = data.data as ConnectionStatus;
@@ -254,8 +329,27 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
           if (processedMessage.id && prev.some((m) => m.id === processedMessage.id)) {
             return prev; // Already present — discard duplicate delivery
           }
-          return [...prev, processedMessage].slice(-50);
+          const limit = isFollowingChat.current ? MAX_MESSAGES_FOLLOWING : MAX_MESSAGES_PAUSED;
+          return [...prev, processedMessage].slice(-limit);
         });
+
+        // Add Super Chat / Super Sticker to the ticker bar
+        if (processedMessage.event &&
+            (processedMessage.event.type === 'super_chat' || processedMessage.event.type === 'super_sticker') &&
+            processedMessage.event.value) {
+          const duration = processedMessage.event.duration || 30;
+          setTickerItems((prev) => {
+            if (prev.some((t) => t.id === processedMessage.id)) return prev;
+            const now = Date.now();
+            // Prune expired items while adding the new one
+            return [...prev.filter((t) => t.expiresAt > now), {
+              id: processedMessage.id,
+              user: processedMessage.user,
+              event: processedMessage.event!,
+              expiresAt: now + duration * 1000,
+            }];
+          });
+        }
 
         resolveTwitchBadgeIcons(processedMessage).then((enrichedMessage) => {
           setMessages((prev) => {
@@ -263,14 +357,25 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
             if (existingIndex !== -1) {
               const updated = [...prev];
               updated[existingIndex] = enrichedMessage;
-              return updated.slice(-50);
+              const limit = isFollowingChat.current ? MAX_MESSAGES_FOLLOWING : MAX_MESSAGES_PAUSED;
+              return updated.slice(-limit);
             }
-            // Message was evicted from the 50-message window before badges resolved — discard
+            // Message was evicted from the buffer before badges resolved — discard
             return prev;
           });
         });
       } else if (wsMessage.type === 'ping') {
         // Ignore pings
+      }
+    }
+
+    // YouTube context menu action feedback (Report, Block, etc.)
+    if (data.type === 'YOUTUBE_ACTION_RESULT') {
+      const actionName = (data.action as string) || 'Action';
+      if (data.success) {
+        addToast(`${actionName} completed`, 'success');
+      } else {
+        addToast(`${actionName} failed: ${(data.error as string) || 'Unknown error'}`, 'error');
       }
     }
 
@@ -280,6 +385,15 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
     }
     if (data.type === 'POPOUT_CLOSED') {
       setIsPoppedOut(false);
+    }
+
+    // Firefox fallback for "Bring back chat": content scripts can't reliably
+    // close the pop-out window via the window.open() return reference, so the
+    // SW broadcasts POPOUT_SELF_CLOSE over the port and the pop-out closes
+    // itself. window.close() is always allowed on a script-opened window from
+    // its own document.
+    if (data.type === 'POPOUT_SELF_CLOSE' && isPopOut) {
+      window.close();
     }
   };
 
@@ -358,12 +472,63 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
     return () => clearTimeout(timer);
   }, [reconnectCountdown]);
 
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    const container = document.getElementById('messages-container');
-    if (container) {
-      container.scrollTop = container.scrollHeight;
+  // Whether the user is currently pinned to the bottom of the chat.
+  //
+  // The pieces that make this race-free under high-volume bursts:
+  //  - Auto-scroll runs in useLayoutEffect — synchronous between commit and
+  //    paint, so scrollTop is always updated before the browser samples it.
+  //    Without this, the browser paints with a stale scroll position and
+  //    handleScroll measures bogus diffs.
+  //  - handleScroll fires synchronously on the scroll event, so a real user
+  //    wheel/touch flips this BEFORE the next inbound message's
+  //    useLayoutEffect would otherwise scroll us back to the bottom.
+  const isFollowingChat = useRef(true);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  // Messages received while the user was scrolled up. The indicator
+  // shows this; auto-following keeps it at zero by definition.
+  const [unreadCount, setUnreadCount] = useState(0);
+  const prevMessageCount = useRef(0);
+
+  const handleScroll = useCallback(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const max = el.scrollHeight - el.clientHeight;
+    const wasFollowing = isFollowingChat.current;
+    const atBottom = el.scrollTop >= max - 80;
+    isFollowingChat.current = atBottom;
+    if (atBottom) {
+      setUnreadCount(0);
+      if (!wasFollowing) {
+        setMessages((prev) => prev.slice(-MAX_MESSAGES_FOLLOWING));
+      }
     }
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    isFollowingChat.current = true;
+    setUnreadCount(0);
+    setMessages((prev) => prev.slice(-MAX_MESSAGES_FOLLOWING));
+  }, []);
+
+  useLayoutEffect(() => {
+    const el = messagesContainerRef.current;
+    if (el && isFollowingChat.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [messages]);
+
+  // Count messages that arrive while the user is paused. Length-diff
+  // handles both new arrivals (+1) and auto-scroll trims (negative,
+  // ignored) without needing to inspect message identity.
+  useEffect(() => {
+    const delta = messages.length - prevMessageCount.current;
+    if (delta > 0 && !isFollowingChat.current) {
+      setUnreadCount((c) => c + delta);
+    }
+    prevMessageCount.current = messages.length;
   }, [messages]);
 
   // Add toast notification
@@ -497,77 +662,98 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   };
 
   return (
-    <div className="h-full flex flex-col bg-bg">
-      {/* Header */}
-      <div className="px-2 py-1.5 bg-surface border-b border-border flex items-center">
-        {/* Left: collapse button (hidden in pop-out mode — standalone window has its own close) */}
-        {!isPopOut && (
-          <button
-            onClick={toggleCollapse}
-            className="text-[var(--color-text-dim)] hover:text-text transition-colors"
-            title={isCollapsed ? 'Expand' : 'Collapse'}
-            aria-label={isCollapsed ? 'Expand' : 'Collapse'}
-          >
-            <svg
-              className="w-4 h-4 transition-transform"
-              style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-        )}
-
-        {/* Center: InfinityLogo */}
-        <div className="flex-1 flex justify-center">
-          <InfinityLogo size={24} />
-        </div>
-
-        {/* Right: connection dot + platform badge + switch to native + pop-out */}
-        <div className="flex items-center gap-1.5">
-          {/* Connection dot */}
-          <span className={`w-2 h-2 rounded-full ${
-            connectionStatus.state === 'connected'    ? 'bg-green-400' :
-            connectionStatus.state === 'connecting'   ? 'bg-yellow-400 animate-pulse' :
-            connectionStatus.state === 'reconnecting' ? 'bg-yellow-400 animate-pulse' :
-            connectionStatus.state === 'failed'       ? 'bg-red-400' :
-                                                        'bg-[var(--color-text-dim)]'
-          }`} title={connectionStatus.state} />
-          {/* Platform badge */}
-          <span
-            className="w-2 h-2 rounded-full"
-            style={{ backgroundColor: `var(--color-${platform})` }}
-            title={platform}
-          />
-          {/* Switch to native button (per D-03) */}
-          <button
-            onClick={handleSwitchToNative}
-            className="text-[var(--color-text-dim)] hover:text-text transition-colors flex items-center gap-0.5"
-            title="Switch to native chat"
-            aria-label="Switch to native chat"
-          >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            <span className="text-xs">Native</span>
-          </button>
-          {/* Pop-out button (per D-01, D-02) — rightmost in header; hidden when chat is already popped out */}
-          {!isPoppedOut && (
+    <div className="h-full flex flex-col bg-bg relative">
+      {/* Header — hidden when tab bar controls view (Twitch tabBarMode) */}
+      {!tabBarMode && (
+        <div className="px-2 py-1.5 bg-surface border-b border-border flex items-center">
+          {/* Left: collapse button (hidden in pop-out mode — standalone window has its own close) */}
+          {!isPopOut && (
             <button
-              onClick={handlePopOut}
+              onClick={toggleCollapse}
               className="text-[var(--color-text-dim)] hover:text-text transition-colors"
-              title="Open in new window"
-              aria-label="Open chat in new window"
+              title={isCollapsed ? 'Expand' : 'Collapse'}
+              aria-label={isCollapsed ? 'Expand' : 'Collapse'}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
+              <svg
+                className="w-4 h-4 transition-transform"
+                style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
           )}
+
+          {/* Center: InfinityLogo */}
+          <div className="flex-1 flex justify-center">
+            <InfinityLogo size={24} />
+          </div>
+
+          {/* Right: connection dot + platform badge + switch to native + pop-out */}
+          <div className="flex items-center gap-1.5">
+            {/* Connection dot */}
+            <span className={`w-2 h-2 rounded-full ${
+              connectionStatus.state === 'connected'    ? 'bg-green-400' :
+              connectionStatus.state === 'connecting'   ? 'bg-yellow-400 animate-pulse' :
+              connectionStatus.state === 'reconnecting' ? 'bg-yellow-400 animate-pulse' :
+              connectionStatus.state === 'failed'       ? 'bg-red-400' :
+                                                          'bg-[var(--color-text-dim)]'
+            }`} title={connectionStatus.state} />
+            {/* Platform badge */}
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: `var(--color-${platform})` }}
+              title={platform}
+            />
+            {/* Switch to native button (per D-03) */}
+            <button
+              onClick={handleSwitchToNative}
+              className="text-[var(--color-text-dim)] hover:text-text transition-colors flex items-center gap-0.5"
+              title="Switch to native chat"
+              aria-label="Switch to native chat"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              <span className="text-xs">Native</span>
+            </button>
+            {/* Pop-out button (per D-01, D-02) — rightmost in header; hidden when chat is already popped out */}
+            {!isPoppedOut && (
+              <button
+                onClick={handlePopOut}
+                className="text-[var(--color-text-dim)] hover:text-text transition-colors"
+                title="Open in new window"
+                aria-label="Open chat in new window"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Pop-out button moved to tab bar (content script) in tabBarMode — no floating button needed */}
+      {false && tabBarMode && !isPoppedOut && !isPopOut && (
+        <div></div>
+      )}
+
+      {envNotice && (
+        <div className="px-3 py-2 bg-red-900/80 border-b border-red-700 text-center">
+          <p className="text-xs text-red-200">{envNotice.label}</p>
+          <a
+            href={envNotice.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-red-100 underline font-semibold"
+          >
+            {envNotice.href}
+          </a>
+        </div>
+      )}
 
       {!isCollapsed && (
         <>
@@ -623,8 +809,43 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                 </div>
               )}
 
+              {/* Super Chat / Super Sticker ticker bar */}
+              {tickerItems.length > 0 && (
+                <div className="flex gap-1.5 px-2 py-1.5 overflow-x-auto border-b border-border" style={{ scrollbarWidth: 'none' }}>
+                  {tickerItems.map((item) => {
+                    const color = (item.event.metadata?.color as string) || (
+                      item.event.tier === 'high' ? '#E62117' :
+                      item.event.tier === 'medium' ? '#1E88E5' : '#FFB300'
+                    );
+                    const textColor = item.event.tier === 'low' ? '#0f0f0f' : '#fff';
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-1.5 rounded-full px-2 py-0.5 flex-shrink-0"
+                        style={{ background: color, color: textColor }}
+                      >
+                        {item.user.avatar_url && (
+                          <img
+                            src={item.user.avatar_url}
+                            alt=""
+                            className="rounded-full"
+                            style={{ width: 20, height: 20 }}
+                          />
+                        )}
+                        <span className="text-xs font-semibold truncate" style={{ maxWidth: 80 }}>
+                          {item.user.display_name || item.user.username}
+                        </span>
+                        <span className="text-xs font-bold whitespace-nowrap">
+                          {item.event.value?.display_text}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* Messages */}
-              <div id="messages-container" className="flex-1 overflow-y-auto p-3 space-y-2">
+              <div id="messages-container" ref={messagesContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-3 space-y-2">
                 {messages.length === 0 ? (
                   <div className="flex items-center justify-center h-full">
                     <div className="text-center text-[var(--color-text-dim)]">
@@ -636,8 +857,38 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                   messages.map((message) => (
                     <div
                       key={message.id}
-                      className={`message-enter p-2 rounded bg-surface/50 platform-${message.platform}`}
+                      className={`message-enter p-2 rounded platform-${message.platform} relative group ${
+                        message.event && (message.event.type === 'super_chat' || message.event.type === 'super_sticker')
+                          ? '' : 'bg-surface/50'
+                      }`}
+                      style={message.event && (message.event.type === 'super_chat' || message.event.type === 'super_sticker') ? {
+                        background: `${(message.event.metadata?.color as string) || '#FFB300'}22`,
+                        borderColor: (message.event.metadata?.color as string) || '#FFB300',
+                      } : undefined}
                     >
+                      {/* YouTube 3-dot context menu button (Report/Block/Moderate) */}
+                      {message.platform === 'youtube' && Boolean(message.metadata?.youtube_context_params) && (
+                        <button
+                          className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-150 hover:bg-[var(--color-surface-2)] text-[var(--color-text-sub)]"
+                          onClick={(e) => {
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            sendToContentScript({
+                              type: 'OPEN_YOUTUBE_CONTEXT_MENU',
+                              userId: message.user.id,
+                              username: message.user.display_name || message.user.username,
+                              contextParams: message.metadata.youtube_context_params,
+                              anchorRect: { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left },
+                            });
+                          }}
+                          aria-label="More actions"
+                        >
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                            <circle cx="12" cy="6" r="2" />
+                            <circle cx="12" cy="12" r="2" />
+                            <circle cx="12" cy="18" r="2" />
+                          </svg>
+                        </button>
+                      )}
                       <div className="flex items-center gap-2 mb-1">
                         {/* Avatar (with optional frame and flair) */}
                         <UserAvatar
@@ -688,19 +939,47 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                           )
                         ))}
 
-                        {/* Username */}
+                        {/* Username — clickable for same-platform messages to open native profile */}
                         {(() => {
                           const isOwnMessage = viewerInfo && message.user.username === viewerInfo.username;
-                          // For the viewer's own messages, prefer the locally-stored gradient/color
-                          // (which may differ from what the backend cached).
-                          // For everyone else, use the gradient/color carried in the message itself.
                           const messageGradient = parseNameGradient(message.user.name_gradient);
                           const activeGradient: NameGradient | null = isOwnMessage
                             ? (parsedGradient ?? messageGradient)
                             : messageGradient;
+                          // Fall back to the theme-aware text color so unknown-color
+                          // usernames (common on YouTube, where the backend only supplies
+                          // colours for a small fraction of accounts) stay legible in
+                          // light mode. Hardcoding '#fff' left them invisible on the
+                          // white surface when the host page is in light theme.
                           const activeColor: string = isOwnMessage && viewerNameColor
                             ? viewerNameColor
-                            : (message.user.color || '#fff');
+                            : (message.user.color || 'var(--color-text)');
+
+                          const isSamePlatform = message.platform === platform;
+                          const handleNameClick = isSamePlatform ? () => {
+                            if (isPopOut) {
+                              // Pop-out mode: handle directly (service worker has no OPEN_VIEWER_CARD handler)
+                              if (message.platform === 'twitch') {
+                                window.open(
+                                  `https://www.twitch.tv/popout/${twitchChannel || streamer}/viewercard/${message.user.username}`,
+                                  'allchat_viewercard',
+                                  'width=340,height=500',
+                                );
+                              } else if (message.platform === 'youtube') {
+                                window.open(`https://www.youtube.com/channel/${message.user.id}`, '_blank');
+                              } else if (message.platform === 'kick') {
+                                window.open(`https://kick.com/${message.user.username}`, '_blank');
+                              }
+                            } else {
+                              sendToContentScript({
+                                type: 'OPEN_VIEWER_CARD',
+                                platform: message.platform,
+                                username: message.user.username,
+                                userId: message.user.id,
+                              });
+                            }
+                          } : undefined;
+                          const clickStyle = isSamePlatform ? { cursor: 'pointer' } : {};
 
                           if (activeGradient) {
                             const gradientCSS = buildGradientCSS(activeGradient);
@@ -708,7 +987,9 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                               return (
                                 <span
                                   className="font-semibold text-sm"
+                                  onClick={handleNameClick}
                                   style={{
+                                    ...clickStyle,
                                     backgroundImage: gradientCSS,
                                     backgroundClip: 'text',
                                     WebkitBackgroundClip: 'text',
@@ -724,13 +1005,30 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                           return (
                             <span
                               className="font-semibold text-sm"
-                              style={{ color: activeColor }}
+                              onClick={handleNameClick}
+                              style={{ color: activeColor, ...clickStyle }}
                             >
                               {message.user.display_name || message.user.username}
                             </span>
                           );
                         })()}
                       </div>
+
+                      {/* Super Chat / Super Sticker header */}
+                      {message.event && (message.event.type === 'super_chat' || message.event.type === 'super_sticker') && message.event.value && (
+                        <div
+                          className="text-xs font-semibold px-2 py-1 rounded mb-1"
+                          style={{
+                            background: (message.event.metadata?.color as string) || (
+                              message.event.tier === 'high' ? '#E62117' :
+                              message.event.tier === 'medium' ? '#1E88E5' : '#FFB300'
+                            ),
+                            color: message.event.tier === 'low' ? '#0f0f0f' : '#fff',
+                          }}
+                        >
+                          {message.event.type === 'super_sticker' ? 'Super Sticker' : 'Super Chat'} — {message.event.value.display_text}
+                        </div>
+                      )}
 
                       {/* Message text with emotes */}
                       <div className="text-sm text-text">
@@ -741,29 +1039,53 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                 )}
               </div>
 
-              {/* Footer / Message Input */}
-              {loadingAuth ? (
-                <div className="px-3 py-3 bg-surface border-t border-border text-center">
-                  <p className="text-xs text-[var(--color-text-dim)]">Loading...</p>
+              {/* Scroll to bottom button — shown only when messages arrived
+                  while the user was scrolled up. */}
+              {unreadCount > 0 && (
+                <div className="flex justify-center py-1 bg-surface border-t border-border">
+                  <button
+                    onClick={scrollToBottom}
+                    className="flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-full bg-[var(--color-surface-2)] text-[var(--color-text-sub)] hover:text-text transition-colors"
+                    aria-label="Scroll to latest messages"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                    {unreadCount === 1 ? '1 new message' : `${unreadCount} new messages`}
+                  </button>
                 </div>
-              ) : viewerToken ? (
-                <MessageInput
-                  platform={platform}
-                  streamer={streamer}
-                  twitchChannel={twitchChannel}
-                  videoId={videoId}
-                  token={viewerToken}
-                  onAuthError={handleAuthError}
-                  onSendSuccess={handleMessageSent}
-                />
-              ) : (
-                <div className="border-t border-border">
-                  <LoginPrompt
+              )}
+
+              {/* Footer / Message Input
+                  - YouTube/Twitch/Kick: always show input — sends via platform's own
+                    session cookies, no AllChat auth needed
+                  - tabBarMode + hideInput: hidden entirely, native input stays visible
+                  - tiktok / pop-out: AllChat backend path, login prompt if needed */}
+              {!(tabBarMode && tabBarHideInput) && (
+                loadingAuth ? (
+                  <div className="px-3 py-3 bg-surface border-t border-border text-center">
+                    <p className="text-xs text-[var(--color-text-dim)]">Loading...</p>
+                  </div>
+                ) : (viewerToken || platform === 'youtube' || platform === 'twitch' || platform === 'kick') ? (
+                  <MessageInput
                     platform={platform}
-                    streamer={displayName}
-                    onLogin={handleLogin}
+                    streamer={streamer}
+                    twitchChannel={twitchChannel}
+                    videoId={videoId}
+                    token={viewerToken ?? undefined}
+                    isPopOut={isPopOut}
+                    onAuthError={handleAuthError}
+                    onSendSuccess={handleMessageSent}
                   />
-                </div>
+                ) : !tabBarMode ? (
+                  <div className="border-t border-border">
+                    <LoginPrompt
+                      platform={platform}
+                      streamer={displayName}
+                      onLogin={handleLogin}
+                    />
+                  </div>
+                ) : null
               )}
             </>
           )}

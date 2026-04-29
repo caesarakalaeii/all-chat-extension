@@ -26,6 +26,14 @@ Part of [All-Chat](https://allch.at) — the free, open-source multi-platform ch
 - **Visual send feedback** — Confirmation appears directly in the input field when your message is sent
 - **Rate limiting with feedback** — 20 messages/min, 100/hour with clear visual indicators
 
+### Twitch: Tab Bar and Native Widgets
+
+On Twitch, All-Chat adds a persistent tab bar at the top of the chat area with two tabs: **[∞ AllChat]** and **[Twitch Chat]**. A connection status dot next to the AllChat label shows your live connection state.
+
+- **Tab switching** — Click either tab to instantly toggle between All-Chat (cross-platform messages from all connected platforms) and native Twitch chat. The tab bar stays visible at all times — you are always one click from switching back.
+- **Interactive widgets** — Channel points, predictions, polls, hype trains, and raid banners appear alongside All-Chat when the AllChat tab is active. Clicking them — claiming channel points, voting on a prediction — triggers the real Twitch action. You lose no Twitch interactivity while using All-Chat.
+- **Pop-out mode** — A pop-out button in the chat area opens All-Chat in a standalone window (useful for OBS or multi-monitor setups). Closing the pop-out restores the in-page chat.
+
 ## Installation
 
 ### Install from Store (Recommended)

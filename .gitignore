@@ -11,4 +11,15 @@ test-results/
 
 # Debug screenshots (keep assets/ icons)
 /*.png
+/*.jpg
 tests/*.png
+tests/*.jpg
+
+# Local-only debug notes
+snapshot.md
+
+# Claude Code local config (per-user)
+.claude/
+
+# Internal docs (not shipped)
+src/lib/COMPAT_EXPLAINED.md

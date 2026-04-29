@@ -1,4 +1,22 @@
 /**
+ * This file is part of All-Chat Extension.
+ * Copyright (C) 2026 caesarakalaeii
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
  * YouTube Studio Content Script
  *
  * Handles All-Chat injection on studio.youtube.com
@@ -227,16 +245,24 @@ function setupGlobalMessageRelay() {
 
     if (message.type === 'CONNECTION_STATE' || message.type === 'WS_MESSAGE') {
       const iframes = document.querySelectorAll('iframe[data-platform="youtube"][data-streamer]');
-      console.log(`[AllChat YTStudio] Relaying to ${iframes.length} iframe(s)`);
 
       iframes.forEach((iframe) => {
         const iframeElement = iframe as HTMLIFrameElement;
+        const iframeStreamer = iframeElement.getAttribute('data-streamer');
+        if (message.streamer && iframeStreamer && message.streamer !== iframeStreamer) {
+          return;
+        }
         if (iframeElement.contentWindow) {
           const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
           iframeElement.contentWindow.postMessage(message, extensionOrigin);
         }
       });
     }
+
+    if (message.type === 'POPOUT_CLOSED_REMOTE' && globalDetector) {
+      globalDetector.notifyPopoutClosedExternally('iframe[data-platform="youtube"]');
+    }
+
     return false;
   });
 
@@ -285,6 +311,10 @@ function setupGlobalMessageRelay() {
       } catch (err: any) {
         source.postMessage({ type: 'LOGIN_ERROR', error: err.message }, extensionOrigin);
       }
+    }
+
+    if (event.data.type === 'OPEN_VIEWER_CARD' && event.data.userId) {
+      window.open(`https://www.youtube.com/channel/${event.data.userId}`, '_blank');
     }
 
     // Guard: only handle pop-out messages from the AllChat extension origin (T-06-09)

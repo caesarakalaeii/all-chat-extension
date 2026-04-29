@@ -590,6 +590,28 @@ function setupGlobalMessageRelay() {
       globalDetector.notifyPopoutClosedExternally('iframe[data-platform="twitch"]');
     }
 
+    // Pop-out windows route SEND_NATIVE_CHAT through the service worker, which
+    // forwards it here via chrome.tabs.sendMessage. We run the same GraphQL
+    // call the in-page iframe path uses so the send happens with this tab's
+    // Twitch session (cookie auth).
+    if (message.type === 'SEND_NATIVE_CHAT' && typeof message.message === 'string') {
+      (async () => {
+        try {
+          const channel = globalDetector?.extractStreamerUsername();
+          if (!channel) throw new Error('Could not determine channel');
+          await sendTwitchChatMessage(channel, message.message);
+          sendResponse({ success: true });
+        } catch (err: unknown) {
+          console.error('[AllChat Twitch] Pop-out-routed send failed:', err);
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : 'Failed to send message',
+          });
+        }
+      })();
+      return true; // keep the port open for the async sendResponse
+    }
+
     return false;
   });
 

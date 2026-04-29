@@ -106,6 +106,138 @@
 }
 
 /* ============================================================
+   PLATFORM THEME OVERRIDES — match host platform's native look.
+   Applied via data-platform + data-theme attributes on <html>
+   (set by ChatContainer when TAB_BAR_MODE message arrives).
+   ============================================================ */
+
+/* --- TWITCH DARK (default Twitch appearance) --- */
+[data-platform="twitch"] {
+  --color-bg:        #0e0e10;
+  --color-surface:   #18181b;
+  --color-surface-2: #1f1f23;
+  --color-border:    rgba(255, 255, 255, 0.08);
+  --color-border-md: rgba(255, 255, 255, 0.12);
+  --color-text:      #efeff1;
+  --color-text-sub:  #adadb8;
+  --color-text-dim:  #7b7b8b;
+  --color-neutral-950: #0e0e10;
+  --color-neutral-900: #18181b;
+  --color-neutral-800: #1f1f23;
+  --color-neutral-700: #3a3a3d;
+  --color-neutral-600: #7b7b8b;
+  --color-neutral-400: #adadb8;
+  --color-neutral-100: #efeff1;
+  --color-badge-bg: rgba(255, 255, 255, 0.07);
+  --color-nav-bg: rgba(14, 14, 16, 0.85);
+}
+
+/* --- TWITCH LIGHT --- */
+[data-platform="twitch"][data-theme="light"] {
+  --color-bg:        #f7f7f8;
+  --color-surface:   #efeff1;
+  --color-surface-2: #e6e6ea;
+  --color-border:    rgba(0, 0, 0, 0.08);
+  --color-border-md: rgba(0, 0, 0, 0.12);
+  --color-text:      #0e0e10;
+  --color-text-sub:  #53535f;
+  --color-text-dim:  #7b7b8b;
+  --color-neutral-950: #f7f7f8;
+  --color-neutral-900: #efeff1;
+  --color-neutral-800: #e6e6ea;
+  --color-neutral-700: #d4d4d8;
+  --color-neutral-600: #7b7b8b;
+  --color-neutral-400: #53535f;
+  --color-neutral-100: #0e0e10;
+  --color-badge-bg: rgba(0, 0, 0, 0.06);
+  --color-nav-bg: rgba(247, 247, 248, 0.85);
+}
+
+/* --- YOUTUBE DARK --- */
+[data-platform="youtube"] {
+  --color-bg:        #0f0f0f;
+  --color-surface:   #1a1a1a;
+  --color-surface-2: #272727;
+  --color-border:    rgba(255, 255, 255, 0.1);
+  --color-border-md: rgba(255, 255, 255, 0.15);
+  --color-text:      #f1f1f1;
+  --color-text-sub:  #aaa;
+  --color-text-dim:  #717171;
+  --color-neutral-950: #0f0f0f;
+  --color-neutral-900: #1a1a1a;
+  --color-neutral-800: #272727;
+  --color-neutral-700: #3f3f3f;
+  --color-neutral-600: #717171;
+  --color-neutral-400: #aaa;
+  --color-neutral-100: #f1f1f1;
+  --color-badge-bg: rgba(255, 255, 255, 0.08);
+  --color-nav-bg: rgba(15, 15, 15, 0.85);
+}
+
+/* --- YOUTUBE LIGHT --- */
+[data-platform="youtube"][data-theme="light"] {
+  --color-bg:        #ffffff;
+  --color-surface:   #f9f9f9;
+  --color-surface-2: #f0f0f0;
+  --color-border:    rgba(0, 0, 0, 0.08);
+  --color-border-md: rgba(0, 0, 0, 0.12);
+  --color-text:      #0f0f0f;
+  --color-text-sub:  #606060;
+  --color-text-dim:  #909090;
+  --color-neutral-950: #ffffff;
+  --color-neutral-900: #f9f9f9;
+  --color-neutral-800: #f0f0f0;
+  --color-neutral-700: #d4d4d4;
+  --color-neutral-600: #909090;
+  --color-neutral-400: #606060;
+  --color-neutral-100: #0f0f0f;
+  --color-badge-bg: rgba(0, 0, 0, 0.05);
+  --color-nav-bg: rgba(255, 255, 255, 0.85);
+}
+
+/* --- KICK DARK --- */
+[data-platform="kick"] {
+  --color-bg:        #0e0e10;
+  --color-surface:   #141517;
+  --color-surface-2: #1a1c20;
+  --color-border:    rgba(255, 255, 255, 0.06);
+  --color-border-md: rgba(255, 255, 255, 0.10);
+  --color-text:      #e8e8e8;
+  --color-text-sub:  #8b8b8b;
+  --color-text-dim:  #5f5f5f;
+  --color-neutral-950: #0e0e10;
+  --color-neutral-900: #141517;
+  --color-neutral-800: #1a1c20;
+  --color-neutral-700: #2a2d32;
+  --color-neutral-600: #5f5f5f;
+  --color-neutral-400: #8b8b8b;
+  --color-neutral-100: #e8e8e8;
+  --color-badge-bg: rgba(255, 255, 255, 0.06);
+  --color-nav-bg: rgba(14, 14, 16, 0.85);
+}
+
+/* --- KICK LIGHT --- */
+[data-platform="kick"][data-theme="light"] {
+  --color-bg:        #ffffff;
+  --color-surface:   #f0f0f0;
+  --color-surface-2: #e5e5e5;
+  --color-border:    rgba(0, 0, 0, 0.08);
+  --color-border-md: rgba(0, 0, 0, 0.12);
+  --color-text:      #1a1a1a;
+  --color-text-sub:  #666;
+  --color-text-dim:  #999;
+  --color-neutral-950: #ffffff;
+  --color-neutral-900: #f0f0f0;
+  --color-neutral-800: #e5e5e5;
+  --color-neutral-700: #d0d0d0;
+  --color-neutral-600: #999;
+  --color-neutral-400: #666;
+  --color-neutral-100: #1a1a1a;
+  --color-badge-bg: rgba(0, 0, 0, 0.05);
+  --color-nav-bg: rgba(255, 255, 255, 0.85);
+}
+
+/* ============================================================
    IFRAME DOCUMENT SIZING — ensure h-full stretches to fill iframe
    ============================================================ */
 html, body {

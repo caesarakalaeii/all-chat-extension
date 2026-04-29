@@ -1,42 +1,124 @@
 /**
+ * This file is part of All-Chat Extension.
+ * Copyright (C) 2026 caesarakalaeii
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
  * YouTube Content Script
  *
  * Handles All-Chat injection on YouTube.com
  * URL formats: youtube.com/watch?v=..., youtube.com/live/..., youtube.com/@username
+ *
+ * Strategy: Full-panel toggle with tab bar.
+ * A tab bar lets users switch between AllChat and native YouTube chat.
+ * YouTube's chat is inside a cross-origin iframe (ytd-live-chat-frame),
+ * so we toggle the entire element rather than targeting individual children.
  */
 
 import { PlatformDetector } from './base/PlatformDetector';
+import { createTabBar, setupTabSwitching, switchToNativeTab, switchToAllChatTab as switchToAllChatTabVisual, updateTabBarConnDot, removeTabBar, isLightMode, watchThemeChanges } from './base/tabBar';
 import { getSyncStorage } from '../lib/storage';
+
+// Guard observer — watches for YouTube removing our injected elements
+let guardObserver: MutationObserver | null = null;
+
+// Live observers that align the AllChat overlay with the native stack
+// heights inside the iframe (header + banner + ticker at top, input at
+// bottom). Tracked at module scope so showNativeChat/teardown can tear
+// them down — otherwise the observers would keep clamping inline styles
+// on the frame and the native tab would render tiny.
+let ytStackResizeObserver: ResizeObserver | null = null;
+let ytStackMutationObserver: MutationObserver | null = null;
+let ytPickerMutationObserver: MutationObserver | null = null;
+let ytPickerResizeObserver: ResizeObserver | null = null;
+// Watches #overlay-dialog — where super-chat purchase dialog and
+// membership dialogs mount outside the #pickers iron-pages.
+let ytOverlayDialogObserver: MutationObserver | null = null;
+// Watches #panel-pages — the outermost iron-pages inside the chat
+// iframe. Super-chat / super-sticker / donation / gift-sub / q&a /
+// poll flows all activate by swapping the iron-selected class from
+// #input-panel to one of its siblings here. Picking this up lets us
+// flip the frame z-index over AllChat when any purchase flow opens.
+let ytPanelPagesObserver: MutationObserver | null = null;
+// Watches ytd-live-chat-frame for the native X click, which sets
+// `collapsed` + `hide-chat-frame` attributes. The `hide-chat-frame`
+// attribute triggers YT's own `display: none` on the whole frame,
+// leaving our pinned parent column as an empty bordered box. We strip
+// `hide-chat-frame` so the native collapsed state renders its own
+// #show-hide-button widget, and we shed our host-column chrome while
+// collapsed so the column can shrink to the widget.
+let ytFrameCollapseObserver: MutationObserver | null = null;
+// The parent column's original pinned min-height, cached so we can
+// restore it when the user re-expands chat via YT's widget.
+let pinnedHostMinHeight = '';
+
+/**
+ * Activate the YouTube Chat tab: hide AllChat, show native YouTube chat.
+ */
+function handleSwitchToYouTube(detector: YouTubeDetector): void {
+  const container = document.getElementById('allchat-container');
+  if (container) container.style.display = 'none';
+  // showNativeChat() removes both the outer frame-shrink style AND the
+  // in-iframe trim style so the full native chat UI returns.
+  detector.showNativeChat();
+  switchToNativeTab();
+  console.log('[AllChat YouTube] Switched to YouTube Chat tab');
+}
+
+/**
+ * Activate the AllChat tab: show AllChat, hide native YouTube chat.
+ */
+function handleSwitchToAllChat(detector: YouTubeDetector): void {
+  // If the user collapsed the native chat from the YouTube tab, the
+  // frame still has `collapsed` (and possibly `hide-chat-frame`) set.
+  // Uncollapse first so the iframe's header/ticker/input regain their
+  // natural heights before hideNativeChat measures them.
+  detector.expandIfCollapsed();
+  const container = document.getElementById('allchat-container');
+  if (container) container.style.display = 'flex';
+  detector.hideNativeChat();
+  switchToAllChatTabVisual();
+  console.log('[AllChat YouTube] Switched to AllChat tab');
+}
 
 class YouTubeDetector extends PlatformDetector {
   platform = 'youtube' as const;
 
   /**
-   * Check if the current page is a live stream
-   * Returns true only for active live streams, not VODs
+   * Check if the current page is a live stream.
+   * Returns true only for active live streams, not VODs.
    */
   isLiveStream(): boolean {
-    // Method 1: Check for live chat frame (only present on live streams)
     const liveChatFrame = document.querySelector('ytd-live-chat-frame');
     if (liveChatFrame) {
       console.log('[AllChat YouTube] Live chat frame detected');
       return true;
     }
 
-    // Method 2: Check URL patterns for live streams
     if (window.location.pathname.includes('/live/')) {
       console.log('[AllChat YouTube] /live/ URL detected');
       return true;
     }
 
-    // Method 3: Check for "LIVE" badge in player
     const liveBadge = document.querySelector('.ytp-live-badge, .badge-style-type-live-now');
     if (liveBadge) {
       console.log('[AllChat YouTube] Live badge detected');
       return true;
     }
 
-    // Method 4: Check ytInitialPlayerResponse for isLiveContent
     try {
       const scripts = Array.from(document.querySelectorAll('script'));
       const playerScript = scripts.find(s => s.textContent?.includes('ytInitialPlayerResponse'));
@@ -56,14 +138,9 @@ class YouTubeDetector extends PlatformDetector {
   }
 
   extractStreamerUsername(): string | null {
-    // Method 1: From URL — fast path for /@channel/live pages
     const urlMatch = window.location.pathname.match(/@([^\/]+)/);
     if (urlMatch) return urlMatch[1];
 
-    // Method 2: From ytInitialData — tried early because it returns the channel_id
-    // (UC...) which is always the primary key stored in overlay_chat_sources.
-    // Handle-based methods (3-5) can return display-name strings that only match
-    // if channel_handle was also populated in the DB, which is not guaranteed.
     try {
       const scripts = Array.from(document.querySelectorAll('script'));
       const dataScript = scripts.find(s => s.textContent?.includes('"channelId"'));
@@ -73,7 +150,6 @@ class YouTubeDetector extends PlatformDetector {
       }
     } catch { /* ignore */ }
 
-    // Method 3: From page metadata link
     const channelLink = document.querySelector('link[itemprop="url"]');
     if (channelLink) {
       const href = channelLink.getAttribute('href');
@@ -81,7 +157,6 @@ class YouTubeDetector extends PlatformDetector {
       if (match) return match[1];
     }
 
-    // Method 4: From channel link in header
     const channelNameElement = document.querySelector('ytd-channel-name a');
     if (channelNameElement) {
       const href = channelNameElement.getAttribute('href');
@@ -91,7 +166,6 @@ class YouTubeDetector extends PlatformDetector {
       if (idMatch) return idMatch[1];
     }
 
-    // Method 5: From owner link in video page
     const ownerLink = document.querySelector('a.yt-simple-endpoint.ytd-video-owner-renderer');
     if (ownerLink) {
       const href = ownerLink.getAttribute('href');
@@ -104,12 +178,7 @@ class YouTubeDetector extends PlatformDetector {
     return null;
   }
 
-  /**
-   * Extract a human-readable channel name for display in the UI.
-   * Falls back to the username (channel ID or handle) if not found.
-   */
   extractDisplayName(fallback: string): string {
-    // From the channel name element text content
     const channelNameEl = document.querySelector('ytd-channel-name #text, ytd-channel-name a');
     if (channelNameEl?.textContent?.trim()) {
       return channelNameEl.textContent.trim();
@@ -117,10 +186,6 @@ class YouTubeDetector extends PlatformDetector {
     return fallback;
   }
 
-  /**
-   * Check ytInitialPlayerResponse for stream status signals.
-   * Returns a reason string if the stream is unsupported, or null if OK.
-   */
   private getUnsupportedStreamReason(): string | null {
     try {
       const scripts = Array.from(document.querySelectorAll('script'));
@@ -134,14 +199,11 @@ class YouTubeDetector extends PlatformDetector {
         return 'unlisted';
       }
     } catch {
-      // Can't parse — assume OK and let normal flow handle errors
+      // Can't parse — assume OK
     }
     return null;
   }
 
-  /**
-   * Show a dismissible badge explaining why AllChat can't activate.
-   */
   private showUnsupportedStreamBadge(reason: 'scheduled' | 'unlisted'): void {
     const existingBadge = document.getElementById('allchat-unsupported-badge');
     if (existingBadge) existingBadge.remove();
@@ -168,19 +230,14 @@ class YouTubeDetector extends PlatformDetector {
     document.body.appendChild(badge);
   }
 
-  /**
-   * Override init to check for live streams first, and pass display name to UI
-   */
   async init(): Promise<void> {
     console.log(`[AllChat ${this.platform}] Initializing...`);
 
-    // YouTube-specific: Only activate on live streams, not VODs
     if (!this.isLiveStream()) {
       console.log(`[AllChat ${this.platform}] Not a live stream, skipping`);
       return;
     }
 
-    // Check for unsupported stream types (scheduled, unlisted)
     const unsupportedReason = this.getUnsupportedStreamReason();
     if (unsupportedReason) {
       console.log(`[AllChat ${this.platform}] Stream is ${unsupportedReason}, not supported`);
@@ -188,24 +245,16 @@ class YouTubeDetector extends PlatformDetector {
       return;
     }
 
-    // Continue with normal initialization, passing display name override
     return super.init(this.extractDisplayName.bind(this));
   }
 
-  /**
-   * Extract YouTube video ID from the current page URL or DOM.
-   * Supports /watch?v=VIDEO_ID, /live/VIDEO_ID, and /@channel/live formats.
-   */
   private extractVideoId(): string | null {
-    // /watch?v=VIDEO_ID
     const vParam = new URLSearchParams(window.location.search).get('v');
     if (vParam) return vParam;
 
-    // /live/VIDEO_ID
     const liveMatch = window.location.pathname.match(/\/live\/([^/?]+)/);
     if (liveMatch) return liveMatch[1];
 
-    // /@channel/live — no video ID in URL, extract from canonical link or ytInitialData
     const canonical = document.querySelector('link[rel="canonical"]');
     if (canonical) {
       const href = canonical.getAttribute('href');
@@ -213,7 +262,6 @@ class YouTubeDetector extends PlatformDetector {
       if (match) return match[1];
     }
 
-    // Fallback: extract from ytInitialPlayerResponse in page scripts
     try {
       const scripts = Array.from(document.querySelectorAll('script'));
       for (const s of scripts) {
@@ -228,52 +276,856 @@ class YouTubeDetector extends PlatformDetector {
     return null;
   }
 
-  /**
-   * Pass the YouTube video ID to the AllChat iframe so the backend can use
-   * the cheap videos.list API (1 quota unit) instead of the unreliable
-   * search.list API (100 quota units) to discover the liveChatId.
-   */
   protected override getExtraIframeParams(): Record<string, string> {
     const videoId = this.extractVideoId();
     return videoId ? { video_id: videoId } : {};
   }
 
   getChatContainerSelector(): string[] {
-    // Multi-level fallback selectors for YouTube live chat
     return [
-      'ytd-live-chat-frame',          // Primary container
-      '#chat-container',              // ID selector
-      '#chat',                        // Alternative ID
-      '[id="chat"]',                  // Attribute selector
-      '.yt-live-chat-app',            // Class name
+      'ytd-live-chat-frame',
+      '#chat-container',
+      '#chat',
+      '[id="chat"]',
+      '.yt-live-chat-app',
     ];
   }
 
   hideNativeChat(): void {
-    if (document.getElementById('allchat-hide-native-style')) return; // idempotent
+    // Overlay architecture:
+    //   parent (position: relative, flex col)
+    //     ├── #allchat-tab-bar       (normal flow at top, ~30px)
+    //     ├── ytd-live-chat-frame    (position: absolute, fills column below
+    //     │                           tab bar, z-index: 1 by default)
+    //     │     └── iframe: native header / banner / ticker at top,
+    //     │                 message list HIDDEN in the middle,
+    //     │                 input / emoji / super-chat / reactions at bottom
+    //     └── #allchat-container     (position: absolute, fills ONLY the
+    //                                  middle band between the top native
+    //                                  stack and the input, z-index: 2)
+    //
+    // When a picker (emoji / super-chat / reactions) opens inside the
+    // iframe, we bump the frame's z-index above AllChat so the picker
+    // hovers over the cross-platform feed instead of being clipped by the
+    // old collapsed-frame geometry. See wirePickerOverlay.
+    //
+    // Switching to the native tab just hides #allchat-container and
+    // removes the iframe trim — the frame is already full column height,
+    // so the native chat returns at full size with zero reshaping.
 
-    const style = document.createElement('style');
-    style.id = 'allchat-hide-native-style';
-    // Use visibility:hidden + overflow:hidden instead of display:none so YouTube
-    // keeps allocating height for #chat-container. display:none collapses the
-    // parent to ~152px which makes our injected container unusably small.
-    style.textContent = `
-      ytd-live-chat-frame {
-        visibility: hidden !important;
-        overflow: hidden !important;
-        pointer-events: none !important;
+    // BEFORE injecting the absolute-positioning CSS, capture the parent's
+    // current intrinsic height (derived from its flex children) and pin it
+    // as min-height. Once every child becomes position:absolute the parent
+    // would collapse otherwise — and an absolutely positioned AllChat
+    // overlay inside a zero-height parent is also zero-height.
+    const chatFrame = document.querySelector('ytd-live-chat-frame') as HTMLElement | null;
+    const parent = chatFrame?.parentElement as HTMLElement | null;
+    if (parent) {
+      const h = parent.getBoundingClientRect().height;
+      if (h > 100 && !parent.style.minHeight) {
+        parent.style.minHeight = `${h}px`;
+        pinnedHostMinHeight = parent.style.minHeight;
+      } else if (parent.style.minHeight) {
+        pinnedHostMinHeight = parent.style.minHeight;
       }
-    `;
-    document.head.appendChild(style);
-    console.log('[AllChat YouTube] Injected CSS to hide native chat');
+      if (getComputedStyle(parent).position === 'static') {
+        parent.style.position = 'relative';
+      }
+      // Brand class used by the injected style block below to paint a
+      // rounded 1px border around the whole panel (tab bar + overlay +
+      // frame). Stripped in resetOverlayLayout on teardown.
+      parent.classList.add('allchat-overlay-host');
+    }
+
+    this.wireCollapseObserver(chatFrame, parent);
+
+    if (!document.getElementById('allchat-hide-native-style')) {
+      const style = document.createElement('style');
+      style.id = 'allchat-hide-native-style';
+      style.textContent = `
+        /* Restore the 1px rounded panel border native YouTube paints
+           around the live chat frame. We shift it up to the parent so
+           the border wraps the WHOLE panel — tab bar + overlay +
+           frame — instead of only the frame, and we strip the frame's
+           own border to avoid a double outline. Colours match YT's
+           theme (light = black/10%, dark = white/10%). */
+        .allchat-overlay-host {
+          border: 1px solid rgba(0, 0, 0, 0.1);
+          border-radius: 12px;
+          overflow: hidden;
+          box-sizing: border-box;
+        }
+        html[dark] .allchat-overlay-host {
+          border-color: rgba(255, 255, 255, 0.1);
+        }
+        .allchat-overlay-host ytd-live-chat-frame {
+          border: 0 !important;
+          border-radius: 0 !important;
+        }
+        /* Collapsed state (user clicked native X). Shed the bordered
+           panel chrome and let the parent column shrink to fit just the
+           native show-hide-button strip + our tab bar. The observer in
+           wireCollapseObserver additionally strips the hide-chat-frame
+           attribute YT sets alongside collapsed, so the native widget
+           inside the frame (#show-hide-button, "Chat anzeigen") stays
+           visible and clickable for re-expansion. */
+        .allchat-overlay-host.allchat-frame-collapsed {
+          border: 0 !important;
+          border-radius: 0 !important;
+          overflow: visible !important;
+          min-height: 0 !important;
+        }
+        .allchat-overlay-host.allchat-frame-collapsed #allchat-container {
+          display: none !important;
+        }
+        ytd-live-chat-frame {
+          position: absolute !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          z-index: 1 !important;
+          flex: 0 0 auto !important;
+          /* Override YT's own height var (--ytd-watch-flexy-chat-max-height)
+             so the frame stretches edge-to-edge between tab-bar and column
+             bottom via our inline top + bottom:0. Otherwise the rule
+             "#chat.ytd-watch-flexy { height: var(...) }" clamps it. */
+          height: auto !important;
+          max-height: none !important;
+          min-height: 0 !important;
+          transition: z-index 0s !important;
+        }
+        /* While collapsed, drop the absolute positioning so the frame
+           flows inline inside the (now short) parent column and renders
+           at the native show-hide-button's intrinsic size. */
+        ytd-live-chat-frame[collapsed] {
+          position: relative !important;
+          top: auto !important;
+          bottom: auto !important;
+        }
+        ytd-live-chat-frame.allchat-picker-active {
+          z-index: 3 !important;
+        }
+        ytd-live-chat-frame iframe {
+          width: 100% !important;
+          height: 100% !important;
+          border: none !important;
+          display: block !important;
+          background: transparent !important;
+        }
+        #allchat-container {
+          position: absolute !important;
+          left: 0 !important;
+          right: 0 !important;
+          z-index: 2 !important;
+          /* display is controlled by inline style ('flex' on AllChat tab,
+             'none' on YouTube tab) — no !important here so handleSwitchToYouTube
+             can actually hide the overlay. */
+          flex-direction: column !important;
+          min-height: 0 !important;
+        }
+        #allchat-container iframe {
+          flex: 1 1 auto !important;
+          min-height: 0 !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    this.applyIframeTrim();
+
+    // Re-apply on iframe navigation (SPA) / reload — the iframe document
+    // is recreated and our injected style tag + observers don't survive.
+    const iframe = document.querySelector('ytd-live-chat-frame iframe') as HTMLIFrameElement | null;
+    if (iframe && !iframe.dataset.allchatTrimWired) {
+      iframe.dataset.allchatTrimWired = '1';
+      iframe.addEventListener('load', () => {
+        // Only re-trim if AllChat is still the active tab. YouTube
+        // reloads the iframe on uncollapse / subscribers-only mode
+        // flip / SPA nav — without this guard the load handler would
+        // re-inject the trim CSS while the user is in the native tab,
+        // hiding the YT message list and stripping the header chrome
+        // (Top Chat dropdown, kebab, X) exactly when they want them.
+        const container = document.getElementById('allchat-container');
+        if (!container || getComputedStyle(container).display === 'none') return;
+        this.applyIframeTrim();
+      });
+    }
+
+    console.log('[AllChat YouTube] Overlay active — native stack visible, messages hidden, pickers layered above AllChat');
+  }
+
+  /**
+   * Make the native X (yt-live-chat-header-renderer > #close-button) work
+   * with our overlay.
+   *
+   * What YouTube does on X click:
+   *   - Adds `collapsed` → CSS rule `ytd-live-chat-frame[collapsed] iframe
+   *     { max-height: 0 }` zeroes the chat list so only the native
+   *     #show-hide-button (a "Chat anzeigen" / "Show chat" widget living
+   *     inside the frame) remains. This is the state we want.
+   *   - Adds `hide-chat-frame` → CSS rule
+   *     `ytd-live-chat-frame[hide-chat-frame] { display: none }` removes
+   *     the frame entirely, taking the show-hide-button with it. Combined
+   *     with our pinned min-height on the parent column, that left the
+   *     user staring at an empty bordered box with no way to re-open.
+   *
+   * Fix: strip `hide-chat-frame` whenever YT sets it, and toggle a
+   * `allchat-frame-collapsed` class on the host column so our CSS drops
+   * the bordered panel + tabs + pinned min-height while collapsed. The
+   * native show-hide-button then renders at its intrinsic size and the
+   * user can click it to re-expand.
+   */
+  private wireCollapseObserver(frame: HTMLElement | null, parent: HTMLElement | null): void {
+    if (!frame || !parent) return;
+    ytFrameCollapseObserver?.disconnect();
+    ytFrameCollapseObserver = null;
+
+    const apply = () => {
+      if (frame.hasAttribute('hide-chat-frame')) {
+        // Keep collapsed but drop the attribute that nukes the frame.
+        frame.removeAttribute('hide-chat-frame');
+      }
+      const collapsed = frame.hasAttribute('collapsed');
+      parent.classList.toggle('allchat-frame-collapsed', collapsed);
+    };
+
+    apply();
+    ytFrameCollapseObserver = new MutationObserver(apply);
+    ytFrameCollapseObserver.observe(frame, {
+      attributes: true,
+      attributeFilter: ['collapsed', 'hide-chat-frame'],
+    });
+  }
+
+  /**
+   * Force the frame out of its collapsed state. Called when the user
+   * switches back to the AllChat tab — without this, the iframe's
+   * `max-height: 0` would hide the header/ticker/input we rely on for
+   * the overlay alignment.
+   */
+  expandIfCollapsed(): void {
+    const frame = document.querySelector('ytd-live-chat-frame') as HTMLElement | null;
+    if (!frame) return;
+    if (frame.hasAttribute('collapsed')) frame.removeAttribute('collapsed');
+    if (frame.hasAttribute('hide-chat-frame')) frame.removeAttribute('hide-chat-frame');
+    frame.parentElement?.classList.remove('allchat-frame-collapsed');
+  }
+
+  /**
+   * Inject CSS into YouTube's live-chat iframe to hide ONLY the message
+   * list. Same-origin (youtube.com → youtube.com/live_chat) lets us reach
+   * into the iframe's document. Safe-retry: we poll briefly because the
+   * iframe document may not be ready yet.
+   *
+   * The iframe body is made transparent so the AllChat overlay behind it
+   * shows through the empty messages area. Every other native widget
+   * (header, banner, ticker, input with its emoji / super-chat / reactions
+   * buttons) stays at its natural position and full size — pickers render
+   * and expand naturally inside the full-height frame.
+   */
+  private applyIframeTrim(attempt = 0): void {
+    const iframe = document.querySelector('ytd-live-chat-frame iframe') as HTMLIFrameElement | null;
+    const doc = iframe?.contentDocument;
+    if (!doc || !doc.head) {
+      if (attempt < 10) setTimeout(() => this.applyIframeTrim(attempt + 1), 300);
+      return;
+    }
+    if (!doc.getElementById('allchat-yt-trim')) {
+      const style = doc.createElement('style');
+      style.id = 'allchat-yt-trim';
+      style.textContent = `
+        /* Hide ONLY the scrollable message list (#chat inside #contents).
+           Keep header, banner manager, ticker, and input — including their
+           pickers — fully interactive at natural sizes. */
+        yt-live-chat-renderer #contents > #chat,
+        yt-live-chat-renderer #item-list,
+        yt-live-chat-item-list-renderer {
+          display: none !important;
+        }
+        /* Hide header chrome that does not apply to an AllChat-driven
+           column: the Top Chat / Live Chat sort dropdown (AllChat drives
+           the feed so mode selection makes no sense), the "more options"
+           three-dot menu, and the close X. The XP leaderboard entry
+           (#viewer-leaderboard-entry-point) stays — users still earn XP
+           by watching. Scoped to the header so overlay-dialog / product-
+           picker close buttons (same #close-button id) are untouched. */
+        yt-live-chat-header-renderer #view-selector,
+        yt-live-chat-header-renderer #live-chat-header-context-menu,
+        yt-live-chat-header-renderer > #close-button {
+          display: none !important;
+        }
+        /* Make #panel-pages fill the space #chat used to occupy. By default
+           panel-pages is a static-positioned iron-pages whose height collapses
+           to its active child's height — with #input-panel active (and its
+           input renderer pulled out of flow via position:absolute below), that
+           collapses to ~1px. When YouTube swaps panel-pages to #buy-flow,
+           #donation-flow, #super-sticker-buy-flow, or any other purchase /
+           poll / q&a flow, the activated panel needs the full contents height
+           to render the modal UI — otherwise the user sees a ~100px-tall
+           stump at the bottom of the iframe while the "real" content thinks
+           it's painting into an invisibly-small box. Force flex-grow + a
+           positioning context so iron-pages can absolutely position its
+           iron-selected child into a sized frame. */
+        yt-live-chat-renderer #chat-messages > #contents > tp-yt-iron-pages#panel-pages {
+          flex: 1 1 auto !important;
+          min-height: 0 !important;
+          position: relative !important;
+        }
+        html, body {
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow: hidden !important;
+          /* Transparent so the AllChat overlay shows through the empty
+             middle band where the message list used to be. */
+          background: transparent !important;
+        }
+        body { position: relative !important; }
+        /* With #chat hidden, the input renderer collapses upward next to
+           the ticker. Anchor it at the bottom of the iframe so it stays
+           in its conventional location and pickers (emoji / super-chat /
+           reactions) open upward from there — visually on top of AllChat
+           thanks to the frame's z-index flip when the picker is active. */
+        body > yt-live-chat-app,
+        yt-live-chat-app,
+        yt-live-chat-renderer {
+          position: static !important;
+        }
+        yt-live-chat-message-input-renderer,
+        yt-live-chat-restricted-participation-renderer {
+          position: absolute !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          top: auto !important;
+          /* No width:100% — input renderer is box-sizing: content-box with
+             24px horizontal padding, so width:100% expands to 400+48=448px
+             inside a 400px iframe and clips the rightmost action button
+             (reactions). left:0 + right:0 already fits the element to its
+             containing block while respecting padding. */
+          z-index: 2 !important;
+          /* YouTube ships the input renderer with overflow:auto/hidden
+             because it normally expands to contain any open picker. With
+             our position:absolute pin the renderer's intrinsic height
+             collapses to the static content (the input row), while the
+             picker panels (#product-picker aka super-chat/support, #emoji)
+             are absolute with negative top anchoring up from the
+             renderer's bottom edge. Any non-visible overflow on the host
+             clips those panels entirely — the super-chat popup opens but
+             renders blank behind the chat column. Force overflow:visible
+             so those panels escape the 0-height pin box. */
+          overflow: visible !important;
+          background: var(--yt-live-chat-background-color, #0f0f0f) !important;
+        }
+        /* Match the platform's dark/light surface on the parts that DO
+           paint (header + ticker + banner bands) so they don't look like
+           an unpainted iframe row over the video feed. */
+        yt-live-chat-header-renderer,
+        yt-live-chat-banner-manager,
+        yt-live-chat-ticker-renderer {
+          background: var(--yt-live-chat-background-color, #0f0f0f) !important;
+        }
+      `;
+      doc.head.appendChild(style);
+    }
+
+    this.wireOverlayObservers(doc, iframe!);
+  }
+
+  /**
+   * Align the AllChat overlay with the iframe's native stack boundaries
+   * and flip the frame's z-index above AllChat whenever a picker (emoji,
+   * super-chat / product picker, live reactions) is open inside the
+   * iframe.
+   *
+   * Strategy:
+   *   - Measure top stack (header + banner + ticker) and bottom stack
+   *     (input / restricted-participation renderer) heights.
+   *   - Set #allchat-container's top/bottom inline styles so it covers
+   *     only the middle messages band.
+   *   - Observe size/DOM changes so super-chats appearing, banners
+   *     pinning, picker panels expanding etc. all stay in sync.
+   *   - Add a visibility check on #pickers children and the reaction
+   *     panel — when any is open, toggle `.allchat-picker-active` on the
+   *     frame so its z-index rises above the AllChat overlay.
+   */
+  private wireOverlayObservers(doc: Document, iframe: HTMLIFrameElement): void {
+    const win = iframe.contentWindow as (Window & typeof globalThis) | null;
+    if (!win) return;
+    const frame = document.querySelector('ytd-live-chat-frame') as HTMLElement | null;
+    const container = document.getElementById('allchat-container');
+    const tabBar = document.getElementById('allchat-tab-bar');
+    if (!frame || !container) return;
+
+    // The tab bar lives in normal flex flow above the frame; offset the
+    // absolute-positioned frame by the tab bar's measured height so the
+    // native header isn't hidden behind it. Parent position + min-height
+    // are preserved in hideNativeChat so the parent box stays non-zero.
+    const tabBarH = tabBar ? tabBar.getBoundingClientRect().height : 0;
+    frame.style.top = `${tabBarH}px`;
+
+    // ---- Align AllChat with the native stack ----
+    const getTopStackH = (): number => {
+      const header = doc.querySelector('yt-live-chat-header-renderer') as HTMLElement | null;
+      const banner = doc.querySelector('yt-live-chat-banner-manager') as HTMLElement | null;
+      const ticker = doc.querySelector('yt-live-chat-ticker-renderer') as HTMLElement | null;
+      return (header?.offsetHeight || 0)
+           + (banner?.offsetHeight || 0)
+           + (ticker?.offsetHeight || 0);
+    };
+    // The AllChat container's bottom offset needs to align with the input
+    // row's TOP edge, measured in parent-document coordinates. Using just
+    // `input.offsetHeight` is wrong when the parent (#chat-container)
+    // extends further than the frame — typically YouTube leaves ~16px of
+    // padding below the frame, so `bottom: 56px` (= input height) leaves
+    // a 17px overlap that clips the top of the input row.
+    //
+    // Correct formula: container's bottom (as CSS `bottom:` value) =
+    //   parent.rect.bottom - input_top_in_parent_coords
+    // which gives the exact distance from the parent's bottom edge to
+    // where the input begins.
+    const parentEl = container.parentElement as HTMLElement | null;
+    const getInputBottomOffset = (): number => {
+      const input = (doc.querySelector('yt-live-chat-message-input-renderer')
+        || doc.querySelector('yt-live-chat-restricted-participation-renderer')) as HTMLElement | null;
+      if (!input || !parentEl) return input?.offsetHeight || 0;
+      const parentRect = parentEl.getBoundingClientRect();
+      const iframeRect = iframe.getBoundingClientRect();
+      const inputRect = input.getBoundingClientRect();
+      const inputTopInParent = iframeRect.top + inputRect.top;
+      return Math.max(0, Math.round(parentRect.bottom - inputTopInParent));
+    };
+
+    let alignRaf = false;
+    // Remember the input-area bottom offset measured when no picker is
+    // active. During a modal takeover (buy-flow / overlay-dialog) the
+    // input renderer collapses to 0 — if we followed that the AllChat
+    // overlay's bottom offset would balloon. Freeze to the idle value
+    // and rely on the frame's z-index flip to float the modal above.
+    let lastIdleBotH = 0;
+    // When a bottom-anchored picker (emoji / super-chat menu) is open,
+    // updatePickerState writes the picker's top edge here in parent-
+    // document coordinates so alignOverlay can shrink the AllChat
+    // container just above the picker. This keeps AllChat messages
+    // visible in the remaining top band instead of the previous
+    // behaviour of hiding every message behind a z-index bump.
+    let pickerBotOffset: number | null = null;
+    const alignOverlay = () => {
+      if (alignRaf) return;
+      alignRaf = true;
+      win.requestAnimationFrame(() => {
+        alignRaf = false;
+        const topH = getTopStackH();
+        const modalActive = frame.classList.contains('allchat-picker-active');
+        const measuredBotH = getInputBottomOffset();
+        let botH: number;
+        if (modalActive) {
+          botH = lastIdleBotH || measuredBotH;
+        } else if (pickerBotOffset != null) {
+          // Shrink AllChat to end at the picker's top edge. Leaves
+          // `lastIdleBotH` untouched so reopening the input restores
+          // the pre-picker layout cleanly.
+          botH = pickerBotOffset;
+        } else {
+          lastIdleBotH = measuredBotH;
+          botH = measuredBotH;
+        }
+        container.style.top = `${tabBarH + topH}px`;
+        container.style.bottom = `${botH}px`;
+      });
+    };
+    // Convert the active picker's visible top edge to the AllChat
+    // container's `bottom:` value (parent-document coords).
+    //
+    // The two picker renderers lay out very differently and we have to
+    // accommodate both:
+    //   - Emoji picker (`#emoji`, position:relative): participates in
+    //     the input-renderer's flex flow. The renderer *expands* upward
+    //     to hold the input row (top) + picker grid (bottom). The
+    //     visible top edge of the bottom stack is the renderer's top —
+    //     using the picker's rect.top instead would cover the input row
+    //     and leave the user unable to close the picker or send chat.
+    //   - Product picker (`#product-picker`, position:absolute with
+    //     `top:-330px; bottom:8px`): floats upward out of a collapsed
+    //     0-height renderer. Native YouTube intentionally hides the
+    //     input row during this menu phase. The renderer's rect.top
+    //     sits at the very bottom, so its top edge is useless — the
+    //     picker's own rect.top is the visible top edge.
+    //
+    // Taking the minimum of the two rect.tops picks the correct anchor
+    // in both cases (and ignores the renderer when it is collapsed).
+    const measurePickerBotOffset = (pickerEl: HTMLElement): number | null => {
+      if (!parentEl) return null;
+      const parentRect = parentEl.getBoundingClientRect();
+      const iframeRect = iframe.getBoundingClientRect();
+      const pickerRect = pickerEl.getBoundingClientRect();
+      let topInIframe = pickerRect.top;
+      const inputRenderer = doc.querySelector('yt-live-chat-message-input-renderer') as HTMLElement | null;
+      if (inputRenderer) {
+        const inputRect = inputRenderer.getBoundingClientRect();
+        if (inputRect.height > 0 && inputRect.top < topInIframe) {
+          topInIframe = inputRect.top;
+        }
+      }
+      const topInParent = iframeRect.top + topInIframe;
+      return Math.max(0, Math.round(parentRect.bottom - topInParent));
+    };
+
+    // ---- Picker visibility detection ----
+    // Three overlay treatments, picked by how much of the chat column
+    // the native UI takes over:
+    //
+    //   MODAL (full-column takeover): #panel-pages swapped off
+    //   #input-panel (buy-flow / donation-flow / super-sticker-buy-flow
+    //   / gift-sub / q&a / poll) OR #overlay-dialog populated (phase-2
+    //   purchase, membership, error dialogs). The native UI fills the
+    //   entire column from ticker to input, so there is no room to keep
+    //   AllChat visible. Toggle `.allchat-picker-active` on the frame
+    //   to flip z-index above AllChat — the messages disappear, which
+    //   matches both native YouTube behaviour and the user's focus
+    //   during a payment flow.
+    //
+    //   PICKER (bottom-anchored partial overlay): #pickers iron-pages
+    //   marks emoji / product-picker iron-selected. These panels are
+    //   ~300-340px tall and pinned above the input row; they do not
+    //   cover the top of the chat column. Rather than hiding every
+    //   AllChat message behind a z-index bump, we shrink the AllChat
+    //   container so its bottom sits right on top of the picker. The
+    //   frame stays at z:1 and the picker renders inside it untouched,
+    //   while AllChat messages remain visible in the band above.
+    //
+    //   REACTION (hover-expanded live-reactions panel): a skinny
+    //   vertical column pinned to the right of the input. Clip a
+    //   ~60px gutter on the right so the expanded panel shows
+    //   through, AllChat messages stay visible on the left.
+    const REACTION_EXPANDED_MIN_H = 60; // closed panel ~36px, expanded stacks 6 buttons
+    const REACTION_GUTTER_PX = 60;      // width of the clip-path hole
+    const isVisible = (el: Element | null): boolean => {
+      if (!el || !(el as HTMLElement).isConnected) return false;
+      const cs = win.getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    };
+    const updatePickerState = () => {
+      let modalActive = false;
+      let pickerEl: HTMLElement | null = null;
+
+      // Case 1: #panel-pages swapped away from #input-panel → MODAL.
+      // This is the outermost iron-pages inside the chat iframe — the
+      // slot that hosts the whole input row by default, and swaps to a
+      // purchase flow (#buy-flow for super-chat, #super-sticker-buy-flow,
+      // #donation-flow, #sponsorships-gift-buy-flow, #qna-start-panel,
+      // #poll-editor-panel) when the user clicks the corresponding button.
+      // These fill the whole chat column from ticker to input.
+      const panelPages = doc.getElementById('panel-pages') as HTMLElement | null;
+      if (panelPages) {
+        const activePanel = Array.from(panelPages.children).find(c => c.classList.contains('iron-selected')) as HTMLElement | null;
+        if (activePanel && activePanel.id && activePanel.id !== 'input-panel') {
+          modalActive = true;
+        }
+      }
+
+      // Case 2: #pickers iron-pages has a child with `iron-selected` →
+      // PICKER. This is the INNER picker (emoji / super-chat menu) that
+      // opens above the input without replacing the whole panel. Polymer
+      // iron-pages marks the active page via the class on the child —
+      // `selected` attribute on the parent is a property-only reflection
+      // in some builds, so we can't rely on getAttribute.
+      if (!modalActive) {
+        const pickers = doc.getElementById('pickers') as HTMLElement | null;
+        if (pickers) {
+          const activeChild = Array.from(pickers.children).find(c => c.classList.contains('iron-selected')) as HTMLElement | null;
+          if (activeChild && isVisible(activeChild)) {
+            pickerEl = activeChild;
+          }
+        }
+      }
+
+      // Case 3: #overlay-dialog populated → MODAL. Super-chat purchase
+      // phase 2 (payment modal), membership dialogs, error dialogs mount
+      // here. It starts empty — any mounted child means a user-opened
+      // overlay is active. Don't dimension-check the overlay-dialog
+      // element itself: it's position:static with 0 height and children
+      // are absolutely positioned inside, so the container's rect never
+      // reflects the dialog's size.
+      if (!modalActive && !pickerEl) {
+        const overlayDialog = doc.getElementById('overlay-dialog');
+        if (overlayDialog && overlayDialog.childElementCount > 0) {
+          modalActive = true;
+        }
+      }
+
+      let reactionExpanded = false;
+      if (!modalActive && !pickerEl) {
+        const reactionPanel = doc.querySelector('yt-reaction-control-panel-view-model');
+        if (reactionPanel && reactionPanel.getBoundingClientRect().height > REACTION_EXPANDED_MIN_H) {
+          reactionExpanded = true;
+        }
+      }
+
+      frame.classList.toggle('allchat-picker-active', modalActive);
+      // Stash the picker-top offset for alignOverlay to consume. Setting
+      // it to null when no picker is active lets alignOverlay fall back
+      // to the normal "align to input top" formula.
+      pickerBotOffset = pickerEl ? measurePickerBotOffset(pickerEl) : null;
+
+      if (reactionExpanded) {
+        // Clip a vertical strip on the right so the expanded reaction
+        // panel (which is inside the iframe at z-index:1) shows through.
+        // AllChat messages stay visible on the left ~340px.
+        container.style.clipPath =
+          `polygon(0 0, calc(100% - ${REACTION_GUTTER_PX}px) 0, ` +
+          `calc(100% - ${REACTION_GUTTER_PX}px) 100%, 0 100%)`;
+      } else {
+        container.style.clipPath = '';
+      }
+
+      // Kick alignOverlay so the new pickerBotOffset takes effect on
+      // the same frame, not one frame later when the next resize fires.
+      alignOverlay();
+    };
+
+    // ---- Bind observers ----
+    // Disconnect AND null the references. The bind helpers below are
+    // idempotent via `if (ytXxxObserver) return`, so leaving stale truthy
+    // references here would make them skip the rebind silently and we'd
+    // keep a disconnected observer forever — picker/super-chat detection
+    // would stop working on the second init (SPA nav, iframe reload, …).
+    ytStackResizeObserver?.disconnect();
+    ytStackMutationObserver?.disconnect();
+    ytPickerMutationObserver?.disconnect();
+    ytPickerResizeObserver?.disconnect();
+    ytOverlayDialogObserver?.disconnect();
+    ytPanelPagesObserver?.disconnect();
+    ytStackResizeObserver = null;
+    ytStackMutationObserver = null;
+    ytPickerMutationObserver = null;
+    ytPickerResizeObserver = null;
+    ytOverlayDialogObserver = null;
+    ytPanelPagesObserver = null;
+
+    const RO = win.ResizeObserver;
+    const MO = win.MutationObserver;
+    const schedulePickerCheck = () => win.requestAnimationFrame(updatePickerState);
+
+    // ResizeObserver on the native stack targets handles almost every case:
+    // header height changes, banner pin/unpin, ticker growing as super-chats
+    // arrive, and input renderer swaps. Bind once — the targets only go away
+    // on a full panel teardown, which runs showNativeChat() anyway.
+    const alignTargets = [
+      'yt-live-chat-header-renderer',
+      'yt-live-chat-banner-manager',
+      'yt-live-chat-ticker-renderer',
+      'yt-live-chat-message-input-renderer',
+      'yt-live-chat-restricted-participation-renderer',
+    ].map(sel => doc.querySelector(sel)).filter(Boolean) as Element[];
+
+    if (RO) {
+      ytStackResizeObserver = new RO(() => { alignOverlay(); schedulePickerCheck(); });
+      alignTargets.forEach(el => ytStackResizeObserver!.observe(el));
+    }
+
+    // Scoped picker observer: watches ONLY the #pickers iron-pages, for the
+    // `selected` attribute flip (picker open/close) and childList churn
+    // (new picker panel added). Previously this observed the whole input
+    // renderer subtree with a broad attribute filter, which pulled in every
+    // keystroke and every render tick. #pickers only mutates when a picker
+    // actually opens or closes — rarely.
+    //
+    // YouTube lazy-mounts #pickers on first picker open, so this may be a
+    // no-op on initial setup. bindPickerObserver() is idempotent and called
+    // again from the input-panel mutation observer whenever DOM changes
+    // bring #pickers into existence.
+    const bindPickerObserver = () => {
+      if (ytPickerMutationObserver) return; // already bound
+      const pickers = doc.getElementById('pickers') as HTMLElement | null;
+      if (!MO || !pickers) return;
+      ytPickerMutationObserver = new MO(schedulePickerCheck);
+      // Iron-pages flips an `iron-selected` class on the child that is
+      // currently active. We watch children for `class` attribute changes
+      // (subtree but SHALLOW — only direct children get class-tracked via
+      // the default subtree traversal; since the pickers element only
+      // mutates when a picker is switched or mounted, the callback rate
+      // stays ~0/sec during idle chat).
+      ytPickerMutationObserver.observe(pickers, {
+        attributes: true,
+        subtree: true,
+        childList: true,
+        attributeFilter: ['class'],
+      });
+    };
+    bindPickerObserver();
+
+    // Same pattern for the reaction-panel ResizeObserver — may mount late.
+    const bindReactionObserver = () => {
+      if (ytPickerResizeObserver) return;
+      const reactionPanel = doc.querySelector('yt-reaction-control-panel-view-model') as HTMLElement | null;
+      if (!reactionPanel) return;
+      if (RO) {
+        ytPickerResizeObserver = new RO(schedulePickerCheck);
+        ytPickerResizeObserver.observe(reactionPanel);
+      }
+      // Live reactions expand via :hover — MutationObserver misses pure-CSS
+      // hover transitions. Pointer events on the single reaction panel
+      // (not the whole input area) give us a cheap trigger for edge cases
+      // the RO misses.
+      reactionPanel.addEventListener('pointerover', schedulePickerCheck, true);
+      reactionPanel.addEventListener('pointerleave', schedulePickerCheck, true);
+    };
+    bindReactionObserver();
+
+    // Watch #overlay-dialog for children mounting. Super-chat purchase
+    // dialogs, membership purchase modals, and other "full takeover"
+    // overlays inject here (it starts empty and gets populated on
+    // activation). When that happens we need to flip the frame's z-index
+    // above AllChat so the dialog is actually visible — otherwise it's
+    // hidden behind our messages and the user sees "nothing happens" or
+    // "dialog opens blank".
+    const overlayDialog = doc.getElementById('overlay-dialog');
+    if (MO && overlayDialog && !ytOverlayDialogObserver) {
+      ytOverlayDialogObserver = new MO(schedulePickerCheck);
+      ytOverlayDialogObserver.observe(overlayDialog, { childList: true });
+    }
+
+    // Watch #panel-pages for iron-selected class flips on its children.
+    // This catches the most common user-picker activation — clicking
+    // the super-chat / super-sticker / donation / gift-sub / q&a / poll
+    // button swaps the iron-selected class from #input-panel onto the
+    // matching sibling panel, which YT then fills with the flow UI.
+    // subtree:false, attributes:true, attributeFilter:['class'] would
+    // only fire on the panel-pages element itself — we need subtree:true
+    // so class changes on DIRECT children reach us. That does mean we
+    // also see class changes on deeper descendants (input-panel's own
+    // subtree) but those are rare and the callback is a cheap state
+    // recompute.
+    const panelPages2 = doc.getElementById('panel-pages');
+    if (MO && panelPages2 && !ytPanelPagesObserver) {
+      ytPanelPagesObserver = new MO(schedulePickerCheck);
+      ytPanelPagesObserver.observe(panelPages2, {
+        attributes: true,
+        subtree: true,
+        attributeFilter: ['class'],
+      });
+    }
+
+    // Scoped renderer-swap observer: watches the #input-panel slot for
+    // childList changes in its subtree. That's where YouTube swaps
+    // yt-live-chat-message-input-renderer ↔ yt-live-chat-restricted-participation-renderer
+    // (subscribers-only mode flip) and where #pickers is lazy-mounted
+    // on first picker open. We use `childList: true, subtree: true` but
+    // NO attribute observation — the hot per-keystroke/per-hover attribute
+    // churn stays invisible to us. The message-list churn (40 mutations/sec
+    // on a busy stream) is in a sibling subtree, so nothing from there
+    // reaches this observer.
+    const inputPanel = doc.getElementById('input-panel');
+    if (MO && inputPanel) {
+      ytStackMutationObserver = new MO(() => {
+        // On renderer swap / #pickers mount / reaction-panel mount: rebind
+        // the observers that depend on those elements existing. Binding is
+        // idempotent so repeat fires are cheap.
+        const newInput = (doc.querySelector('yt-live-chat-message-input-renderer')
+          || doc.querySelector('yt-live-chat-restricted-participation-renderer')) as Element | null;
+        if (newInput && ytStackResizeObserver) ytStackResizeObserver.observe(newInput);
+        bindPickerObserver();
+        bindReactionObserver();
+        alignOverlay();
+        schedulePickerCheck();
+      });
+      ytStackMutationObserver.observe(inputPanel, { childList: true, subtree: true });
+    }
+
+    alignOverlay();
+    updatePickerState();
+    // Delayed alignment passes: header/ticker often resolve their natural
+    // heights a few hundred ms after first paint. Without these we'd stick
+    // with a stale (possibly zero) offset.
+    win.setTimeout(() => { alignOverlay(); updatePickerState(); }, 500);
+    win.setTimeout(() => { alignOverlay(); updatePickerState(); }, 1500);
+    win.setTimeout(() => { alignOverlay(); updatePickerState(); }, 3000);
   }
 
   showNativeChat(): void {
-    const style = document.getElementById('allchat-hide-native-style');
-    if (style) {
-      style.remove();
-      console.log('[AllChat YouTube] Removed CSS to show native chat');
+    // Tear down only what the AllChat tab needed: iframe trim (so the
+    // messages render again) and the alignment observers (so they stop
+    // re-writing inline styles on the frame). We intentionally LEAVE the
+    // outer absolute layout in place — the iframe is already full column
+    // height below the tab bar, so the native chat returns at full size
+    // the moment the trim and AllChat overlay are gone.
+    ytStackResizeObserver?.disconnect();
+    ytStackMutationObserver?.disconnect();
+    ytPickerMutationObserver?.disconnect();
+    ytPickerResizeObserver?.disconnect();
+    ytOverlayDialogObserver?.disconnect();
+    ytPanelPagesObserver?.disconnect();
+    ytStackResizeObserver = null;
+    ytStackMutationObserver = null;
+    ytPickerMutationObserver = null;
+    ytPickerResizeObserver = null;
+    ytOverlayDialogObserver = null;
+    ytPanelPagesObserver = null;
+
+    const chatFrame = document.querySelector('ytd-live-chat-frame') as HTMLElement | null;
+    chatFrame?.classList.remove('allchat-picker-active');
+    const allchatContainer = document.getElementById('allchat-container');
+    if (allchatContainer) allchatContainer.style.clipPath = '';
+    const iframe = chatFrame?.querySelector('iframe') as HTMLIFrameElement | null;
+    const doc = iframe?.contentDocument;
+    doc?.getElementById('allchat-yt-trim')?.remove();
+
+    // Kick YT's virtual scroller. While the AllChat tab was active we
+    // had `yt-live-chat-item-list-renderer` as `display: none`, so the
+    // virtual scroller stopped rendering rows and its scrollHeight
+    // collapsed to clientHeight (typically ~441px on a ~500-row feed).
+    // Un-hiding alone leaves it in that stale state — the user sees
+    // only a handful of messages and the feed appears frozen until the
+    // next new message scrolls it back into life. Forcing scrollTop to
+    // scrollHeight rehydrates the full item list in one pass and lands
+    // the viewer at the live edge.
+    const scroller = doc?.querySelector('yt-live-chat-item-list-renderer #item-scroller') as HTMLElement | null;
+    if (scroller) {
+      scroller.scrollTop = scroller.scrollHeight;
+      // Follow-up ticks: YT re-measures rows over the next frame or two
+      // and sometimes snaps back to an earlier scroll position. Re-pin
+      // to the bottom after the rehydration settles.
+      const win = iframe?.contentWindow;
+      win?.requestAnimationFrame?.(() => { scroller.scrollTop = scroller.scrollHeight; });
+      win?.setTimeout?.(() => { scroller.scrollTop = scroller.scrollHeight; }, 100);
     }
+
+    console.log('[AllChat YouTube] Native tab — overlay torn down, messages restored');
+  }
+
+  /**
+   * Fully remove every outer modification (run from teardown/removeAllChatUI).
+   * Called on URL change / extension disable; leaves no trace on the page.
+   */
+  private resetOverlayLayout(): void {
+    ytFrameCollapseObserver?.disconnect();
+    ytFrameCollapseObserver = null;
+    pinnedHostMinHeight = '';
+    const chatFrame = document.querySelector('ytd-live-chat-frame') as HTMLElement | null;
+    const parent = chatFrame?.parentElement;
+    if (parent) {
+      parent.style.minHeight = '';
+      parent.style.position = '';
+      parent.classList.remove('allchat-overlay-host');
+      parent.classList.remove('allchat-frame-collapsed');
+    }
+    if (chatFrame) {
+      chatFrame.style.top = '';
+      chatFrame.style.height = '';
+      chatFrame.style.minHeight = '';
+      chatFrame.style.maxHeight = '';
+      chatFrame.classList.remove('allchat-picker-active');
+    }
+    const iframe = chatFrame?.querySelector('iframe') as HTMLIFrameElement | null;
+    if (iframe) {
+      iframe.style.height = '';
+      delete iframe.dataset.allchatTrimWired;
+    }
+    document.getElementById('allchat-hide-native-style')?.remove();
+    const doc = iframe?.contentDocument;
+    doc?.getElementById('allchat-yt-trim')?.remove();
   }
 
   removeAllChatUI(): void {
@@ -282,6 +1134,9 @@ class YouTubeDetector extends PlatformDetector {
       container.remove();
       console.log('[AllChat YouTube] Removed All-Chat UI');
     }
+    removeTabBar();
+    this.showNativeChat();
+    this.resetOverlayLayout();
   }
 
   async createInjectionPoint(): Promise<HTMLElement | null> {
@@ -291,43 +1146,118 @@ class YouTubeDetector extends PlatformDetector {
       const watchFlexy = document.querySelector('ytd-watch-flexy');
       const isTheaterMode = watchFlexy?.hasAttribute('theater') ?? false;
 
-      const container = document.createElement('div');
-      container.id = 'allchat-container';
-
       if (isTheaterMode) {
-        // In theater mode #chat-container collapses to width:0 because YouTube
-        // removes the right-hand sidebar. Use a fixed overlay on the right side
-        // of the screen so the chat remains visible over the video.
-        container.style.cssText = 'position: fixed; top: 0; right: 0; width: 340px; height: 100vh; z-index: 9999;';
-        document.body.appendChild(container);
-        console.log('[AllChat YouTube] Injected in theater-mode (fixed overlay)');
-      } else {
-        const parent = nativeChat.parentElement;
-        if (!parent) {
-          console.warn('[AllChat YouTube] ytd-live-chat-frame has no parent — native chat remains visible');
-          return null;
+        // In theater mode, #chat-container collapses. Use a fixed overlay with tab bar.
+        const wrapper = document.createElement('div');
+        wrapper.id = 'allchat-theater-wrapper';
+        wrapper.style.cssText = 'position: fixed; top: 0; right: 0; width: 340px; height: 100vh; z-index: 9999; display: flex; flex-direction: column;';
+
+        const tabBar = createTabBar('YouTube Chat', 'youtube');
+        wrapper.appendChild(tabBar);
+
+        const container = document.createElement('div');
+        container.id = 'allchat-container';
+        container.style.cssText = 'flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;';
+        wrapper.appendChild(container);
+
+        document.body.appendChild(wrapper);
+
+        // Wire tab switching — native tab disabled in theater mode
+        const nativeTab = document.getElementById('allchat-tab-native');
+        if (nativeTab) {
+          nativeTab.style.opacity = '0.4';
+          nativeTab.style.cursor = 'not-allowed';
+          nativeTab.title = 'Exit theater mode to view YouTube Chat';
         }
-        // Position over the native chat frame absolutely so we fill the full
-        // column height regardless of how YouTube sizes #chat-container
-        container.style.cssText = 'position: absolute; inset: 0; z-index: 1;';
-        // Make parent a positioning context
-        if (parent.style.position === '' || parent.style.position === 'static') {
-          parent.style.position = 'relative';
-        }
-        parent.insertBefore(container, nativeChat);
+
+        console.log('[AllChat YouTube] Injected in theater-mode (fixed overlay with tab bar)');
+        return container;
       }
 
+      // Normal mode: inject tab bar and container as siblings of ytd-live-chat-frame
+      const parent = nativeChat.parentElement;
+      if (!parent) {
+        console.warn('[AllChat YouTube] ytd-live-chat-frame has no parent');
+        return null;
+      }
+
+      // Make parent a flex column so tab bar + content share the space
+      parent.style.cssText += '; display: flex !important; flex-direction: column !important;';
+
+      // Tab bar first
+      const tabBar = createTabBar('YouTube Chat', 'youtube');
+      parent.insertBefore(tabBar, parent.firstChild);
+
+      // AllChat container after tab bar, before native chat
+      const container = document.createElement('div');
+      container.id = 'allchat-container';
+      container.style.cssText = 'flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;';
+      parent.insertBefore(container, nativeChat);
+
+      // Ensure ytd-live-chat-frame participates in flex layout
+      nativeChat.style.cssText += '; flex: 1 1 auto; min-height: 0;';
+
+      // Hide native chat — AllChat starts as active tab
+      this.hideNativeChat();
+
+      // Wire tab switching
+      const detector = this;
+      setupTabSwitching(
+        () => handleSwitchToYouTube(detector),
+        () => handleSwitchToAllChat(detector),
+      );
+
+      // Watch for theme changes and update iframe
+      watchThemeChanges('youtube', (theme) => {
+        const iframe = document.querySelector('#allchat-container iframe') as HTMLIFrameElement | null;
+        if (iframe?.contentWindow) {
+          iframe.contentWindow.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: true, theme }, '*');
+        }
+      });
+
+      // Guard against YouTube removing our elements
+      guardObserver?.disconnect();
+      guardObserver = new MutationObserver(() => {
+        if (!parent.contains(container) && document.contains(parent)) {
+          console.log('[AllChat YouTube] Container removed — re-injecting');
+          parent.insertBefore(container, nativeChat);
+        }
+        if (!parent.contains(tabBar) && document.contains(parent)) {
+          console.log('[AllChat YouTube] Tab bar removed — re-injecting');
+          parent.insertBefore(tabBar, parent.firstChild);
+        }
+      });
+      guardObserver.observe(parent, { childList: true });
+
+      console.log('[AllChat YouTube] Injected with tab bar (flex column)');
       return container;
     } catch {
-      console.warn('[AllChat YouTube] ytd-live-chat-frame not found after timeout — native chat remains visible');
+      console.warn('[AllChat YouTube] ytd-live-chat-frame not found — native chat remains visible');
       return null;
     }
+  }
+
+  protected onIframeCreated(iframe: HTMLIFrameElement): void {
+    iframe.addEventListener('load', () => {
+      iframe.contentWindow?.postMessage({ type: 'TAB_BAR_MODE', enabled: true, hideInput: true, theme: isLightMode('youtube') ? 'light' : 'dark' }, '*');
+      console.log('[AllChat YouTube] Sent TAB_BAR_MODE to iframe');
+    });
+  }
+
+  teardown(): void {
+    removeTabBar();
+    // Clean up theater wrapper if present
+    document.getElementById('allchat-theater-wrapper')?.remove();
+    guardObserver?.disconnect();
+    guardObserver = null;
+    this.showNativeChat();
+    this.resetOverlayLayout();
+    super.teardown();
   }
 }
 
 /**
- * Inject "Switch to AllChat" button into native platform pop-out chat (D-11).
- * Clicking navigates the pop-out window to AllChat's chat-container.html (D-12).
+ * Inject "Switch to AllChat" button into native platform pop-out chat.
  */
 function injectNativePopoutSwitchButton(platform: string, streamer: string, displayName: string) {
   if (document.getElementById('allchat-native-popout-btn')) return;
@@ -364,15 +1294,429 @@ function injectNativePopoutSwitchButton(platform: string, streamer: string, disp
   }
 }
 
+// ============================================================
+// InnerTube API helpers — used for per-message moderation
+// (Report, Block, Delete, Timeout, etc.) via YouTube's own API
+// using the viewer's existing YouTube session cookies.
+// No AllChat login required.
+// ============================================================
+
+/** Cached InnerTube config extracted from the YouTube page */
+let innerTubeCache: { apiKey: string; context: Record<string, unknown> } | null = null;
+
+/**
+ * Extract INNERTUBE_API_KEY and INNERTUBE_CONTEXT from YouTube's page-level ytcfg.
+ * Content scripts run in an isolated world so we inject a tiny <script> into the
+ * MAIN world, read ytcfg, and pass the result back via CustomEvent.
+ */
+function getInnerTubeContext(): { apiKey: string; context: Record<string, unknown> } {
+  if (innerTubeCache) return innerTubeCache;
+
+  // Parse ytcfg data directly from YouTube's <script> tags.
+  // YouTube embeds ytcfg.set({...}) calls containing INNERTUBE_API_KEY and
+  // INNERTUBE_CONTEXT. This avoids inline script injection which is blocked
+  // by YouTube's Content Security Policy.
+  let apiKey = '';
+  let context: Record<string, unknown> | null = null;
+
+  const scripts = document.querySelectorAll('script');
+  for (const s of Array.from(scripts)) {
+    const text = s.textContent;
+    if (!text || !text.includes('INNERTUBE_API_KEY')) continue;
+
+    // Extract API key: "INNERTUBE_API_KEY":"AIza..."
+    const keyMatch = text.match(/"INNERTUBE_API_KEY"\s*:\s*"([^"]+)"/);
+    if (keyMatch) apiKey = keyMatch[1];
+
+    // Extract context: "INNERTUBE_CONTEXT":{...}
+    // Find the start position and use bracket matching for the JSON object
+    const ctxMarker = '"INNERTUBE_CONTEXT"';
+    const ctxIdx = text.indexOf(ctxMarker);
+    if (ctxIdx !== -1) {
+      const braceStart = text.indexOf('{', ctxIdx + ctxMarker.length);
+      if (braceStart !== -1) {
+        let depth = 0;
+        let end = braceStart;
+        for (let i = braceStart; i < text.length; i++) {
+          if (text[i] === '{') depth++;
+          else if (text[i] === '}') depth--;
+          if (depth === 0) { end = i; break; }
+        }
+        try {
+          context = JSON.parse(text.slice(braceStart, end + 1));
+        } catch { /* ignore parse error */ }
+      }
+    }
+
+    if (apiKey && context) break;
+  }
+
+  if (!apiKey || !context) {
+    throw new Error('Failed to extract InnerTube context from page scripts');
+  }
+
+  innerTubeCache = { apiKey, context };
+  return innerTubeCache;
+}
+
+/**
+ * Compute SAPISIDHASH for authenticated InnerTube requests.
+ * Reads SAPISID from the viewer's YouTube cookies (no extra permissions needed).
+ */
+async function getSapisidHash(origin: string): Promise<string> {
+  const cookies = document.cookie.split('; ');
+  let sapisid = '';
+  for (const c of cookies) {
+    if (c.startsWith('SAPISID=') || c.startsWith('__Secure-3PAPISID=')) {
+      sapisid = c.split('=')[1];
+      if (c.startsWith('SAPISID=')) break; // prefer SAPISID
+    }
+  }
+  if (!sapisid) throw new Error('YouTube SAPISID cookie not found — viewer may not be logged in');
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const input = `${timestamp} ${sapisid} ${origin}`;
+  const encoder = new TextEncoder();
+  const hashBuffer = await crypto.subtle.digest('SHA-1', encoder.encode(input));
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return `SAPISIDHASH ${timestamp}_${hashHex}`;
+}
+
+/**
+ * Generic InnerTube API request helper.
+ * Uses the viewer's YouTube session (cookies + SAPISIDHASH) for authentication.
+ */
+async function callInnerTubeApi(endpoint: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { apiKey, context } = await getInnerTubeContext();
+  const authHash = await getSapisidHash('https://www.youtube.com');
+
+  const response = await fetch(`https://www.youtube.com/youtubei/v1/${endpoint}?key=${apiKey}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': authHash,
+      'Content-Type': 'application/json',
+      'X-Origin': 'https://www.youtube.com',
+      'X-Goog-AuthUser': '0',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ context, ...body }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`InnerTube ${endpoint} failed: HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+/** A parsed context menu action item */
+interface ContextMenuAction {
+  label: string;
+  iconType: string;
+  /** The full serviceEndpoint object — passed back to execute the action */
+  serviceEndpoint: Record<string, unknown>;
+}
+
+/**
+ * Fetch available context menu actions for a specific chat message.
+ * Returns the list of actions YouTube offers for this viewer (varies by role).
+ */
+async function fetchContextMenuActions(contextParams: string): Promise<ContextMenuAction[]> {
+  const data = await callInnerTubeApi('live_chat/get_item_context_menu', { params: contextParams });
+  const actions: ContextMenuAction[] = [];
+
+  // Navigate: liveChatItemContextMenuSupportedRenderers.menuRenderer.items[]
+  const renderers = (data as Record<string, unknown>).liveChatItemContextMenuSupportedRenderers as Record<string, unknown> | undefined;
+  const menuRenderer = renderers?.menuRenderer as Record<string, unknown> | undefined;
+  const items = menuRenderer?.items as Array<Record<string, unknown>> | undefined;
+
+  if (!items) return actions;
+
+  for (const item of items) {
+    // menuServiceItemRenderer — API-backed actions (Report, Block, Delete, Timeout, etc.)
+    const serviceItem = item.menuServiceItemRenderer as Record<string, unknown> | undefined;
+    if (serviceItem) {
+      const textObj = serviceItem.text as Record<string, unknown> | undefined;
+      const runs = textObj?.runs as Array<{ text: string }> | undefined;
+      const label = runs?.map(r => r.text).join('') || '';
+      const iconObj = serviceItem.icon as Record<string, unknown> | undefined;
+      const iconType = (iconObj?.iconType as string) || '';
+      const serviceEndpoint = serviceItem.serviceEndpoint as Record<string, unknown>;
+      if (label && serviceEndpoint) {
+        actions.push({ label, iconType, serviceEndpoint });
+      }
+    }
+
+    // menuNavigationItemRenderer — URL-based actions (less common in live chat)
+    const navItem = item.menuNavigationItemRenderer as Record<string, unknown> | undefined;
+    if (navItem) {
+      const textObj = navItem.text as Record<string, unknown> | undefined;
+      const runs = textObj?.runs as Array<{ text: string }> | undefined;
+      const label = runs?.map(r => r.text).join('') || '';
+      const iconObj = navItem.icon as Record<string, unknown> | undefined;
+      const iconType = (iconObj?.iconType as string) || '';
+      const navEndpoint = navItem.navigationEndpoint as Record<string, unknown>;
+      if (label && navEndpoint) {
+        actions.push({ label, iconType, serviceEndpoint: { __navigation: true, ...navEndpoint } });
+      }
+    }
+  }
+
+  return actions;
+}
+
+/**
+ * Execute a context menu action (e.g., moderate, flag, block).
+ * Routes to the correct InnerTube endpoint based on the serviceEndpoint type.
+ */
+async function executeMenuAction(action: ContextMenuAction): Promise<void> {
+  const ep = action.serviceEndpoint;
+
+  // Navigation actions — open URL in new tab
+  if (ep.__navigation) {
+    const urlEndpoint = ep.urlEndpoint as Record<string, unknown> | undefined;
+    if (urlEndpoint?.url) {
+      window.open(urlEndpoint.url as string, '_blank');
+      return;
+    }
+  }
+
+  // Moderation actions (delete, timeout, ban/hide)
+  if (ep.moderateLiveChatEndpoint) {
+    const modEp = ep.moderateLiveChatEndpoint as Record<string, unknown>;
+    await callInnerTubeApi('live_chat/moderate', { params: modEp.params });
+    return;
+  }
+
+  // Flag/report actions
+  if (ep.flagEndpoint) {
+    const flagEp = ep.flagEndpoint as Record<string, unknown>;
+    await callInnerTubeApi('flag/flag', { ...flagEp });
+    return;
+  }
+
+  // Get form then flag (multi-step report)
+  if (ep.getReportFormEndpoint) {
+    const formEp = ep.getReportFormEndpoint as Record<string, unknown>;
+    await callInnerTubeApi('flag/get_form', { ...formEp });
+    return;
+  }
+
+  // Generic: try to call the endpoint using liveChatItemContextMenuEndpoint params
+  if (ep.liveChatItemContextMenuEndpoint) {
+    const ctxEp = ep.liveChatItemContextMenuEndpoint as Record<string, unknown>;
+    await callInnerTubeApi('live_chat/get_item_context_menu', { params: ctxEp.params });
+    return;
+  }
+
+  // Fallback: performCommentActionEndpoint (used for some block actions)
+  if (ep.performCommentActionEndpoint) {
+    const actionEp = ep.performCommentActionEndpoint as Record<string, unknown>;
+    await callInnerTubeApi('comment/perform_comment_action', { actions: actionEp.action ? [actionEp.action] : [] });
+    return;
+  }
+
+  console.warn('[AllChat YouTube] Unknown serviceEndpoint type:', Object.keys(ep));
+}
+
+// ============================================================
+// InnerTube Chat Sending — send messages via YouTube's own API
+// using the viewer's existing YouTube session cookies.
+// ============================================================
+
+/** Cached send-message params (pre-built by YouTube, encodes the liveChatId). */
+let cachedSendParams: string | null = null;
+/** Video ID the cached params belong to — invalidates cache on navigation. */
+let cachedSendParamsVideoId: string | null = null;
+
+/**
+ * Fetch the pre-built sendLiveChatMessageEndpoint.params from YouTube's
+ * /live_chat page HTML. YouTube generates this server-side — it's a base64
+ * protobuf encoding the liveChatId with all the fields YouTube's frontend
+ * uses, so we don't have to build it ourselves.
+ */
+async function getSendMessageParams(): Promise<string> {
+  const videoId = new URLSearchParams(window.location.search).get('v')
+    || window.location.pathname.match(/\/live\/([^/?]+)/)?.[1]
+    || null;
+
+  if (!videoId) {
+    throw new Error('No video ID in URL — is this a live stream?');
+  }
+
+  if (cachedSendParams && cachedSendParamsVideoId === videoId) {
+    return cachedSendParams;
+  }
+
+  const resp = await fetch(
+    `https://www.youtube.com/live_chat?v=${videoId}&is_popout=1`,
+    { credentials: 'include' },
+  );
+  if (!resp.ok) {
+    throw new Error(`Failed to load live chat page: HTTP ${resp.status}`);
+  }
+  const html = await resp.text();
+
+  const match = html.match(/"sendLiveChatMessageEndpoint"\s*:\s*\{\s*"params"\s*:\s*"([^"]+)"/);
+  if (!match) {
+    // Common cause: stream doesn't have chat enabled, or user not signed in to YouTube
+    if (!html.includes('liveChatRenderer')) {
+      throw new Error('Live chat is not available for this stream');
+    }
+    throw new Error('Could not find send-message params — are you signed in to YouTube?');
+  }
+
+  // YouTube URL-encodes the params in the HTML (%3D for trailing =). Decode it.
+  cachedSendParams = decodeURIComponent(match[1]);
+  cachedSendParamsVideoId = videoId;
+  return cachedSendParams;
+}
+
+/**
+ * Send a chat message via YouTube's InnerTube API.
+ * Uses the viewer's YouTube session (cookies + SAPISIDHASH).
+ */
+async function sendYouTubeChatMessage(message: string): Promise<void> {
+  const params = await getSendMessageParams();
+
+  const clientMessageId = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+
+  await callInnerTubeApi('live_chat/send_message', {
+    params,
+    clientMessageId,
+    richMessage: {
+      textSegments: [{ text: message }],
+    },
+  });
+}
+
+// ============================================================
+// Context Menu Overlay UI
+// ============================================================
+
+/** YouTube's native icon types → inline SVG paths */
+const YT_ICON_PATHS: Record<string, string> = {
+  FLAG: 'M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z',
+  BLOCK: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM4 12c0-4.42 3.58-8 8-8 1.85 0 3.55.63 4.9 1.69L5.69 16.9A7.902 7.902 0 014 12zm8 8c-1.85 0-3.55-.63-4.9-1.69L18.31 7.1A7.902 7.902 0 0120 12c0 4.42-3.58 8-8 8z',
+  DELETE: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
+  HOURGLASS_TOP: 'M6 2v6h.01L6 8.01 10 12l-4 4 .01.01H6V22h12v-5.99h-.01L18 16l-4-4 4-3.99-.01-.01H18V2H6z',
+  REMOVE_CIRCLE: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11H7v-2h10v2z',
+  NOT_INTERESTED: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8 0-1.85.63-3.55 1.69-4.9L16.9 18.31A7.902 7.902 0 0112 20zm6.31-3.1L7.1 5.69A7.902 7.902 0 0112 4c4.42 0 8 3.58 8 8 0 1.85-.63 3.55-1.69 4.9z',
+};
+
+function getIconSvg(iconType: string): string {
+  const path = YT_ICON_PATHS[iconType];
+  if (!path) return '';
+  return `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" style="flex-shrink:0"><path d="${path}"/></svg>`;
+}
+
+/**
+ * Render the YouTube-native context menu as a floating overlay on document.body.
+ * This escapes the AllChat iframe's overflow:hidden constraint.
+ */
+function showYouTubeContextMenu(
+  actions: ContextMenuAction[],
+  pageX: number,
+  pageY: number,
+  iframeSource: Window | null,
+  extensionOrigin: string,
+): void {
+  // Remove existing menu
+  document.getElementById('allchat-yt-context-menu')?.remove();
+
+  if (actions.length === 0) return;
+
+  const light = isLightMode('youtube');
+  const bg = light ? '#fff' : '#282828';
+  const textColor = light ? '#0f0f0f' : '#f1f1f1';
+  const hoverBg = light ? '#f2f2f2' : '#3e3e3e';
+  const borderColor = light ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)';
+
+  // Transparent backdrop for click-to-dismiss
+  const backdrop = document.createElement('div');
+  backdrop.id = 'allchat-yt-context-menu';
+  backdrop.style.cssText = 'position:fixed;inset:0;z-index:99998;';
+
+  // Menu dropdown
+  const menu = document.createElement('div');
+  menu.style.cssText = `
+    position:fixed; z-index:99999; min-width:160px;
+    background:${bg}; color:${textColor};
+    border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.3);
+    border:1px solid ${borderColor};
+    padding:4px 0; font-family:Roboto,Arial,sans-serif; font-size:14px;
+    overflow:hidden;
+  `;
+
+  // Position: prefer below-left of anchor, flip if needed
+  const menuHeight = actions.length * 40 + 8;
+  const top = (pageY + menuHeight > window.innerHeight) ? Math.max(4, pageY - menuHeight) : pageY;
+  const left = (pageX + 160 > window.innerWidth) ? Math.max(4, pageX - 160) : pageX;
+  menu.style.top = `${top}px`;
+  menu.style.left = `${left}px`;
+
+  // Render action items
+  for (const action of actions) {
+    const item = document.createElement('div');
+    item.style.cssText = `
+      display:flex; align-items:center; gap:12px; padding:8px 16px;
+      cursor:pointer; transition:background 0.1s;
+    `;
+    item.innerHTML = `${getIconSvg(action.iconType)}<span>${action.label}</span>`;
+
+    item.addEventListener('mouseenter', () => { item.style.background = hoverBg; });
+    item.addEventListener('mouseleave', () => { item.style.background = 'transparent'; });
+    item.addEventListener('click', async () => {
+      backdrop.remove();
+      try {
+        await executeMenuAction(action);
+        if (iframeSource) {
+          iframeSource.postMessage({
+            type: 'YOUTUBE_ACTION_RESULT',
+            action: action.label,
+            success: true,
+          }, extensionOrigin);
+        }
+      } catch (err: unknown) {
+        console.error('[AllChat YouTube] Action failed:', err);
+        if (iframeSource) {
+          iframeSource.postMessage({
+            type: 'YOUTUBE_ACTION_RESULT',
+            action: action.label,
+            success: false,
+            error: err instanceof Error ? err.message : 'Unknown error',
+          }, extensionOrigin);
+        }
+      }
+    });
+
+    menu.appendChild(item);
+  }
+
+  backdrop.appendChild(menu);
+  document.body.appendChild(backdrop);
+
+  // Dismiss on backdrop click
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) backdrop.remove();
+  });
+
+  // Dismiss on Escape
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      backdrop.remove();
+      document.removeEventListener('keydown', onKey);
+    }
+  };
+  document.addEventListener('keydown', onKey);
+}
+
 // Store detector instance globally
 let globalDetector: YouTubeDetector | null = null;
 
 // Guard against duplicate message relay registration
 let messageRelaySetup = false;
 
-/**
- * Handle extension enable/disable state changes
- */
 function handleExtensionStateChange(enabled: boolean) {
   console.log(`[AllChat YouTube] Extension state changed: ${enabled ? 'enabled' : 'disabled'}`);
 
@@ -383,28 +1727,24 @@ function handleExtensionStateChange(enabled: boolean) {
       globalDetector = null;
     }
   } else {
-    // Re-enable: create detector and init without page reload (per D-04)
     if (!globalDetector) {
       globalDetector = new YouTubeDetector();
-      setupGlobalMessageRelay(); // idempotent via guard
+      setupGlobalMessageRelay();
       globalDetector.init();
     }
   }
 }
 
-// Initialize detector
 async function initialize() {
   console.log('[AllChat YouTube] Content script loaded');
 
-  // Check if extension is enabled
   const settings = await getSyncStorage();
   if (!settings.platformEnabled.youtube) {
     console.log('[AllChat YouTube] Extension disabled for YouTube, not injecting');
-    setupGlobalMessageRelay(); // Listen for re-enable even when disabled
+    setupGlobalMessageRelay();
     return;
   }
 
-  // Detect YouTube native pop-out chat: /live_chat or /live_chat_replay
   const isNativePopout = window.location.pathname === '/live_chat' || window.location.pathname === '/live_chat_replay';
   if (isNativePopout) {
     const urlParams = new URLSearchParams(window.location.search);
@@ -418,64 +1758,85 @@ async function initialize() {
 
   globalDetector = new YouTubeDetector();
 
-  // Signal to popup which platform page the user is on
   chrome.runtime.sendMessage({ type: 'SET_CURRENT_PLATFORM', platform: 'youtube' }).catch((err: unknown) => {
     console.warn('[AllChat YouTube] Failed to write current_platform to session:', err);
   });
 
-  // Set up message relay IMMEDIATELY (before any async operations)
   setupGlobalMessageRelay();
 
-  // Wait for channel name to render before init — on /watch?v= URLs the DOM
-  // isn't ready when the content script fires, causing extractStreamerUsername to fail.
-  // waitForElement handles both loading and already-loaded states.
   await globalDetector.waitForElement('ytd-channel-name a').catch(() => null);
   globalDetector?.init();
 
-  // Watch for URL changes (YouTube is an SPA) — registered once
   setupUrlWatcher();
 }
 
-/**
- * Set up global message relay from service worker to iframe
- */
 function setupGlobalMessageRelay() {
   if (messageRelaySetup) return;
   messageRelaySetup = true;
 
-  // Listen for messages FROM service worker TO iframes
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log('[AllChat YouTube] Received from service worker:', message.type);
 
-    // Handle extension state changes
     if (message.type === 'EXTENSION_STATE_CHANGED') {
       handleExtensionStateChange(message.enabled);
       return false;
     }
 
-    // Relay CONNECTION_STATE and WS_MESSAGE to all AllChat iframes
     if (message.type === 'CONNECTION_STATE' || message.type === 'WS_MESSAGE') {
       const iframes = document.querySelectorAll('iframe[data-platform="youtube"][data-streamer]');
-      console.log(`[AllChat YouTube] Relaying to ${iframes.length} iframe(s)`);
 
       iframes.forEach((iframe) => {
         const iframeElement = iframe as HTMLIFrameElement;
+        const iframeStreamer = iframeElement.getAttribute('data-streamer');
+        if (message.streamer && iframeStreamer && message.streamer !== iframeStreamer) {
+          return;
+        }
         if (iframeElement.contentWindow) {
           const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
           iframeElement.contentWindow.postMessage(message, extensionOrigin);
-          console.log('[AllChat YouTube] Relayed message to iframe:', message.type);
         }
       });
+
+      if (message.type === 'CONNECTION_STATE' && message.data?.state) {
+        updateTabBarConnDot(message.data.state);
+      }
     }
+
+    // SW-driven pop-out close signal (Firefox: polling can't detect close
+    // because `this.popoutWindow.closed` throws on a dead cross-compartment
+    // wrapper — the SW watches port-disconnect and fans out POPOUT_CLOSED_REMOTE).
+    if (message.type === 'POPOUT_CLOSED_REMOTE' && globalDetector) {
+      globalDetector.notifyPopoutClosedExternally('iframe[data-platform="youtube"]');
+    }
+
+    // Pop-out windows are top-level and can't postMessage into this tab,
+    // but they can reach the service worker via chrome.runtime.sendMessage.
+    // The SW forwards SEND_NATIVE_CHAT to us (the tab that owns the live
+    // chat frame for this video) and we run the same InnerTube flow the
+    // in-page iframe uses — same session, same auth, same behaviour.
+    if (message.type === 'SEND_NATIVE_CHAT' && typeof message.message === 'string') {
+      (async () => {
+        try {
+          await sendYouTubeChatMessage(message.message);
+          sendResponse({ success: true });
+        } catch (err: unknown) {
+          console.error('[AllChat YouTube] Pop-out-routed send failed:', err);
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : 'Failed to send message',
+          });
+        }
+      })();
+      return true; // keep the port open for the async sendResponse
+    }
+
     return false;
   });
 
-  // Listen for messages FROM iframes requesting current state or login
   window.addEventListener('message', async (event) => {
     const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
 
     if (event.data.type === 'GET_CONNECTION_STATE') {
-      console.log('[AllChat YouTube] iframe requested connection state');
       const response = await chrome.runtime.sendMessage({ type: 'GET_CONNECTION_STATE' });
       if (response.success && event.source) {
         (event.source as Window).postMessage({
@@ -518,20 +1879,54 @@ function setupGlobalMessageRelay() {
       }
     }
 
-    // Guard: only handle pop-out messages from the AllChat extension origin (T-06-09)
-    if (event.origin !== extensionOrigin) return;
+    if (event.data.type === 'OPEN_VIEWER_CARD' && event.data.userId) {
+      window.open(`https://www.youtube.com/channel/${event.data.userId}`, '_blank');
+    }
 
-    // Handle pop-out request from AllChat iframe
+    // Gate for handlers below: accept only messages coming from our own
+    // AllChat iframe. We used to gate on `event.origin === extensionOrigin`,
+    // but Firefox content scripts observe `event.origin` as the parent
+    // page's origin (youtube.com) rather than the iframe's moz-extension
+    // origin — see the mirror-comment in ChatContainer.tsx. That origin-only
+    // check silently dropped OPEN_YOUTUBE_CONTEXT_MENU, SEND_NATIVE_CHAT,
+    // POPOUT_REQUEST, CLOSE_POPOUT, etc. on Firefox, so the three-dot
+    // block/report menu never appeared. Identity via `event.source` matches
+    // the exact iframe we embedded, is cross-browser safe, and is strictly
+    // stricter than an origin check (other extension-origin frames no
+    // longer pass). Keep the origin check as a fallback for edge cases
+    // where the iframe handle is momentarily unavailable (e.g. mid re-mount).
+    let fromOurIframe = !!event.source && Array.from(
+      document.querySelectorAll('iframe[data-platform="youtube"]'),
+    ).some(f => (f as HTMLIFrameElement).contentWindow === event.source);
+    // Firefox fallback: in some content-script contexts the
+    // `contentWindow === event.source` comparison misses because the
+    // two references flow through different Xray wrappers even though
+    // they point at the same underlying Window. Fall back to reading
+    // the iframe element straight off the event source's frameElement —
+    // if that element carries our data-platform tag, the message is
+    // from our own iframe regardless of wrapper identity.
+    if (!fromOurIframe && event.source) {
+      try {
+        const fe = (event.source as Window).frameElement as HTMLElement | null;
+        if (fe?.getAttribute('data-platform') === 'youtube') {
+          fromOurIframe = true;
+        }
+      } catch { /* cross-origin frameElement access blocked — ignore */ }
+    }
+    if (!fromOurIframe && event.origin !== extensionOrigin) return;
+
     if (event.data.type === 'POPOUT_REQUEST' && globalDetector) {
       globalDetector.handlePopoutRequest(event.data);
     }
 
-    // Handle "Switch to native" from AllChat iframe (D-14)
     if (event.data.type === 'SWITCH_TO_NATIVE' && globalDetector) {
-      globalDetector.handleSwitchToNative();
+      handleSwitchToYouTube(globalDetector);
     }
 
-    // Handle "Bring back chat" / close pop-out from AllChat iframe
+    if (event.data.type === 'SWITCH_TO_ALLCHAT' && globalDetector) {
+      handleSwitchToAllChat(globalDetector);
+    }
+
     if (event.data.type === 'CLOSE_POPOUT' && globalDetector) {
       globalDetector.closePopout();
       const iframes = document.querySelectorAll('iframe[data-platform="youtube"]');
@@ -542,25 +1937,70 @@ function setupGlobalMessageRelay() {
         }
       });
     }
+
+    // Handle native chat sending via InnerTube API
+    if (event.data.type === 'SEND_NATIVE_CHAT' && event.data.message && event.source) {
+      const source = event.source as Window;
+      (async () => {
+        try {
+          await sendYouTubeChatMessage(event.data.message);
+          source.postMessage({ type: 'SEND_NATIVE_CHAT_RESULT', success: true }, extensionOrigin);
+        } catch (err: unknown) {
+          console.error('[AllChat YouTube] Native send failed:', err);
+          source.postMessage({
+            type: 'SEND_NATIVE_CHAT_RESULT',
+            success: false,
+            error: err instanceof Error ? err.message : 'Failed to send message',
+          }, extensionOrigin);
+        }
+      })();
+    }
+
+    // Handle YouTube context menu request from AllChat iframe
+    if (event.data.type === 'OPEN_YOUTUBE_CONTEXT_MENU' && event.data.contextParams) {
+      const { contextParams, anchorRect } = event.data;
+      const iframe = document.querySelector('#allchat-container iframe') as HTMLIFrameElement | null;
+      const iframeRect = iframe?.getBoundingClientRect();
+
+      // Translate iframe-local coordinates to page-global
+      const pageX = (anchorRect?.right ?? 0) + (iframeRect?.left ?? 0);
+      const pageY = (anchorRect?.top ?? 0) + (iframeRect?.top ?? 0);
+
+      // Fetch available actions from YouTube and show menu
+      fetchContextMenuActions(contextParams)
+        .then((actions) => {
+          showYouTubeContextMenu(actions, pageX, pageY, event.source as Window | null, extensionOrigin);
+        })
+        .catch((err) => {
+          console.error('[AllChat YouTube] Failed to fetch context menu:', err);
+          if (event.source) {
+            (event.source as Window).postMessage({
+              type: 'YOUTUBE_ACTION_RESULT',
+              action: 'context_menu',
+              success: false,
+              error: err instanceof Error ? err.message : 'Failed to load menu',
+            }, extensionOrigin);
+          }
+        });
+    }
   });
 
   console.log('[AllChat YouTube] Global message relay set up');
 }
 
-/**
- * Watch for URL changes using YouTube SPA navigation events.
- * yt-navigate-finish is the canonical YouTube SPA signal — fires once per navigation.
- * popstate handles browser back/forward. Both are deduplicated via URL equality check.
- */
 function setupUrlWatcher(): void {
   let activeUrl = location.href;
 
   const handleNavigation = () => {
     const url = location.href;
-    if (url === activeUrl) return; // Dedup: both events may fire for same navigation
+    if (url === activeUrl) return;
     activeUrl = url;
 
     console.log('[AllChat YouTube] Navigation detected, tearing down...');
+    // Clear cached InnerTube data for the previous stream
+    innerTubeCache = null;
+    cachedSendParams = null;
+    cachedSendParamsVideoId = null;
     globalDetector?.teardown();
 
     if (globalDetector?.isLiveStream()) {
@@ -572,12 +2012,6 @@ function setupUrlWatcher(): void {
   window.addEventListener('popstate', handleNavigation);
 }
 
-/**
- * Watch for YouTube theater/cinema mode toggles and reinitialise the UI.
- * When the user enters or exits theater mode, YouTube reflowing the layout
- * breaks the injected container's absolute positioning context. Tearing down
- * and re-injecting after a short reflow delay restores correct rendering.
- */
 function setupTheaterModeWatcher(): void {
   const watchFlexy = document.querySelector('ytd-watch-flexy');
   if (!watchFlexy) return;
@@ -586,7 +2020,6 @@ function setupTheaterModeWatcher(): void {
 
   const observer = new MutationObserver(() => {
     if (!globalDetector) return;
-    // Debounce: YouTube may toggle multiple attributes in quick succession
     if (reinitTimer) clearTimeout(reinitTimer);
     reinitTimer = setTimeout(() => {
       console.log('[AllChat YouTube] Theater/fullscreen mode changed, reinitialising...');
@@ -602,7 +2035,6 @@ function setupTheaterModeWatcher(): void {
   });
 }
 
-// Start initialization
 initialize().then(() => {
   setupTheaterModeWatcher();
 });

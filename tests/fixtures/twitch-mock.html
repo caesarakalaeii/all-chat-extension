@@ -24,14 +24,60 @@
       width: 340px;
       background: #1f1f23;
     }
+    .chat-shell {
+      width: 100%;
+      height: 100%;
+    }
     .stream-chat {
       height: 100%;
-      padding: 10px;
+      display: flex;
+      flex-direction: column;
+    }
+    .stream-chat-header {
+      height: 40px;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      border-bottom: 1px solid #2c2c34;
     }
     .chat-room {
-      border: 1px solid #2c2c34;
-      border-radius: 4px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .chat-room__content {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+    .chat-list--default {
+      flex: 1 1 auto;
+      overflow: hidden;
+      min-height: 0;
+    }
+    .chat-room__notifications {
+      flex: 0 1 auto;
+    }
+    .chat-input {
+      flex: 0 1 auto;
       padding: 10px;
+      border-top: 1px solid #2c2c34;
+    }
+    .community-points-summary {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      background: #1f1f23;
+      font-size: 13px;
+    }
+    .prediction-checkout-widget {
+      padding: 8px;
+      background: #1f1f23;
+      border-bottom: 1px solid #2c2c34;
+      font-size: 13px;
     }
     .video-player {
       width: 100%;
@@ -40,6 +86,16 @@
       display: flex;
       align-items: center;
       justify-content: center;
+    }
+    .chat-scrollable-area {
+      flex: 1;
+      overflow-y: auto;
+    }
+    .chat-input-buttons {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 8px;
     }
   </style>
 </head>
@@ -55,17 +111,72 @@
       </div>
     </div>
     <div class="right-column">
-      <div class="chat-shell" style="width:100%;height:100%;">
+      <div class="chat-shell">
         <div class="stream-chat">
-          <div class="chat-room">
-            <h3>Stream Chat</h3>
-            <div id="chat-messages"><p>Welcome to the chat!</p></div>
+          <!-- Native Twitch header -->
+          <div class="stream-chat-header" role="region">
+            <h4 data-test-selector="chat-room-header-label">Stream Chat</h4>
+            <button data-test-selector="chat-viewer-list" aria-label="Community">👥</button>
+          </div>
+
+          <!-- Chat room section -->
+          <section class="chat-room" data-test-selector="chat-room-component-layout">
+            <div class="chat-room__content">
+              <!-- Message list area (the flex-growing child) -->
+              <div class="chat-list--default font-scale--default" style="flex: 1 1 auto; overflow: hidden;">
+                <div class="chat-scrollable-area" data-a-target="chat-scroller">
+                  <div data-test-selector="chat-scrollable-area__message-container" role="log">
+                    <div class="chat-line"><p>Welcome to the chat!</p></div>
+                    <div class="chat-line"><p>testuser1: Hello world!</p></div>
+                    <div class="chat-line"><p>testuser2: Great stream!</p></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Notifications area -->
+              <div class="chat-room__notifications"></div>
+
+              <!-- Chat input area (contains channel points, emote picker, send button) -->
+              <div class="chat-input">
+                <div>
+                  <div data-test-selector="chat-input">
+                    <textarea placeholder="Send a message" aria-label="Chat input"></textarea>
+                  </div>
+                  <div class="chat-input-buttons" data-test-selector="chat-input-buttons-container">
+                    <button data-a-target="emote-picker-button" aria-label="Emote picker">😀</button>
+                    <!-- Channel points widget (persistent) — inside chat-input, not a separate zone -->
+                    <div class="community-points-summary" data-test-selector="community-points-summary">
+                      <div>
+                        <div>
+                          <span data-test-selector="copo-balance-string">12,450</span>
+                          <button data-test-selector="community-points-summary__claim-button">Claim</button>
+                        </div>
+                      </div>
+                    </div>
+                    <button data-a-target="chat-settings" aria-label="Chat settings">⚙️</button>
+                    <button data-a-target="chat-send-button" aria-label="Send Chat">Chat</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Viewer card overlay -->
+              <div class="chat-room__viewer-card" data-a-target="chat-user-card">
+                <div class="viewer-card-layer"></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Mock prediction widget (transient, normally injected dynamically by Twitch) -->
+        <div class="prediction-checkout-widget" data-test-selector="community-prediction-highlight-header" id="mock-prediction-widget" style="display: none;">
+          <div data-test-selector="community-prediction-highlight-header-title">Who will win?</div>
+          <div class="prediction-options">
+            <button data-test-selector="predictions-list-item__title">Option A</button>
+            <button data-test-selector="predictions-list-item__title">Option B</button>
           </div>
         </div>
       </div>
     </div>
   </div>
-
-
 </body>
 </html>

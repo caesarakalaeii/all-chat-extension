@@ -1,4 +1,22 @@
 /**
+ * This file is part of All-Chat Extension.
+ * Copyright (C) 2026 caesarakalaeii
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
  * Extension Popup UI
  *
  * Shows per-platform enable toggles, viewer identity (if logged in), and name color picker.
@@ -8,6 +26,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import { getSyncStorage, setSyncStorage, getLocalStorage, setLocalStorage } from '../lib/storage';
 import { ViewerInfo, PlatformEnabled } from '../lib/types/extension';
+import { resolveEnv } from '../lib/compat';
 
 const PLATFORM_URLS: Record<string, string[]> = {
   twitch: ['https://www.twitch.tv/*'],
@@ -30,6 +49,13 @@ function Popup() {
   const [saveStatus, setSaveStatus] = useState<'' | 'saving' | 'saved'>('');
   const [currentPlatform, setCurrentPlatform] = useState<string | null>(null);
   const colorSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [envNotice, setEnvNotice] = useState<Awaited<ReturnType<typeof resolveEnv>>>(null);
+
+  useEffect(() => {
+    resolveEnv().then((cfg) => {
+      if (cfg) setEnvNotice(cfg);
+    });
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -187,6 +213,28 @@ function Popup() {
     return null;
   };
 
+  if (envNotice) {
+    return (
+      <div>
+        <div style={{ background: '#7f1d1d', borderBottom: '1px solid #b91c1c', padding: '12px 16px', textAlign: 'center' }}>
+          <p style={{ fontSize: '13px', color: '#fecaca', margin: '0 0 6px' }}>{envNotice.label}</p>
+          <a
+            href={envNotice.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: '13px', color: '#fff', fontWeight: 600, textDecoration: 'underline' }}
+          >
+            {envNotice.href}
+          </a>
+        </div>
+        <div style={{ padding: '16px', textAlign: 'center', color: '#adadb8', fontSize: '12px' }}>
+          <p>{envNotice.detail}</p>
+          <p style={{ marginTop: '4px' }}>{envNotice.action}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <h1>All-Chat Extension</h1>
@@ -219,12 +267,23 @@ function Popup() {
           <div className="status-label">Viewer Identity</div>
           {viewerInfo ? (
             <>
-              <div className="status-value" style={{ marginBottom: '8px' }}>
+              <div className="status-value" style={{ marginBottom: '4px' }}>
                 {viewerInfo.display_name}
                 <span style={{ fontSize: '11px', color: '#adadb8', marginLeft: '6px' }}>
                   via {platformLabel[viewerInfo.platform] ?? viewerInfo.platform}
                 </span>
               </div>
+              {viewerInfo.connected_platforms && viewerInfo.connected_platforms.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', fontSize: '11px', color: '#adadb8' }}>
+                  <span>Connected:</span>
+                  {viewerInfo.connected_platforms.map((p) => (
+                    <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '1px 6px', background: '#26262c', borderRadius: '4px', fontSize: '11px' }}>
+                      <PlatformIcon platform={p} />
+                      {platformLabel[p] ?? p}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                 <label style={{ fontSize: '12px', color: '#adadb8' }}>Name Color</label>
                 {(() => {

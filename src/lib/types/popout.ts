@@ -1,3 +1,21 @@
+/**
+ * This file is part of All-Chat Extension.
+ * Copyright (C) 2026 caesarakalaeii
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { ChatMessage } from './message';
 
 /**
@@ -34,6 +52,17 @@ export interface SwitchToNativeMessage {
 /** iframe → content script: user clicked "Bring back chat" to close pop-out */
 export interface ClosePopoutMessage {
   type: 'CLOSE_POPOUT';
+}
+
+/**
+ * SW → pop-out (via port): tell the pop-out window to close itself.
+ * Firefox content scripts cannot reliably call `popoutWindow.close()`
+ * on an extension-page popup due to cross-origin restrictions, so the
+ * content script asks the SW to broadcast a self-close to the popup,
+ * which calls `window.close()` on its own document (always allowed).
+ */
+export interface PopoutSelfCloseMessage {
+  type: 'POPOUT_SELF_CLOSE';
 }
 
 /** native chat DOM → content script: user clicked "Switch to AllChat" button */

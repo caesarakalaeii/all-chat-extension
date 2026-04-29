@@ -1,9 +1,41 @@
 /**
+ * This file is part of All-Chat Extension.
+ * Copyright (C) 2026 caesarakalaeii
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
  * Chat Message Types
  *
  * These types match the unified message format from the Message Processor.
  * Used for WebSocket messages and chat rendering.
  */
+
+export interface EventValue {
+  amount: number;
+  currency: string;
+  display_text: string;
+}
+
+export interface EventInfo {
+  type: string;
+  tier: 'high' | 'medium' | 'low';
+  value?: EventValue;
+  duration: number;
+  metadata?: Record<string, unknown>;
+}
 
 export interface ChatMessage {
   id: string;
@@ -15,6 +47,7 @@ export interface ChatMessage {
   message: MessageInfo;
   timestamp: string;
   metadata: Record<string, unknown>;
+  event?: EventInfo;
 }
 
 export interface UserInfo {

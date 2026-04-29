@@ -1,4 +1,22 @@
 /**
+ * This file is part of All-Chat Extension.
+ * Copyright (C) 2026 caesarakalaeii
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
  * Service Worker (Background Script)
  *
  * Handles:
@@ -48,6 +66,50 @@ const KEEPALIVE_ALARM = 'allchat-ws-keepalive';
 // service worker restarts. Session storage is cleared when the browser closes.
 const SESSION_STREAMER_KEY = 'ws_active_streamer';
 
+/**
+ * Locate the content-script-owning tab for a pop-out native-send request.
+ *
+ * We prefer a tab whose URL references the same video_id (for YouTube,
+ * that's the /watch?v= or /live/ path segment). On the other platforms
+ * the tab URL contains the streamer login instead. Returns the most
+ * recently focused matching tab so users with multiple streams open get
+ * the one they're actively watching.
+ */
+async function findNativeSendTab(
+  platform: 'youtube' | 'twitch' | 'kick' | 'tiktok',
+  videoId: string | undefined,
+  streamer: string,
+): Promise<number | null> {
+  const urlPatterns: Record<typeof platform, string[]> = {
+    youtube: ['*://www.youtube.com/watch*', '*://www.youtube.com/live/*'],
+    twitch: ['*://www.twitch.tv/*'],
+    kick: ['*://kick.com/*'],
+    tiktok: [],
+  };
+  const patterns = urlPatterns[platform];
+  if (patterns.length === 0) return null;
+
+  const tabs = await chrome.tabs.query({ url: patterns });
+  if (tabs.length === 0) return null;
+
+  // For YouTube, match by videoId first — multiple streams may be open.
+  if (platform === 'youtube' && videoId) {
+    const match = tabs.find(
+      t => t.url?.includes(`v=${videoId}`) || t.url?.includes(`/live/${videoId}`),
+    );
+    if (match?.id != null) return match.id;
+  }
+
+  // Otherwise match by streamer handle in the URL path.
+  const streamerLower = streamer.toLowerCase();
+  const byStreamer = tabs.find(t => t.url?.toLowerCase().includes(`/${streamerLower}`));
+  if (byStreamer?.id != null) return byStreamer.id;
+
+  // Fall back to the most-recently-focused tab of the platform.
+  tabs.sort((a, b) => (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0));
+  return tabs[0]?.id ?? null;
+}
+
 // Handle pop-out window port connections
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== POPOUT_PORT_NAME) return;
@@ -58,6 +120,23 @@ chrome.runtime.onConnect.addListener((port) => {
   port.onDisconnect.addListener(() => {
     console.log('[AllChat] Pop-out window disconnected');
     popoutPorts.delete(port);
+
+    // Firefox authoritative close signal: the content script's Window reference
+    // from `window.open()` is a dead cross-compartment wrapper, so it can't
+    // detect the close via polling. The port disconnect is the only reliable
+    // lifecycle event when the pop-out goes away (self-close, user X, navigate).
+    // Broadcast POPOUT_CLOSED to all platform tabs so the in-page iframes
+    // restore their normal view. Tabs with no active pop-out ignore the message
+    // (their iframes aren't in the "popped out" banner state).
+    chrome.tabs.query({
+      url: ['https://www.twitch.tv/*', 'https://www.youtube.com/*', 'https://kick.com/*', 'https://studio.youtube.com/*'],
+    }, (tabs) => {
+      tabs.forEach((tab) => {
+        if (tab.id) {
+          chrome.tabs.sendMessage(tab.id, { type: 'POPOUT_CLOSED_REMOTE' }).catch(() => { /* tab not listening */ });
+        }
+      });
+    });
   });
 });
 
@@ -132,6 +211,35 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           await sendChatMessage(message.streamerUsername, message.message);
           sendResponse({ success: true });
           break;
+
+        case 'SEND_NATIVE_CHAT': {
+          // Pop-out path: the pop-out window has no parent tab to
+          // postMessage to, so it asks us to route the send through the
+          // content script on the original YouTube tab. Using the
+          // content script keeps the InnerTube call inside a document
+          // that owns YouTube's cookies (SAPISID for the auth hash).
+          try {
+            const tabId = await findNativeSendTab(message.platform, message.videoId, message.streamer);
+            if (tabId == null) {
+              sendResponse({
+                success: false,
+                error: 'Open the stream in a YouTube tab to send native-style messages from the pop-out',
+              });
+              break;
+            }
+            const result = await chrome.tabs.sendMessage(tabId, {
+              type: 'SEND_NATIVE_CHAT',
+              message: message.message,
+            });
+            sendResponse(result ?? { success: false, error: 'No response from content script' });
+          } catch (err: unknown) {
+            sendResponse({
+              success: false,
+              error: err instanceof Error ? err.message : 'Failed to route pop-out send',
+            });
+          }
+          break;
+        }
 
         case 'DO_LOGIN': {
           const loginUrl = await initiateAuthUrl(message.platform, message.streamerUsername);
@@ -231,6 +339,13 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           });
           break;
 
+        case 'CLOSE_POPOUT_WINDOWS':
+          // Firefox fallback: content scripts can't reliably call `popoutWindow.close()`
+          // on an extension-page popup. Tell every connected pop-out to self-close.
+          broadcastToPorts({ type: 'POPOUT_SELF_CLOSE' });
+          sendResponse({ success: true });
+          break;
+
         default:
           sendResponse({ success: false, error: 'Unknown message type' });
       }
@@ -270,9 +385,11 @@ async function fetchStreamerInfo(username: string): Promise<StreamerInfo> {
  * and does not expose the secret overlay ID
  */
 async function connectWebSocket(streamerUsername: string): Promise<void> {
-  // If already connected to this streamer, do nothing
+  // If already connected to this streamer, re-broadcast current state so newly
+  // created tab bars / iframes pick it up (e.g. after SPA navigation).
   if (wsConnection && wsConnection.readyState === WebSocket.OPEN && wsStreamerUsername === streamerUsername) {
     console.log('[AllChat] Already connected to streamer:', streamerUsername);
+    broadcastConnectionState('connected');
     return;
   }
 
@@ -476,6 +593,7 @@ function broadcastConnectionState(state: ConnectionState, details?: any): void {
             maxAttempts: WS_MAX_RECONNECT_ATTEMPTS,
             ...details,
           },
+          streamer: wsStreamerUsername,
         }).catch((err) => {
           console.warn(`[AllChat] Failed to send CONNECTION_STATE to tab ${tab.id}:`, err.message);
         });
@@ -507,6 +625,7 @@ function handleWebSocketMessage(message: any): void {
         chrome.tabs.sendMessage(tab.id, {
           type: 'WS_MESSAGE',
           data: message,
+          streamer: wsStreamerUsername,
         }).catch((err) => {
           console.warn(`[AllChat] Failed to send WS_MESSAGE to tab ${tab.id}:`, err.message);
         });

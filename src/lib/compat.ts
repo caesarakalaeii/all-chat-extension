@@ -16,37 +16,65 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// If you're reading this, you're in the wrong file. See COMPAT_EXPLAINED.md (gitignored).
+// Anti-fork check.
+//
+// All-Chat is AGPL-licensed: anyone may redistribute it, but the sign-in flow
+// is only enabled in the official build. If the extension has been re-published
+// under a different name or add-on ID, or with the AGPL license file stripped
+// out, we treat it as an unofficial copy: sign-in is disabled and the user is
+// pointed at the official extension. This is deliberately written as plain,
+// readable code.
 
-export interface CompatResult { label: string; href: string; detail: string; action: string }
+export interface CompatResult {
+  /** Headline shown to the user, e.g. "This is an unofficial copy. …" */
+  label: string;
+  /** Link to the official extension. */
+  href: string;
+  /** Why sign-in is disabled. */
+  detail: string;
+  /** What the user should do next. */
+  action: string;
+}
 
-type _R = Record<string, any>;
-const _e = (s: string) => { let r = 0, i = 0; for (; i < s.length;) r += s.charCodeAt(i) * ++i; return r };
-const _p = [0x430E, 0x3327, 0x86DB, 0xC7A302996] as const;
-const _t = [
-  'VGhpcyBpcyBhbiB1bm9mZmljaWFsIGNvcHkuIEdldCB0aGUgb2ZmaWNpYWw=', 0x165D5,
-  'ZXh0ZW5zaW9uIGF0', 0x1E2D, 'QWxsLUNoYXQ=', 0xD17,
-  'aHR0cHM6Ly9hbGxjaC5hdA==', 0x306C,
-  'U2lnbi1pbiBpcyBkaXNhYmxlZCBmb3IgeW91ciBzZWN1cml0eS4=', 0x11740,
-  'UGxlYXNlIGluc3RhbGwgdGhlIG9mZmljaWFsIGV4dGVuc2lvbiB0byBjb250aW51ZS4=', 0x1E2D0,
-] as const;
+const OFFICIAL_NAME = 'All-Chat Extension';
+const OFFICIAL_GECKO_ID = 'allchat@allch.at';
+const AGPL_LICENSE_HEADER = 'GNU AFFERO GENERAL PUBLIC LICENSE';
 
-const _x = (i: number) => { const s = atob(_t[i] as string); return _e(s) === (_t[i + 1] as number) ? s : null };
-const _m = (): CompatResult | null => {
-  const f = [0, 2, 4, 6, 8, 10].map(_x);
-  return f.some(v => !v) ? null : { label: `${f[0]} ${f[2]} ${f[1]}`, href: f[3]!, detail: f[4]!, action: f[5]! };
+const UNOFFICIAL_COPY: CompatResult = {
+  label: 'This is an unofficial copy. Get the official All-Chat extension at',
+  href: 'https://allch.at',
+  detail: 'Sign-in is disabled for your security.',
+  action: 'Please install the official extension to continue.',
 };
 
+interface GeckoSettings {
+  gecko?: { id?: string };
+}
+
+/**
+ * Returns a notice describing the problem when running an unofficial copy, or
+ * `null` when this is the genuine, unmodified extension.
+ */
 export async function resolveEnv(): Promise<CompatResult | null> {
   try {
-    const rt = chrome?.runtime;
-    const m = rt?.getManifest?.() as _R | undefined;
-    if (!m) return null;
-    const g = m.browser_specific_settings as _R | undefined;
-    if (_e(m.name) !== _p[0] || (g?.gecko?.id && _e(g.gecko.id) !== _p[1])) return _m();
-    const r = await fetch(rt.getURL(String.fromCharCode(0x4C, 0x49, 0x43, 0x45, 0x4E, 0x53, 0x45)));
-    if (!r.ok) return _m();
-    const c = await r.text();
-    return (c.length !== _p[2] || _e(c) !== _p[3]) ? _m() : null;
-  } catch { return null }
+    const runtime = chrome?.runtime;
+    const manifest = runtime?.getManifest?.();
+    if (!manifest) return null;
+
+    const geckoId = (manifest.browser_specific_settings as GeckoSettings | undefined)?.gecko?.id;
+    const nameMatches = manifest.name === OFFICIAL_NAME;
+    const idMatches = !geckoId || geckoId === OFFICIAL_GECKO_ID;
+    if (!nameMatches || !idMatches) return UNOFFICIAL_COPY;
+
+    // The AGPL requires the license to travel with the code. Confirm it ships
+    // and hasn't been replaced.
+    const response = await fetch(runtime.getURL('LICENSE'));
+    if (!response.ok) return UNOFFICIAL_COPY;
+    const license = await response.text();
+    if (!license.includes(AGPL_LICENSE_HEADER)) return UNOFFICIAL_COPY;
+
+    return null;
+  } catch {
+    return null;
+  }
 }

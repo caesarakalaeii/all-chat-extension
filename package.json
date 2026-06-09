@@ -1,7 +1,10 @@
 {
   "name": "allchat-extension",
-  "version": "1.6.3",
+  "version": "1.6.4",
   "private": true,
+  "engines": {
+    "node": ">=24"
+  },
   "description": "Browser extension to replace native platform chat with All-Chat",
   "scripts": {
     "build": "webpack --mode production",

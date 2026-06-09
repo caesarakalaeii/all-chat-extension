@@ -194,10 +194,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: '18'
+          node-version-file: '.nvmrc'
 
       - name: Install dependencies
         run: npm install

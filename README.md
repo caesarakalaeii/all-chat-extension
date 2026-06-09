@@ -51,6 +51,8 @@ On Twitch, All-Chat adds a persistent tab bar at the top of the chat area with t
 
 ### Build from Source
 
+> **Prerequisite:** Node.js 24 (the current LTS) — see [`.nvmrc`](.nvmrc). With [nvm](https://github.com/nvm-sh/nvm) installed, run `nvm use` to match.
+
 ```bash
 git clone https://github.com/caesarakalaeii/all-chat-extension.git
 cd all-chat-extension

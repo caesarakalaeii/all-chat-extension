@@ -25,7 +25,8 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import { ChatMessage } from '../../lib/types/message';
 import { ViewerInfo } from '../../lib/types/extension';
-import { renderMessageContent } from '../../lib/renderMessage';
+import { renderMessageContent, buildEmoteLookup, type EmoteLookup } from '../../lib/renderMessage';
+import { fetchAllEmotes } from '../../lib/emoteAutocomplete';
 import { resolveTwitchBadgeIcons } from '../../lib/twitchBadges';
 import { sortMessageBadges } from '../../lib/badgeOrder';
 import { getLocalStorage, setLocalStorage, clearViewerAuth, getNameColor, getNameGradient } from '../../lib/storage';
@@ -156,6 +157,9 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   const [tabBarMode, setTabBarMode] = useState(false); // true when platform tab bar controls view (header hidden)
   const [tabBarHideInput, setTabBarHideInput] = useState(true); // true when native input stays visible (Twitch)
   const [envNotice, setEnvNotice] = useState<Awaited<ReturnType<typeof resolveEnv>>>(null);
+  // Local emote lookup used to render emotes when the backend enricher misses
+  // (cold cache / TTL expiry). Reuses the same provider data as autocomplete.
+  const [emoteLookup, setEmoteLookup] = useState<EmoteLookup>(() => new Map());
 
   // Super Chat / Super Sticker ticker — shows recent paid events as colored pills
   interface TickerItem {
@@ -165,6 +169,29 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
     expiresAt: number; // Date.now() + duration * 1000
   }
   const [tickerItems, setTickerItems] = useState<TickerItem[]>([]);
+
+  // Pre-fetch channel emotes once on connect so the renderer has a fallback map
+  // ready before the first message arrives (7TV/BTTV/FFZ are Twitch-only).
+  useEffect(() => {
+    if (!twitchChannel) {
+      return;
+    }
+
+    let cancelled = false;
+    fetchAllEmotes(twitchChannel)
+      .then((emotes) => {
+        if (!cancelled) {
+          setEmoteLookup(buildEmoteLookup(emotes));
+        }
+      })
+      .catch((err) => {
+        console.error('[AllChat] Failed to pre-fetch fallback emotes:', err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [twitchChannel]);
 
   useEffect(() => {
     resolveEnv().then((cfg) => {
@@ -1032,7 +1059,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
 
                       {/* Message text with emotes */}
                       <div className="text-sm text-text">
-                        {renderMessageContent(message)}
+                        {renderMessageContent(message, emoteLookup)}
                       </div>
                     </div>
                   ))

@@ -18,6 +18,7 @@
 
 import React from 'react';
 import type { ChatMessage } from './types/message';
+import type { EmoteData } from './emoteAutocomplete';
 
 type PositionedEmote = {
   start: number;
@@ -28,41 +29,103 @@ type PositionedEmote = {
   key: string;
 };
 
-export function renderMessageContent(message: ChatMessage): React.ReactNode {
+/**
+ * Local emote lookup keyed by the exact (case-sensitive) emote code, used as a
+ * client-side fallback when the backend enricher returns no emotes (cold cache,
+ * TTL expiry, provider timeout). Populated from the same provider data the
+ * autocomplete uses — see `fetchAllEmotes` in `emoteAutocomplete.ts`.
+ */
+export type EmoteLookup = Map<string, EmoteData>;
+
+/**
+ * Build a code-keyed lookup from the flat emote list returned by
+ * `fetchAllEmotes`. Emote codes are case-sensitive (e.g. `Kappa` ≠ `kappa`),
+ * matching the backend's exact-token matching.
+ */
+export function buildEmoteLookup(emotes: EmoteData[]): EmoteLookup {
+  const lookup: EmoteLookup = new Map();
+  for (const emote of emotes) {
+    if (!lookup.has(emote.name)) {
+      lookup.set(emote.name, emote);
+    }
+  }
+  return lookup;
+}
+
+/**
+ * Tokenize message text on whitespace and match each token against the local
+ * emote lookup, producing the same positioned-emote shape the backend path
+ * yields. Positions use an inclusive `end` to match the backend convention.
+ */
+function buildFallbackPositions(text: string, emoteMap: EmoteLookup): PositionedEmote[] {
+  const positioned: PositionedEmote[] = [];
+  const tokenPattern = /\S+/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = tokenPattern.exec(text)) !== null) {
+    const emote = emoteMap.get(match[0]);
+    if (!emote) {
+      continue;
+    }
+
+    const start = match.index;
+    const end = start + match[0].length - 1;
+    positioned.push({
+      start,
+      end,
+      url: emote.url,
+      code: emote.name,
+      provider: emote.provider,
+      key: `fallback-${emote.name}-${start}`,
+    });
+  }
+
+  return positioned;
+}
+
+export function renderMessageContent(
+  message: ChatMessage,
+  emoteMap?: EmoteLookup,
+): React.ReactNode {
   const text = message.message?.text ?? '';
   const emotes = message.message?.emotes ?? [];
 
-  if (!text || emotes.length === 0) {
+  if (!text) {
     return text;
   }
 
-  const positioned: PositionedEmote[] = [];
+  let positioned: PositionedEmote[] = [];
 
-  emotes.forEach((emote, emoteIndex) => {
-    if (!emote.positions || emote.positions.length === 0) {
-      return;
-    }
-
-    emote.positions.forEach((pos, occurrenceIndex) => {
-      if (!Array.isArray(pos) || pos.length !== 2) {
+  if (emotes.length > 0) {
+    emotes.forEach((emote, emoteIndex) => {
+      if (!emote.positions || emote.positions.length === 0) {
         return;
       }
 
-      const [start, end] = pos;
-      if (typeof start !== 'number' || typeof end !== 'number') {
-        return;
-      }
+      emote.positions.forEach((pos, occurrenceIndex) => {
+        if (!Array.isArray(pos) || pos.length !== 2) {
+          return;
+        }
 
-      positioned.push({
-        start,
-        end,
-        url: emote.url,
-        code: emote.code,
-        provider: emote.provider,
-        key: `${emote.code}-${emoteIndex}-${occurrenceIndex}-${start}`,
+        const [start, end] = pos;
+        if (typeof start !== 'number' || typeof end !== 'number') {
+          return;
+        }
+
+        positioned.push({
+          start,
+          end,
+          url: emote.url,
+          code: emote.code,
+          provider: emote.provider,
+          key: `${emote.code}-${emoteIndex}-${occurrenceIndex}-${start}`,
+        });
       });
     });
-  });
+  } else if (emoteMap && emoteMap.size > 0) {
+    // Backend enricher returned no emotes — fall back to the locally cached map.
+    positioned = buildFallbackPositions(text, emoteMap);
+  }
 
   if (positioned.length === 0) {
     return text;

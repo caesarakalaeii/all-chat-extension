@@ -18,7 +18,7 @@
   "dependencies": {
     "@fontsource/dm-mono": "^5.2.7",
     "@fontsource/inter": "^5.2.8",
-    "@playwright/test": "^1.60.0",
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4.3.1",
     "clsx": "^2.1.0",
     "mini-css-extract-plugin": "^2.10.2",
@@ -27,8 +27,8 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
-    "@types/chrome": "^0.1.43",
-    "@types/node": "^25.9.3",
+    "@types/chrome": "^0.2.0",
+    "@types/node": "^25.9.4",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@types/ws": "^8.18.1",
@@ -38,13 +38,13 @@
     "css-loader": "^6.8.1",
     "eslint": "^9.39.4",
     "html-webpack-plugin": "^5.6.7",
-    "postcss": "^8.5.15",
+    "postcss": "^8.5.16",
     "postcss-loader": "^7.3.3",
     "style-loader": "^3.3.3",
     "tailwindcss": "^4.3.1",
     "ts-loader": "^9.6.2",
     "typescript": "^5.3.3",
-    "webpack": "^5.107.2",
+    "webpack": "^5.108.1",
     "webpack-cli": "^5.1.4",
     "ws": "^8.21.0"
   }

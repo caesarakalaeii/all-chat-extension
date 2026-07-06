@@ -33,6 +33,8 @@ import { getLocalStorage, setLocalStorage, clearViewerAuth, getNameColor, getNam
 import { API_BASE_URL } from '../../config';
 import LoginPrompt from './LoginPrompt';
 import MessageInput from './MessageInput';
+import EngagementPanel from './EngagementPanel';
+import { useEngagement } from '../hooks/useEngagement';
 import ToastContainer, { Toast } from './Toast';
 import { InfinityLogo } from './InfinityLogo';
 import { UserAvatar } from './UserAvatar';
@@ -160,6 +162,17 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   // Local emote lookup used to render emotes when the backend enricher misses
   // (cold cache / TTL expiry). Reuses the same provider data as autocomplete.
   const [emoteLookup, setEmoteLookup] = useState<EmoteLookup>(() => new Map());
+
+  // Engagement (polls / predictions / points, PR #524 / ADR-0031). State is pulled from
+  // the streamer-keyed endpoints; the poll_update / prediction_update WS frames below act
+  // as a "refetch now" signal. authed = the viewer has an All-Chat session (needed to
+  // vote/wager; display works without one).
+  const authed = Boolean(viewerToken);
+  const eng = useEngagement(streamer, authed);
+  // The WS message handler is captured by an effect (see below), so route frame signals
+  // through a ref to always hit the latest refetch callback.
+  const engagementFrameRef = useRef(eng.onWsFrame);
+  engagementFrameRef.current = eng.onWsFrame;
 
   // Super Chat / Super Sticker ticker — shows recent paid events as colored pills
   interface TickerItem {
@@ -391,6 +404,10 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
             return prev;
           });
         });
+      } else if (wsMessage.type === 'poll_update' || wsMessage.type === 'prediction_update') {
+        // Engagement snapshot changed (PR #524). The frame is a signal; the hook refetches
+        // the authoritative state (which applies All-Chat-over-native display precedence).
+        engagementFrameRef.current?.();
       } else if (wsMessage.type === 'ping') {
         // Ignore pings
       }
@@ -638,9 +655,48 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
     addToast('Session expired. Please log in again.', 'warning');
   };
 
+  // Recover when the viewer token is wiped mid-session. The service worker's
+  // ensureValidToken() (and the chat send path) clear viewer_jwt_token from storage on
+  // expiry, but the UI's viewerToken state wouldn't otherwise notice — leaving the
+  // engagement panel showing a stale balance with controls that silently fail. Mirror any
+  // token removal into React state so `authed` flips false and the panel offers re-login.
+  // storage.onChanged fires in every extension context (in-page iframe and pop-out).
+  useEffect(() => {
+    const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+      if (area === 'local' && changes.viewer_jwt_token && changes.viewer_jwt_token.newValue == null && viewerToken) {
+        void handleAuthError();
+      }
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    return () => chrome.storage.onChanged.removeListener(onChanged);
+  }, [viewerToken]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Handle message sent successfully
   const handleMessageSent = () => {
     // Inline feedback handled by MessageInput — no toast needed
+  };
+
+  // Trigger the viewer OAuth flow from the engagement panel (a logged-out viewer on
+  // Twitch/YouTube/Kick sees the native input, not the LoginPrompt, so the panel offers
+  // its own sign-in). Reuses the LoginPrompt REQUEST_LOGIN relay through the content
+  // script. Pop-out windows have no content-script parent, so the panel hides this.
+  const requestLogin = () => {
+    if (isPopOut) return;
+    window.parent.postMessage({ type: 'REQUEST_LOGIN', platform, streamer }, '*');
+    const handler = (event: MessageEvent) => {
+      if (event.source !== window.parent) return;
+      const d = event.data as { type?: string; token?: string; error?: string };
+      if (d?.type === 'LOGIN_SUCCESS' && d.token) {
+        window.removeEventListener('message', handler);
+        void handleLogin(d.token);
+      } else if (d?.type === 'LOGIN_ERROR') {
+        window.removeEventListener('message', handler);
+        addToast(d.error || 'Login failed', 'error');
+      }
+    };
+    window.addEventListener('message', handler);
+    // Stop listening after 3 minutes (mirrors LoginPrompt's timeout).
+    setTimeout(() => window.removeEventListener('message', handler), 180_000);
   };
 
   // Toggle collapse state and persist it (in-page only)
@@ -870,6 +926,23 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                   })}
                 </div>
               )}
+
+              {/* Live poll / prediction panel (PR #524). Renders nothing when no round is
+                  active; sits above the message list like the Super Chat ticker. */}
+              <EngagementPanel
+                poll={eng.poll}
+                prediction={eng.prediction}
+                engagement={eng.engagement}
+                pointsName={eng.pointsName}
+                busy={eng.busy}
+                notice={eng.notice}
+                authed={authed}
+                canLogin={!isPopOut}
+                onVote={eng.vote}
+                onWager={eng.wager}
+                onRequestLogin={requestLogin}
+                onDismissNotice={eng.clearNotice}
+              />
 
               {/* Messages */}
               <div id="messages-container" ref={messagesContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-3 space-y-2">

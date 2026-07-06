@@ -346,6 +346,74 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           sendResponse({ success: true });
           break;
 
+        // --- Engagement (polls / predictions / points, PR #524 / ADR-0031) ---
+        // The SW is the API proxy: it resolves the base URL, attaches the viewer JWT,
+        // and calls the streamer-keyed endpoints, so the overlay id never reaches a
+        // page context and background fetches (no Origin) pass the gateway OriginCheck.
+        case 'ENGAGEMENT_ACTIVE': {
+          // Public aggregate — no token needed. A 404 (no public overlay / went private) is
+          // a DEFINITIVE "no round" → data:null so the panel clears; a 5xx/transport error
+          // is transient → success:false so the client keeps the last render.
+          const res = await engagementFetch(message.streamerUsername, '/active', { method: 'GET', auth: false });
+          if (res.ok) {
+            sendResponse({ success: true, data: res.data });
+          } else if (res.status === 404) {
+            sendResponse({ success: true, data: null });
+          } else {
+            sendResponse({ success: false, error: res.data?.error || 'ACTIVE_FAILED' });
+          }
+          break;
+        }
+
+        case 'ENGAGEMENT_ME': {
+          // Per-viewer snapshot (balance + this viewer's vote/wager). Logged-out is a
+          // normal state, not an error: return null so the panel shows aggregates only.
+          const token = await getViewerToken();
+          if (!token) {
+            sendResponse({ success: true, data: null });
+            break;
+          }
+          const res = await engagementFetch(message.streamerUsername, '/me', { method: 'GET', auth: true });
+          sendResponse(res.ok
+            ? { success: true, data: res.data }
+            : { success: true, data: null });
+          break;
+        }
+
+        case 'ENGAGEMENT_VOTE': {
+          const res = await engagementFetch(message.streamerUsername, '/vote', {
+            method: 'POST',
+            auth: true,
+            body: { poll_id: message.pollId, option_idx: message.optionIdx },
+          });
+          sendResponse(res.ok
+            ? { success: true, data: res.data }
+            : { success: false, error: res.data?.error || 'VOTE_FAILED', data: res.data });
+          break;
+        }
+
+        case 'ENGAGEMENT_WAGER': {
+          const res = await engagementFetch(message.streamerUsername, '/wager', {
+            method: 'POST',
+            auth: true,
+            body: { prediction_id: message.predictionId, outcome_idx: message.outcomeIdx, amount: message.amount },
+          });
+          // Carry the machine-readable `reason` (insufficient, already_wagered, …) through
+          // on `data` so the panel can render actionable copy.
+          sendResponse(res.ok
+            ? { success: true, data: res.data }
+            : { success: false, error: res.data?.error || 'WAGER_FAILED', data: res.data });
+          break;
+        }
+
+        case 'ENGAGEMENT_HEARTBEAT': {
+          const res = await engagementFetch(message.streamerUsername, '/heartbeat', { method: 'POST', auth: true, body: {} });
+          sendResponse(res.ok
+            ? { success: true, data: res.data }
+            : { success: false, error: res.data?.error || 'HEARTBEAT_FAILED' });
+          break;
+        }
+
         default:
           sendResponse({ success: false, error: 'Unknown message type' });
       }
@@ -792,6 +860,45 @@ async function ensureValidToken(): Promise<string | null> {
     await clearViewerAuth();
     return null;
   }
+}
+
+/**
+ * Call a streamer-keyed engagement endpoint (PR #524 / ADR-0031). Centralizes the
+ * base-URL resolution, viewer-JWT attachment, and JSON parsing for the engagement
+ * message handlers. Authenticated calls use ensureValidToken so an expired session is
+ * cleared and reported as 401 rather than silently failing. Returns the parsed body
+ * (or null) alongside ok/status so callers can surface the `reason` on a rejection.
+ */
+async function engagementFetch(
+  streamer: string,
+  path: string,
+  init: { method: 'GET' | 'POST'; auth: boolean; body?: unknown },
+): Promise<{ ok: boolean; status: number; data: any }> {
+  const apiUrl = await getApiGatewayUrl();
+  const headers: Record<string, string> = {};
+  if (init.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
+  if (init.auth) {
+    const token = await ensureValidToken();
+    if (!token) {
+      return { ok: false, status: 401, data: { error: 'NOT_AUTHENTICATED' } };
+    }
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const url = `${apiUrl}/api/v1/engagement/streamers/${encodeURIComponent(streamer)}${path}`;
+  const response = await fetch(url, {
+    method: init.method,
+    headers,
+    ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+  });
+  let data: any = null;
+  try {
+    data = await response.json();
+  } catch {
+    /* empty or non-JSON body */
+  }
+  return { ok: response.ok, status: response.status, data };
 }
 
 /**

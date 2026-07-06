@@ -64,6 +64,14 @@ export type ExtensionMessage =
   | { type: 'SET_CURRENT_PLATFORM'; platform: string }
   | { type: 'EXTENSION_STATE_CHANGED'; enabled: boolean }
   | { type: 'CLOSE_POPOUT_WINDOWS' }
+  // Engagement (polls/predictions/points, PR #524 / ADR-0031). The service worker is
+  // the API proxy: it holds the viewer JWT and calls the streamer-keyed engagement
+  // endpoints, so the overlay id is never exposed to page contexts.
+  | { type: 'ENGAGEMENT_ACTIVE'; streamerUsername: string }
+  | { type: 'ENGAGEMENT_ME'; streamerUsername: string }
+  | { type: 'ENGAGEMENT_VOTE'; streamerUsername: string; pollId: string; optionIdx: number }
+  | { type: 'ENGAGEMENT_WAGER'; streamerUsername: string; predictionId: string; outcomeIdx: number; amount: number }
+  | { type: 'ENGAGEMENT_HEARTBEAT'; streamerUsername: string }
   | {
       type: 'SEND_NATIVE_CHAT';
       platform: 'youtube' | 'twitch' | 'kick' | 'tiktok';

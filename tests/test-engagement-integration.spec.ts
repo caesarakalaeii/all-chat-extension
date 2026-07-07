@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 /**
- * Static source-checks for the engagement integration (all-chat PR #524 / ADR-0031):
+ * Static source-checks for the engagement integration (all-chat PR #524 / backend ADR-0031):
  * polls, predictions, and viewer points inside the extension chat overlay.
  *
  * A live end-to-end (an actual poll appearing + a vote landing) requires a running
@@ -11,11 +11,17 @@ import path from 'path';
  * reproducible in CI — so these guard the wiring and, critically, the invariant that the
  * extension participates by streamer *username* and never handles an overlay id
  * (the viewer-withheld bearer capability). Same file-reading style as test-design-system.
+ *
+ * Behavior (the hook/panel logic — optimistic rollback, request sequencing, the native
+ * read-only gate, allow_change locking, the wager-rejection copy) is exercised for real by
+ * the jsdom unit suite in tests/unit/*.test.ts (`npm run test:unit`). The checks here are
+ * regression guardrails for the pieces that unit tests can't reach cheaply: the service
+ * worker's message switch and the ChatContainer auth wiring.
  */
 
 const read = (p: string) => fs.readFileSync(path.resolve(__dirname, '..', p), 'utf8');
 
-test.describe('Engagement integration (PR #524 / ADR-0031)', () => {
+test.describe('Engagement integration (PR #524 / backend ADR-0031)', () => {
   test('ENG-01: engagement types exist (Poll, Prediction, StreamerActive, snapshots)', () => {
     const t = read('src/lib/types/engagement.ts');
     for (const sym of ['interface Poll', 'interface Prediction', 'interface StreamerActive', 'interface ViewerEngagement', 'PollSnapshot', 'PredictionSnapshot']) {
@@ -34,7 +40,7 @@ test.describe('Engagement integration (PR #524 / ADR-0031)', () => {
   });
 
   test('ENG-03: overlay-id secrecy — the extension never builds an overlay-keyed engagement URL', () => {
-    // ADR-0031: viewers must not learn the overlay id. Any /engagement/overlays/... call
+    // backend ADR-0031: viewers must not learn the overlay id. Any /engagement/overlays/... call
     // from the extension would mean an overlay id crossed into a page/background context.
     for (const f of [
       'src/background/service-worker.ts',
@@ -65,10 +71,38 @@ test.describe('Engagement integration (PR #524 / ADR-0031)', () => {
   test('ENG-06: mirrored Twitch-native rounds render read-only (no vote/wager)', () => {
     // Currency isolation (ADR-0029/0030): the panel and hook must gate participation on
     // source !== twitch_native so an All-Chat vote/wager can never target a native round.
+    // Behavior is proven in tests/unit/engagementPanel.test.tsx; this guards against the
+    // specific regression of dropping `!isNative` from the gate while leaving the literal —
+    // which defeated the old contains-only check — by asserting it inside canVote/canWager.
     const panel = read('src/ui/components/EngagementPanel.tsx');
     const hook = read('src/ui/hooks/useEngagement.ts');
-    expect(panel).toContain("'twitch_native'");
-    expect(hook).toContain("=== 'twitch_native'");
+    expect(panel).toMatch(/const canVote = [^;]*!isNative/);
+    expect(panel).toMatch(/const canWager = [^;]*!isNative/);
+    // Hook belt-and-braces: vote()/wager() bail on a native round before hitting the network.
+    expect(hook).toContain("poll.source === 'twitch_native'");
+    expect(hook).toContain("prediction.source === 'twitch_native'");
+  });
+
+  test('ENG-08: a server 401 on /me drops the token so the UI re-prompts (item 8)', () => {
+    // A locally-valid but server-rejected token (revoked/rotated/ban) must not leave a stale
+    // authed UI whose every vote/wager 401s. The ENGAGEMENT_ME handler clears auth on 401.
+    const sw = read('src/background/service-worker.ts');
+    const meCase = sw.slice(sw.indexOf("case 'ENGAGEMENT_ME'"), sw.indexOf("case 'ENGAGEMENT_VOTE'"));
+    expect(meCase).toMatch(/res\.status === 401/);
+    expect(meCase).toContain('clearViewerAuth()');
+  });
+
+  test('ENG-09: deliberate logout is marked so recovery stays silent (item 2)', () => {
+    // A deliberate "Sign out" must not raise the "Session expired" toast reserved for a real
+    // expiry. Both logout paths mark intent; the ChatContainer recovery listener consumes it.
+    const sw = read('src/background/service-worker.ts');
+    const cc = read('src/ui/components/ChatContainer.tsx');
+    // SW popup-logout path marks intent before clearing.
+    expect(sw).toContain('markIntentionalLogout()');
+    // Overlay recovery peeks the marker (non-destructive, so multiple contexts stay silent)
+    // instead of always toasting.
+    expect(cc).toContain('wasIntentionalLogout()');
+    expect(cc).toContain('markIntentionalLogout()');
   });
 
   test('ENG-07: version bumped past 1.6.x and manifest/package agree', () => {

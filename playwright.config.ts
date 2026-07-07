@@ -3,6 +3,9 @@ import path from 'path';
 
 export default defineConfig({
   testDir: './tests',
+  // tests/unit is the vitest (jsdom) suite — keep Playwright out of it, since its
+  // default testMatch would otherwise also pick up *.test.ts files there.
+  testIgnore: ['**/unit/**'],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

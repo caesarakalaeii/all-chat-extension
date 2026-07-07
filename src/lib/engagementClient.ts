@@ -17,7 +17,7 @@
  */
 
 /**
- * Engagement client (PR #524 / ADR-0031). Thin wrappers over the service worker,
+ * Engagement client (PR #524 / backend ADR-0031). Thin wrappers over the service worker,
  * which is the API proxy — it holds the viewer JWT and calls the streamer-keyed
  * endpoints. Works from both the in-page iframe and the pop-out window: both are
  * extension pages with `chrome.runtime` access.

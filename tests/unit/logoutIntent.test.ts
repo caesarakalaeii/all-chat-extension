@@ -31,12 +31,12 @@ beforeEach(() => {
 });
 
 describe('logout intent marker', () => {
-  it('reads a fresh marker as intentional without consuming it (multi-context safe)', async () => {
+  it('reads a marker as intentional without consuming it (multi-context safe)', async () => {
     await markIntentionalLogout();
     expect(store.viewer_logout_intent).toBeTypeOf('number');
 
-    // A PEEK: every context that reads it within the window sees intentional=true, and the
-    // marker survives (so a second listener/window can't lose a race and toast).
+    // A PEEK: every context that reads it sees intentional=true, and the marker survives
+    // (so a second listener/window can't lose a race and toast).
     expect(await wasIntentionalLogout()).toBe(true);
     expect(await wasIntentionalLogout()).toBe(true);
     expect(store.viewer_logout_intent).toBeTypeOf('number');
@@ -53,13 +53,16 @@ describe('logout intent marker', () => {
     expect(await wasIntentionalLogout()).toBe(false);
   });
 
-  it('ignores a stale marker that outlived its honor window', async () => {
+  it('honors a marker regardless of age — it is cleared by login, not by elapsed time (item 8)', async () => {
     const nowSpy = vi.spyOn(Date, 'now');
     nowSpy.mockReturnValue(1_000_000);
     await markIntentionalLogout();
-    // Jump well past the 15s honor window.
-    nowSpy.mockReturnValue(1_000_000 + 60_000);
-    expect(await wasIntentionalLogout()).toBe(false);
+    // Jump far into the future: with no TTL, the marker is STILL honored. This is what closes
+    // the multi-context race — a >TTL-delayed onChanged in a second context can no longer read
+    // the marker as expired and wrongly toast "Session expired" after a deliberate logout. The
+    // marker is invalidated only by a subsequent login (see the clearLogoutIntent test above).
+    nowSpy.mockReturnValue(1_000_000 + 3_600_000);
+    expect(await wasIntentionalLogout()).toBe(true);
     nowSpy.mockRestore();
   });
 });

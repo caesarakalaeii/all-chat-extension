@@ -86,6 +86,11 @@ export function useEngagement(streamer: string, authed: boolean): EngagementStat
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const authedRef = useRef(authed);
   authedRef.current = authed;
+  // Latest engagement snapshot, read inside async callbacks (wager) so a rejection message
+  // reflects the *current* balance rather than the value captured when the memoized callback
+  // was created (item 5). Same escape-hatch pattern as authedRef.
+  const engagementRef = useRef(engagement);
+  engagementRef.current = engagement;
   // Monotonic request-sequence guard. refresh() runs from four uncoordinated sources
   // (init, the live-round interval, the WS-frame debounce, and post-vote/wager), and a
   // vote/wager races its own reconciling refresh. Each refresh captures the seq before its
@@ -166,8 +171,18 @@ export function useEngagement(streamer: string, authed: boolean): EngagementStat
   useEffect(() => {
     if (!authed || !streamer) return;
     const t = setInterval(() => {
+      // Capture the request-sequence high-water WITHOUT advancing it, then apply the balance
+      // the heartbeat POST already returns. Applying it in place keeps the update cheap and
+      // preserves the "no polling when nothing is live" design above — routing this through
+      // refresh() would instead fetch /active + /me every 60s for every idle logged-in viewer.
+      const mySeq = seqRef.current;
       void engagementApi.heartbeat(streamer).then((balance) => {
-        if (balance != null && aliveRef.current) {
+        // Apply only if no newer writer (a vote/wager, or a refresh) has advanced seqRef since
+        // we fired — a heartbeat that resolves *after* a vote/wager would otherwise clobber the
+        // post-action balance with its stale pre-action value (item 1). We deliberately do NOT
+        // advance seqRef ourselves, so this never causes a concurrent refresh to bail. A null
+        // balance means the heartbeat itself failed (SW asleep / 5xx) — keep the last render.
+        if (balance != null && aliveRef.current && seqRef.current === mySeq) {
           setEngagement((prev) => (prev ? { ...prev, balance } : prev));
         }
       });
@@ -245,7 +260,11 @@ export function useEngagement(streamer: string, authed: boolean): EngagementStat
         if (!aliveRef.current) return;
         setBusy(false);
         if (res.error) {
-          setNotice(wagerRejectionCopy(res.reason, pointsName, balance));
+          // Read the freshest balance — `engagement` (and thus the `balance` captured above)
+          // is stale in this memoized callback, so an `insufficient` message would otherwise
+          // show the submit-time figure rather than the current one (item 5).
+          const currentBalance = engagementRef.current?.balance ?? balance;
+          setNotice(wagerRejectionCopy(res.reason, pointsName, currentBalance));
           void refresh();
           return;
         }

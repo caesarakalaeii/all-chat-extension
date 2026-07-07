@@ -363,10 +363,15 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           const res = await engagementFetch(message.streamerUsername, '/active', { method: 'GET', auth: false });
           if (res.ok) {
             sendResponse({ success: true, data: res.data });
-          } else if (res.status === 404) {
+          } else if (res.status >= 400 && res.status < 500 && res.status !== 401) {
+            // Any 4xx except 401 is a DEFINITIVE answer, not a transient blip: 404 = overlay
+            // went private / no public round, 400 = bad request. Map to data:null so the panel
+            // clears. Only 5xx / transport errors stay transient (success:false → the client
+            // keeps the last render). 401 is excluded defensively — /active is unauthenticated,
+            // so a 401 signals a gateway misconfig, not "no round" (item 4).
             sendResponse({ success: true, data: null });
           } else {
-            sendResponse({ success: false, error: res.data?.error || 'ACTIVE_FAILED' });
+            sendResponse({ success: false, error: readErrorMessage(res.data) || 'ACTIVE_FAILED' });
           }
           break;
         }
@@ -401,7 +406,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           });
           sendResponse(res.ok
             ? { success: true, data: res.data }
-            : { success: false, error: res.data?.error || 'VOTE_FAILED', data: res.data });
+            : { success: false, error: readErrorMessage(res.data) || 'VOTE_FAILED', data: res.data });
           break;
         }
 
@@ -415,7 +420,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           // on `data` so the panel can render actionable copy.
           sendResponse(res.ok
             ? { success: true, data: res.data }
-            : { success: false, error: res.data?.error || 'WAGER_FAILED', data: res.data });
+            : { success: false, error: readErrorMessage(res.data) || 'WAGER_FAILED', data: res.data });
           break;
         }
 
@@ -423,7 +428,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           const res = await engagementFetch(message.streamerUsername, '/heartbeat', { method: 'POST', auth: true, body: {} });
           sendResponse(res.ok
             ? { success: true, data: res.data }
-            : { success: false, error: res.data?.error || 'HEARTBEAT_FAILED' });
+            : { success: false, error: readErrorMessage(res.data) || 'HEARTBEAT_FAILED' });
           break;
         }
 
@@ -878,6 +883,15 @@ async function ensureValidToken(): Promise<string | null> {
   }
 }
 
+/** Narrow the `error` string out of an engagement response body without an `any` cast (item 6). */
+function readErrorMessage(data: unknown): string | undefined {
+  if (data && typeof data === 'object' && 'error' in data) {
+    const { error } = data as { error?: unknown };
+    if (typeof error === 'string') return error;
+  }
+  return undefined;
+}
+
 /**
  * Call a streamer-keyed engagement endpoint (PR #524 / backend ADR-0031). Centralizes the
  * base-URL resolution, viewer-JWT attachment, and JSON parsing for the engagement
@@ -889,7 +903,7 @@ async function engagementFetch(
   streamer: string,
   path: string,
   init: { method: 'GET' | 'POST'; auth: boolean; body?: unknown },
-): Promise<{ ok: boolean; status: number; data: any }> {
+): Promise<{ ok: boolean; status: number; data: unknown }> {
   const apiUrl = await getApiGatewayUrl();
   const headers: Record<string, string> = {};
   if (init.body !== undefined) {
@@ -908,7 +922,7 @@ async function engagementFetch(
     headers,
     ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
   });
-  let data: any = null;
+  let data: unknown = null;
   try {
     data = await response.json();
   } catch {

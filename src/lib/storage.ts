@@ -154,36 +154,32 @@ export async function clearViewerAuth(): Promise<void> {
 }
 
 /**
- * Window within which a stored logout-intent marker is honored. Short, so a marker that is
- * never cleared (e.g. the user logs out and never logs back in) cannot later mask a genuine
- * expiry.
- */
-const LOGOUT_INTENT_TTL_MS = 15_000;
-
-/**
  * Record that the imminent viewer-token removal is a *deliberate* logout (the popup's or
  * the overlay's "Sign out"), so the storage.onChanged recovery listener flips to logged-out
  * silently instead of raising a misleading "Session expired" toast (item 2). Must be awaited
- * before clearViewerAuth so the marker is in place when onChanged fires. Timestamped so a
- * marker that outlives its logout can't later mask a genuine expiry.
+ * before clearViewerAuth so the marker is in place when onChanged fires.
  */
 export async function markIntentionalLogout(): Promise<void> {
   await setLocalStorage({ viewer_logout_intent: Date.now() });
 }
 
 /**
- * Non-destructive check: was the just-observed token removal a *recent* deliberate logout?
+ * Non-destructive check: was the just-observed token removal a *deliberate* logout?
  * A PEEK, not a consume — the single viewer_jwt_token removal fires storage.onChanged in
  * EVERY extension context (the in-page iframe AND any pop-out window), each of which must
  * read the marker and stay silent. A destructive read would let whichever context lost the
- * race still raise the misleading "Session expired" toast. Staleness is bounded by the TTL,
- * and the marker is cleared on the next login (clearLogoutIntent), so it can't mask a later
- * genuine expiry.
+ * race still raise the misleading "Session expired" toast.
+ *
+ * No time window: the marker is invalidated by the *next login* (clearLogoutIntent), not by
+ * elapsed time. A genuine expiry can only follow a login (a token must exist before it can
+ * expire), and login clears the marker, so a lingering marker can never mask a later
+ * session's expiry. Dropping the former TTL also removes a multi-context race where a
+ * >TTL-delayed onChanged would wrongly toast "Session expired" after a deliberate logout
+ * (item 8).
  */
 export async function wasIntentionalLogout(): Promise<boolean> {
   const storage = await getLocalStorage();
-  const stamped = storage.viewer_logout_intent;
-  return stamped != null && Date.now() - stamped < LOGOUT_INTENT_TTL_MS;
+  return storage.viewer_logout_intent != null;
 }
 
 /** Clear the logout-intent marker. Called on login so a marker can't outlive its logout. */

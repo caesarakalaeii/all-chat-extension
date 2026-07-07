@@ -72,6 +72,14 @@ export default function EngagementPanel({
     if (wagerLocked) setWagerAmount('');
   }, [wagerLocked]);
 
+  // Also clear when the round itself rolls over (new prediction id), so a half-typed amount
+  // left over from a previous prediction can't be submitted against the next one (item 2).
+  // Keyed on the id (not the object) so a tally refresh of the *same* round doesn't wipe an
+  // amount the viewer is mid-way through typing.
+  useEffect(() => {
+    setWagerAmount('');
+  }, [prediction?.id]);
+
   const showPoll = poll && (poll.state === 'ACTIVE' || poll.state === 'CLOSED');
   // CANCELED is included so the ~20s cancel grace window (served by the backend's display
   // query) renders a "refunded" reveal instead of the panel silently vanishing (item 6).
@@ -258,7 +266,10 @@ function PredictionBlock({
   const isResolved = prediction.state === 'RESOLVED';
   const isCanceled = prediction.state === 'CANCELED';
   const alreadyWagered = Boolean(engagement?.wager_outcome_id);
-  const canWager = authed && !isNative && isOpen && !alreadyWagered;
+  // Require a loaded viewer snapshot too: without `engagement`, `balance` falls back to 0 and
+  // a wager would be rejected client-side with "you have 0" even for a viewer who *has* points
+  // but whose /me is momentarily unavailable. Hide the input until the snapshot loads (item 7).
+  const canWager = authed && !isNative && isOpen && !alreadyWagered && Boolean(engagement);
 
   return (
     <section className="space-y-1.5">

@@ -136,6 +136,40 @@ describe('EngagementPanel — poll.allow_change (item 3)', () => {
   });
 });
 
+describe('EngagementPanel — All-Chat wager (item 3)', () => {
+  it('lets an authed viewer type an amount and wager it on an outcome', () => {
+    const { onWager } = renderPanel({
+      prediction: makePrediction(),
+      engagement: { points_name: 'Points', balance: 1000 },
+    });
+    const input = screen.getByLabelText(/amount to wager/i) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '250' } });
+    const yes = screen.getByRole('button', { name: /Yes/ });
+    fireEvent.click(yes);
+    expect(onWager).toHaveBeenCalledWith(1, 250);
+  });
+
+  it('does not offer wagering to a logged-out viewer', () => {
+    const { onWager } = renderPanel({ prediction: makePrediction(), authed: false, engagement: null });
+    expect(screen.queryByLabelText(/amount to wager/i)).not.toBeInTheDocument();
+    const yes = screen.getByRole('button', { name: /Yes/ });
+    expect(yes).toBeDisabled();
+    fireEvent.click(yes);
+    expect(onWager).not.toHaveBeenCalled();
+  });
+
+  it('hides the wager input until the viewer snapshot has loaded (item 7)', () => {
+    // authed but engagement still null (transient /me failure): showing the input would let a
+    // wager compute balance=0 and bounce with "you have 0" even for a viewer who has points.
+    const { onWager } = renderPanel({ prediction: makePrediction(), authed: true, engagement: null });
+    expect(screen.queryByLabelText(/amount to wager/i)).not.toBeInTheDocument();
+    const yes = screen.getByRole('button', { name: /Yes/ });
+    expect(yes).toBeDisabled();
+    fireEvent.click(yes);
+    expect(onWager).not.toHaveBeenCalled();
+  });
+});
+
 describe('EngagementPanel — CANCELED prediction (item 6)', () => {
   it('reveals a refund message during the cancel grace window instead of vanishing', () => {
     renderPanel({

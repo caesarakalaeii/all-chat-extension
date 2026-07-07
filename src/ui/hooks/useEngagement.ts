@@ -21,7 +21,8 @@ import type { Poll, Prediction, ViewerEngagement } from '../../lib/types/engagem
 import * as engagementApi from '../../lib/engagementClient';
 
 /**
- * useEngagement drives the extension's poll/prediction panel (PR #524 / ADR-0031).
+ * useEngagement drives the extension's poll/prediction panel (PR #524 / backend ADR-0031;
+ * extension-side architecture: docs/adr/007-streamer-keyed-engagement-sw-proxy.md).
  *
  * The authoritative state is pulled from the streamer-keyed HTTP endpoints (which
  * apply the All-Chat-over-native display precedence). The overlay chat WebSocket
@@ -39,7 +40,8 @@ const HEARTBEAT_MS = 60_000;
 // wagerRejectionCopy maps the server's machine reason for a rejected wager to human
 // copy, so a failure is actionable rather than the opaque "wager not accepted".
 // Reasons come from the engagement-service repository WagerResult.Reason.
-function wagerRejectionCopy(reason: string | undefined, pointsName: string, balance: number): string {
+// Exported for unit testing (the reason→copy table).
+export function wagerRejectionCopy(reason: string | undefined, pointsName: string, balance: number): string {
   switch (reason) {
     case 'not_found':
       return 'This prediction is no longer available.';
@@ -84,6 +86,12 @@ export function useEngagement(streamer: string, authed: boolean): EngagementStat
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const authedRef = useRef(authed);
   authedRef.current = authed;
+  // Monotonic request-sequence guard. refresh() runs from four uncoordinated sources
+  // (init, the live-round interval, the WS-frame debounce, and post-vote/wager), and a
+  // vote/wager races its own reconciling refresh. Each refresh captures the seq before its
+  // await and bails on resolution if a newer refresh or action has bumped it; each action
+  // bumps it up-front so a stale in-flight refresh can never revert a fresh vote (item 1).
+  const seqRef = useRef(0);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -94,11 +102,14 @@ export function useEngagement(streamer: string, authed: boolean): EngagementStat
 
   const refresh = useCallback(async () => {
     if (!streamer) return;
+    const mySeq = ++seqRef.current;
     const [active, me] = await Promise.all([
       engagementApi.fetchActive(streamer),
       authedRef.current ? engagementApi.fetchMe(streamer) : Promise.resolve<ViewerEngagement | null>(null),
     ]);
-    if (!aliveRef.current) return;
+    // Bail if unmounted, or if a newer refresh / a vote·wager has superseded this one —
+    // a stale response must never overwrite fresher state (item 1).
+    if (!aliveRef.current || seqRef.current !== mySeq) return;
     // fetchActive returns undefined on a transient failure (SW asleep / 5xx) — keep the
     // last round rendered; null or an object is a definitive answer (incl. a 404 when the
     // overlay went private, or a 200 with no live round) — clear/replace accordingly.
@@ -115,13 +126,30 @@ export function useEngagement(streamer: string, authed: boolean): EngagementStat
     }
   }, [streamer]);
 
-  // Initial load + reset when the watched stream changes.
+  // Initial load + reset when the watched stream changes. `refresh`'s identity changes
+  // only when `streamer` does, so this clears the stale round and refetches on a switch.
   useEffect(() => {
     setPoll(null);
     setPrediction(null);
     setEngagement(null);
     void refresh();
-  }, [refresh, authed]);
+  }, [refresh]);
+
+  // On an auth change (login / logout / expiry) refresh the viewer snapshot *in place*.
+  // The poll/prediction are the PUBLIC aggregate and don't depend on auth, so we must not
+  // blank them on a toggle (which flickered the still-live round, item 4). Keyed on `authed`
+  // alone (refresh is read through a ref so a streamer switch doesn't double-fetch here);
+  // the mount run is skipped since the effect above already did the initial fetch.
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const didAuthMountRef = useRef(false);
+  useEffect(() => {
+    if (!didAuthMountRef.current) {
+      didAuthMountRef.current = true;
+      return;
+    }
+    void refreshRef.current();
+  }, [authed]);
 
   // Fallback reconcile while a round is live (self-heals a dropped frame; refreshes the
   // balance earned off-band). Keyed on presence, not the round objects, so a tally change
@@ -163,6 +191,9 @@ export function useEngagement(streamer: string, authed: boolean): EngagementStat
       if (!poll || busy || poll.source === 'twitch_native') return;
       setBusy(true);
       setNotice(null);
+      // Advance the request-sequence high-water so any refresh already in flight (e.g. a
+      // pre-vote interval fetch) bails on resolution instead of reverting this vote (item 1).
+      seqRef.current++;
       // Optimistic: highlight the chosen option immediately (the id is resolved from idx).
       // Capture the prior vote inside the updater (engagement isn't a dep) so a failure can
       // roll the highlight back even if the reconciling refetch also fails.
@@ -184,7 +215,10 @@ export function useEngagement(streamer: string, authed: boolean): EngagementStat
           void refresh();
           return;
         }
-        if (res.poll) setPoll(res.poll);
+        // Only a real poll carries an id; the backend returns a bodyless 200 {status:"ok"}
+        // when it accepted the vote but its GetPoll follow-up failed — ignore that sentinel
+        // so it doesn't blank the live poll until the trailing refresh reconciles (item 5).
+        if (res.poll?.id) setPoll(res.poll);
         void refresh();
       });
     },
@@ -205,6 +239,8 @@ export function useEngagement(streamer: string, authed: boolean): EngagementStat
       }
       setBusy(true);
       setNotice(null);
+      // Supersede any in-flight refresh so it can't overwrite this wager's result (item 1).
+      seqRef.current++;
       void engagementApi.wager(streamer, prediction.id, outcomeIdx, amount).then((res) => {
         if (!aliveRef.current) return;
         setBusy(false);

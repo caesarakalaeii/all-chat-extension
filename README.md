@@ -107,8 +107,18 @@ npm run type-check   # TypeScript validation
 npm run lint         # ESLint
 npm run test         # Playwright E2E tests
 npm run test:agent   # Agent-tagged tests
+npm run test:unit    # Vitest unit/component tests (jsdom + Testing Library)
 npm run package      # Create distributable ZIP
 ```
+
+Two test layers:
+
+- **Playwright** (`tests/*.spec.ts`) — drives the packed extension in a real browser, plus
+  lightweight source-level regression guards for wiring that needs a running backend to
+  exercise live.
+- **Vitest** (`tests/unit/*.test.ts`) — fast jsdom unit/component tests for pure logic such as
+  the engagement hook and panel (optimistic rollback, request sequencing, native read-only
+  gating, `allow_change` locking). Kept out of the Playwright run via `testIgnore`.
 
 ### Project Structure
 
@@ -157,7 +167,9 @@ all-chat-extension/
 │   │   ├── popup.html
 │   │   └── popup.tsx
 │   └── config.ts
-├── tests/                      # Playwright E2E test suite
+├── tests/                      # Playwright E2E suite
+│   └── unit/                   # Vitest unit/component tests (jsdom)
+├── docs/adr/                   # Architecture Decision Records
 ├── assets/                     # Extension icons
 ├── manifest.json               # Manifest V3
 ├── webpack.config.js

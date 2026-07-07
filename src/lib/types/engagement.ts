@@ -20,7 +20,7 @@
  * Engagement types (polls, predictions, points — all-chat issue #523 / PR #524).
  * These mirror the JSON the engagement-service returns; see the backend
  * services/engagement-service/models. The extension participates by streamer
- * username (ADR-0031) — it never learns the overlay id — so it talks to the
+ * username (backend ADR-0031) — it never learns the overlay id — so it talks to the
  * streamer-keyed endpoints and receives live snapshots over the existing chat
  * WebSocket as `poll_update` / `prediction_update` frames.
  */
@@ -39,7 +39,7 @@ export interface PollOption {
 export interface Poll {
   id: string;
   // overlay_id is intentionally never serialized by the backend (json:"-") — the
-  // extension deals only in streamer usernames (ADR-0031).
+  // extension deals only in streamer usernames (backend ADR-0031).
   source: EngagementSource;
   external_id?: string;
   question: string;

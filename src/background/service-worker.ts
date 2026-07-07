@@ -40,6 +40,8 @@ import {
   setLocalStorage,
   setSyncStorage,
   clearViewerAuth,
+  markIntentionalLogout,
+  clearLogoutIntent,
   setNameGradient,
   DEFAULT_SETTINGS,
 } from '../lib/storage';
@@ -302,6 +304,9 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         }
 
         case 'LOGOUT':
+          // Deliberate logout: mark intent before clearing so the overlay's storage.onChanged
+          // recovery flips to logged-out silently rather than toasting "Session expired" (item 2).
+          await markIntentionalLogout();
           await clearViewerAuth();
           sendResponse({ success: true });
           break;
@@ -346,7 +351,8 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           sendResponse({ success: true });
           break;
 
-        // --- Engagement (polls / predictions / points, PR #524 / ADR-0031) ---
+        // --- Engagement (polls / predictions / points, PR #524 / backend ADR-0031;
+        //     extension-side architecture: docs/adr/007) ---
         // The SW is the API proxy: it resolves the base URL, attaches the viewer JWT,
         // and calls the streamer-keyed endpoints, so the overlay id never reaches a
         // page context and background fetches (no Origin) pass the gateway OriginCheck.
@@ -374,6 +380,13 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
             break;
           }
           const res = await engagementFetch(message.streamerUsername, '/me', { method: 'GET', auth: true });
+          // A server 401 on a token still valid *locally* means it was revoked/rotated (key
+          // rotation, ban) — drop it so the overlay's storage.onChanged recovery re-prompts
+          // login instead of leaving a stale authed UI whose every vote/wager 401s. Keep
+          // data:null (preserve) for 5xx/transport, mirroring the ACTIVE handler's split (item 8).
+          if (res.status === 401) {
+            await clearViewerAuth();
+          }
           sendResponse(res.ok
             ? { success: true, data: res.data }
             : { success: true, data: null });
@@ -754,6 +767,9 @@ async function saveNameColor(color: string | null): Promise<void> {
  */
 async function storeViewerToken(token: string): Promise<void> {
   await setLocalStorage({ viewer_jwt_token: token });
+  // Fresh session — clear any stale logout-intent marker so it can't later mask a genuine
+  // expiry as if it were a deliberate logout (item 2).
+  await clearLogoutIntent();
 
   try {
     const viewerInfo = await fetchViewerMe(token);
@@ -863,7 +879,7 @@ async function ensureValidToken(): Promise<string | null> {
 }
 
 /**
- * Call a streamer-keyed engagement endpoint (PR #524 / ADR-0031). Centralizes the
+ * Call a streamer-keyed engagement endpoint (PR #524 / backend ADR-0031). Centralizes the
  * base-URL resolution, viewer-JWT attachment, and JSON parsing for the engagement
  * message handlers. Authenticated calls use ensureValidToken so an expired session is
  * cleared and reported as 401 rather than silently failing. Returns the parsed body

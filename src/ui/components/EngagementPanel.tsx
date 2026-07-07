@@ -18,7 +18,7 @@
 
 /**
  * EngagementPanel renders the streamer's live All-Chat poll / prediction inside the
- * chat overlay (PR #524 / ADR-0031). Presentational only — all state and actions come
+ * chat overlay (PR #524 / backend ADR-0031). Presentational only — all state and actions come
  * from useEngagement. Mirrors the no-install participate page and the OBS widgets:
  * live bars with tallies, one-click vote, a wager input, and read-only rendering of a
  * mirrored Twitch-native round. Renders nothing when no round is live.
@@ -37,6 +37,8 @@ interface EngagementPanelProps {
   authed: boolean;
   /** REQUEST_LOGIN needs the content-script relay, absent in the pop-out window. */
   canLogin: boolean;
+  /** True while an OAuth login is in flight — disables the sign-in button (no double-launch). */
+  loginPending?: boolean;
   onVote: (optionIdx: number) => void;
   onWager: (outcomeIdx: number, amount: number) => void;
   onRequestLogin: () => void;
@@ -54,6 +56,7 @@ export default function EngagementPanel({
   notice,
   authed,
   canLogin,
+  loginPending = false,
   onVote,
   onWager,
   onRequestLogin,
@@ -70,8 +73,14 @@ export default function EngagementPanel({
   }, [wagerLocked]);
 
   const showPoll = poll && (poll.state === 'ACTIVE' || poll.state === 'CLOSED');
+  // CANCELED is included so the ~20s cancel grace window (served by the backend's display
+  // query) renders a "refunded" reveal instead of the panel silently vanishing (item 6).
   const showPrediction =
-    prediction && (prediction.state === 'ACTIVE' || prediction.state === 'LOCKED' || prediction.state === 'RESOLVED');
+    prediction &&
+    (prediction.state === 'ACTIVE' ||
+      prediction.state === 'LOCKED' ||
+      prediction.state === 'RESOLVED' ||
+      prediction.state === 'CANCELED');
 
   if (!showPoll && !showPrediction) return null;
 
@@ -129,9 +138,10 @@ export default function EngagementPanel({
       {!authed && canLogin && (
         <button
           onClick={onRequestLogin}
-          className="w-full rounded bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-700"
+          disabled={loginPending}
+          className="w-full rounded bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-700 disabled:cursor-default disabled:opacity-60 disabled:hover:bg-purple-600"
         >
-          Sign in to take part
+          {loginPending ? 'Opening sign-in…' : 'Sign in to take part'}
         </button>
       )}
       {!authed && !canLogin && (
@@ -157,7 +167,13 @@ function PollBlock({
   const total = poll.options.reduce((s, o) => s + o.votes, 0);
   const isNative = poll.source === 'twitch_native';
   const isClosed = poll.state === 'CLOSED';
-  const canVote = authed && !isNative && !isClosed;
+  // Once a viewer has voted on an allow_change:false poll, the backend no-ops a second
+  // vote (ON CONFLICT DO NOTHING) yet still returns 200 — so an unguarded re-click would
+  // optimistically move the ✓ and then snap back on the /me refetch. Lock the options and
+  // show a hint, mirroring the prediction block (item 3).
+  const alreadyVoted = Boolean(engagement?.voted_option_id);
+  const voteLocked = alreadyVoted && poll.allow_change === false;
+  const canVote = authed && !isNative && !isClosed && !voteLocked;
   const maxVotes = poll.options.reduce((m, o) => Math.max(m, o.votes), 0);
 
   return (
@@ -207,6 +223,9 @@ function PollBlock({
           </button>
         );
       })}
+      {authed && voteLocked && !isClosed && (
+        <p className="text-xs text-[var(--color-text-dim)]">You&apos;ve locked in your vote for this round.</p>
+      )}
     </section>
   );
 }
@@ -237,6 +256,7 @@ function PredictionBlock({
   const isOpen = prediction.state === 'ACTIVE';
   const isLocked = prediction.state === 'LOCKED';
   const isResolved = prediction.state === 'RESOLVED';
+  const isCanceled = prediction.state === 'CANCELED';
   const alreadyWagered = Boolean(engagement?.wager_outcome_id);
   const canWager = authed && !isNative && isOpen && !alreadyWagered;
 
@@ -255,9 +275,19 @@ function PredictionBlock({
             Resolved
           </span>
         )}
+        {isCanceled && (
+          <span className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-bold uppercase text-[var(--color-text-sub)]">
+            Canceled
+          </span>
+        )}
       </h3>
       {isNative && (
         <p className="text-xs text-[var(--color-text-dim)]">Runs on Twitch channel points.</p>
+      )}
+      {isCanceled && (
+        <p className="text-xs text-[var(--color-text-dim)]">
+          Prediction canceled{alreadyWagered ? ' — your wager was refunded' : ''}.
+        </p>
       )}
 
       {canWager && (

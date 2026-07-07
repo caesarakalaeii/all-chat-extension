@@ -29,7 +29,16 @@ import { renderMessageContent, buildEmoteLookup, type EmoteLookup } from '../../
 import { fetchAllEmotes } from '../../lib/emoteAutocomplete';
 import { resolveTwitchBadgeIcons } from '../../lib/twitchBadges';
 import { sortMessageBadges } from '../../lib/badgeOrder';
-import { getLocalStorage, setLocalStorage, clearViewerAuth, getNameColor, getNameGradient } from '../../lib/storage';
+import {
+  getLocalStorage,
+  setLocalStorage,
+  clearViewerAuth,
+  getNameColor,
+  getNameGradient,
+  markIntentionalLogout,
+  wasIntentionalLogout,
+  clearLogoutIntent,
+} from '../../lib/storage';
 import { API_BASE_URL } from '../../config';
 import LoginPrompt from './LoginPrompt';
 import MessageInput from './MessageInput';
@@ -163,7 +172,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   // (cold cache / TTL expiry). Reuses the same provider data as autocomplete.
   const [emoteLookup, setEmoteLookup] = useState<EmoteLookup>(() => new Map());
 
-  // Engagement (polls / predictions / points, PR #524 / ADR-0031). State is pulled from
+  // Engagement (polls / predictions / points, PR #524 / backend ADR-0031). State is pulled from
   // the streamer-keyed endpoints; the poll_update / prediction_update WS frames below act
   // as a "refetch now" signal. authed = the viewer has an All-Chat session (needed to
   // vote/wager; display works without one).
@@ -173,6 +182,12 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   // through a ref to always hit the latest refetch callback.
   const engagementFrameRef = useRef(eng.onWsFrame);
   engagementFrameRef.current = eng.onWsFrame;
+  // Panel "Sign in to take part" flow control (item 7). loginCleanupRef holds the teardown
+  // for the single in-flight attempt (message listener + timers) so a re-click/re-open
+  // replaces rather than accumulates listeners, and an unmount can't leak them; loginPending
+  // briefly disables the button as feedback without locking it if the viewer abandons OAuth.
+  const loginCleanupRef = useRef<(() => void) | null>(null);
+  const [loginPending, setLoginPending] = useState(false);
 
   // Super Chat / Super Sticker ticker — shows recent paid events as colored pills
   interface TickerItem {
@@ -610,6 +625,9 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
         viewer_jwt_token: token,
         viewer_info: info,
       });
+      // Fresh session — drop any lingering logout-intent marker so it can't later be read
+      // as intent by the recovery listener and silence a genuine expiry (item 2).
+      await clearLogoutIntent();
 
       setViewerToken(token);
       setViewerInfo(info);
@@ -639,32 +657,44 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
       console.error('[AllChat UI] Logout error:', err);
       addToast('Logout error, but session cleared locally', 'warning');
     } finally {
-      // Clear local storage regardless
+      // Mark the removal as deliberate *before* clearing so the storage.onChanged recovery
+      // listener below flips to logged-out silently instead of toasting "Session expired".
+      await markIntentionalLogout();
       await clearViewerAuth();
       setViewerToken(null);
       setViewerInfo(null);
     }
   };
 
-  // Handle auth error (token expired)
+  // Handle auth error (a 401 on chat send, wired to MessageInput's onAuthError). Clearing the
+  // token fires the storage.onChanged recovery below (handleTokenRemoved) in this same
+  // context — since no logout-intent marker is set, that path owns the state reset and the
+  // single "Session expired" toast. Don't duplicate it here (avoids a double toast). We keep
+  // viewerToken truthy until the recovery runs so the listener's guard still fires.
   const handleAuthError = async () => {
     console.log('[AllChat UI] Auth error, clearing session');
     await clearViewerAuth();
-    setViewerToken(null);
-    setViewerInfo(null);
-    addToast('Session expired. Please log in again.', 'warning');
   };
 
-  // Recover when the viewer token is wiped mid-session. The service worker's
-  // ensureValidToken() (and the chat send path) clear viewer_jwt_token from storage on
-  // expiry, but the UI's viewerToken state wouldn't otherwise notice — leaving the
-  // engagement panel showing a stale balance with controls that silently fail. Mirror any
-  // token removal into React state so `authed` flips false and the panel offers re-login.
-  // storage.onChanged fires in every extension context (in-page iframe and pop-out).
+  // Recover when the viewer token is wiped mid-session. The service worker clears
+  // viewer_jwt_token from storage on expiry / server-side rejection, but the UI's
+  // viewerToken state wouldn't otherwise notice — leaving the engagement panel showing a
+  // stale balance with controls that silently fail. Mirror any token removal into React
+  // state so `authed` flips false and the panel offers re-login. A deliberate logout carries
+  // the intent marker (consumed here) and stays silent; only a genuine expiry/revocation
+  // toasts. storage.onChanged fires in every extension context, so an in-overlay flag can't
+  // suppress it — the marker in storage is the cross-context signal (item 2).
+  const handleTokenRemoved = async () => {
+    const intentional = await wasIntentionalLogout();
+    await clearViewerAuth();
+    setViewerToken(null);
+    setViewerInfo(null);
+    if (!intentional) addToast('Session expired. Please log in again.', 'warning');
+  };
   useEffect(() => {
     const onChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
       if (area === 'local' && changes.viewer_jwt_token && changes.viewer_jwt_token.newValue == null && viewerToken) {
-        void handleAuthError();
+        void handleTokenRemoved();
       }
     };
     chrome.storage.onChanged.addListener(onChanged);
@@ -682,22 +712,45 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
   // script. Pop-out windows have no content-script parent, so the panel hides this.
   const requestLogin = () => {
     if (isPopOut) return;
-    window.parent.postMessage({ type: 'REQUEST_LOGIN', platform, streamer }, '*');
+    // Tear down any prior in-flight attempt first, so only ONE message listener/timer set is
+    // ever active — a second click (or the content script re-opening the popup) replaces
+    // rather than accumulates. This is what prevents the double /me + double toast (item 7),
+    // independent of the button-disable below.
+    loginCleanupRef.current?.();
+    setLoginPending(true);
+
     const handler = (event: MessageEvent) => {
       if (event.source !== window.parent) return;
       const d = event.data as { type?: string; token?: string; error?: string };
       if (d?.type === 'LOGIN_SUCCESS' && d.token) {
-        window.removeEventListener('message', handler);
+        cleanup();
         void handleLogin(d.token);
       } else if (d?.type === 'LOGIN_ERROR') {
-        window.removeEventListener('message', handler);
+        cleanup();
         addToast(d.error || 'Login failed', 'error');
       }
     };
+    // Re-enable the button shortly (prevents an accidental double-click, but doesn't lock
+    // sign-in if the viewer abandons the OAuth window); the listener stays armed for the
+    // real result until the hard timeout.
+    const enableTimer = setTimeout(() => setLoginPending(false), 3_000);
+    // Hard stop after 3 minutes (mirrors LoginPrompt) — tears everything down.
+    const hardTimer = setTimeout(() => cleanup(), 180_000);
+    const cleanup = () => {
+      window.removeEventListener('message', handler);
+      clearTimeout(enableTimer);
+      clearTimeout(hardTimer);
+      setLoginPending(false);
+      loginCleanupRef.current = null;
+    };
+    loginCleanupRef.current = cleanup;
+
     window.addEventListener('message', handler);
-    // Stop listening after 3 minutes (mirrors LoginPrompt's timeout).
-    setTimeout(() => window.removeEventListener('message', handler), 180_000);
+    window.parent.postMessage({ type: 'REQUEST_LOGIN', platform, streamer }, '*');
   };
+
+  // Tear down an in-flight login attempt (listener + timers) if the overlay unmounts.
+  useEffect(() => () => loginCleanupRef.current?.(), []);
 
   // Toggle collapse state and persist it (in-page only)
   const toggleCollapse = async () => {
@@ -938,6 +991,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                 notice={eng.notice}
                 authed={authed}
                 canLogin={!isPopOut}
+                loginPending={loginPending}
                 onVote={eng.vote}
                 onWager={eng.wager}
                 onRequestLogin={requestLogin}

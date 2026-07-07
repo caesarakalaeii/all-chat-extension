@@ -154,6 +154,46 @@ export async function clearViewerAuth(): Promise<void> {
 }
 
 /**
+ * Window within which a stored logout-intent marker is honored. Short, so a marker that is
+ * never cleared (e.g. the user logs out and never logs back in) cannot later mask a genuine
+ * expiry.
+ */
+const LOGOUT_INTENT_TTL_MS = 15_000;
+
+/**
+ * Record that the imminent viewer-token removal is a *deliberate* logout (the popup's or
+ * the overlay's "Sign out"), so the storage.onChanged recovery listener flips to logged-out
+ * silently instead of raising a misleading "Session expired" toast (item 2). Must be awaited
+ * before clearViewerAuth so the marker is in place when onChanged fires. Timestamped so a
+ * marker that outlives its logout can't later mask a genuine expiry.
+ */
+export async function markIntentionalLogout(): Promise<void> {
+  await setLocalStorage({ viewer_logout_intent: Date.now() });
+}
+
+/**
+ * Non-destructive check: was the just-observed token removal a *recent* deliberate logout?
+ * A PEEK, not a consume — the single viewer_jwt_token removal fires storage.onChanged in
+ * EVERY extension context (the in-page iframe AND any pop-out window), each of which must
+ * read the marker and stay silent. A destructive read would let whichever context lost the
+ * race still raise the misleading "Session expired" toast. Staleness is bounded by the TTL,
+ * and the marker is cleared on the next login (clearLogoutIntent), so it can't mask a later
+ * genuine expiry.
+ */
+export async function wasIntentionalLogout(): Promise<boolean> {
+  const storage = await getLocalStorage();
+  const stamped = storage.viewer_logout_intent;
+  return stamped != null && Date.now() - stamped < LOGOUT_INTENT_TTL_MS;
+}
+
+/** Clear the logout-intent marker. Called on login so a marker can't outlive its logout. */
+export async function clearLogoutIntent(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    chrome.storage.local.remove('viewer_logout_intent', () => resolve());
+  });
+}
+
+/**
  * Get viewer name color
  */
 export async function getNameColor(): Promise<string | null> {

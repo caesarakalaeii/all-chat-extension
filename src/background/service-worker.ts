@@ -40,6 +40,8 @@ import {
   setLocalStorage,
   setSyncStorage,
   clearViewerAuth,
+  markIntentionalLogout,
+  clearLogoutIntent,
   setNameGradient,
   DEFAULT_SETTINGS,
 } from '../lib/storage';
@@ -302,6 +304,9 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
         }
 
         case 'LOGOUT':
+          // Deliberate logout: mark intent before clearing so the overlay's storage.onChanged
+          // recovery flips to logged-out silently rather than toasting "Session expired" (item 2).
+          await markIntentionalLogout();
           await clearViewerAuth();
           sendResponse({ success: true });
           break;
@@ -345,6 +350,87 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
           broadcastToPorts({ type: 'POPOUT_SELF_CLOSE' });
           sendResponse({ success: true });
           break;
+
+        // --- Engagement (polls / predictions / points, PR #524 / backend ADR-0031;
+        //     extension-side architecture: docs/adr/007) ---
+        // The SW is the API proxy: it resolves the base URL, attaches the viewer JWT,
+        // and calls the streamer-keyed endpoints, so the overlay id never reaches a
+        // page context and background fetches (no Origin) pass the gateway OriginCheck.
+        case 'ENGAGEMENT_ACTIVE': {
+          // Public aggregate — no token needed. A 404 (no public overlay / went private) is
+          // a DEFINITIVE "no round" → data:null so the panel clears; a 5xx/transport error
+          // is transient → success:false so the client keeps the last render.
+          const res = await engagementFetch(message.streamerUsername, '/active', { method: 'GET', auth: false });
+          if (res.ok) {
+            sendResponse({ success: true, data: res.data });
+          } else if (res.status >= 400 && res.status < 500 && res.status !== 401) {
+            // Any 4xx except 401 is a DEFINITIVE answer, not a transient blip: 404 = overlay
+            // went private / no public round, 400 = bad request. Map to data:null so the panel
+            // clears. Only 5xx / transport errors stay transient (success:false → the client
+            // keeps the last render). 401 is excluded defensively — /active is unauthenticated,
+            // so a 401 signals a gateway misconfig, not "no round" (item 4).
+            sendResponse({ success: true, data: null });
+          } else {
+            sendResponse({ success: false, error: readErrorMessage(res.data) || 'ACTIVE_FAILED' });
+          }
+          break;
+        }
+
+        case 'ENGAGEMENT_ME': {
+          // Per-viewer snapshot (balance + this viewer's vote/wager). Logged-out is a
+          // normal state, not an error: return null so the panel shows aggregates only.
+          const token = await getViewerToken();
+          if (!token) {
+            sendResponse({ success: true, data: null });
+            break;
+          }
+          const res = await engagementFetch(message.streamerUsername, '/me', { method: 'GET', auth: true });
+          // A server 401 on a token still valid *locally* means it was revoked/rotated (key
+          // rotation, ban) — drop it so the overlay's storage.onChanged recovery re-prompts
+          // login instead of leaving a stale authed UI whose every vote/wager 401s. Keep
+          // data:null (preserve) for 5xx/transport, mirroring the ACTIVE handler's split (item 8).
+          if (res.status === 401) {
+            await clearViewerAuth();
+          }
+          sendResponse(res.ok
+            ? { success: true, data: res.data }
+            : { success: true, data: null });
+          break;
+        }
+
+        case 'ENGAGEMENT_VOTE': {
+          const res = await engagementFetch(message.streamerUsername, '/vote', {
+            method: 'POST',
+            auth: true,
+            body: { poll_id: message.pollId, option_idx: message.optionIdx },
+          });
+          sendResponse(res.ok
+            ? { success: true, data: res.data }
+            : { success: false, error: readErrorMessage(res.data) || 'VOTE_FAILED', data: res.data });
+          break;
+        }
+
+        case 'ENGAGEMENT_WAGER': {
+          const res = await engagementFetch(message.streamerUsername, '/wager', {
+            method: 'POST',
+            auth: true,
+            body: { prediction_id: message.predictionId, outcome_idx: message.outcomeIdx, amount: message.amount },
+          });
+          // Carry the machine-readable `reason` (insufficient, already_wagered, …) through
+          // on `data` so the panel can render actionable copy.
+          sendResponse(res.ok
+            ? { success: true, data: res.data }
+            : { success: false, error: readErrorMessage(res.data) || 'WAGER_FAILED', data: res.data });
+          break;
+        }
+
+        case 'ENGAGEMENT_HEARTBEAT': {
+          const res = await engagementFetch(message.streamerUsername, '/heartbeat', { method: 'POST', auth: true, body: {} });
+          sendResponse(res.ok
+            ? { success: true, data: res.data }
+            : { success: false, error: readErrorMessage(res.data) || 'HEARTBEAT_FAILED' });
+          break;
+        }
 
         default:
           sendResponse({ success: false, error: 'Unknown message type' });
@@ -686,6 +772,9 @@ async function saveNameColor(color: string | null): Promise<void> {
  */
 async function storeViewerToken(token: string): Promise<void> {
   await setLocalStorage({ viewer_jwt_token: token });
+  // Fresh session — clear any stale logout-intent marker so it can't later mask a genuine
+  // expiry as if it were a deliberate logout (item 2).
+  await clearLogoutIntent();
 
   try {
     const viewerInfo = await fetchViewerMe(token);
@@ -792,6 +881,54 @@ async function ensureValidToken(): Promise<string | null> {
     await clearViewerAuth();
     return null;
   }
+}
+
+/** Narrow the `error` string out of an engagement response body without an `any` cast (item 6). */
+function readErrorMessage(data: unknown): string | undefined {
+  if (data && typeof data === 'object' && 'error' in data) {
+    const { error } = data as { error?: unknown };
+    if (typeof error === 'string') return error;
+  }
+  return undefined;
+}
+
+/**
+ * Call a streamer-keyed engagement endpoint (PR #524 / backend ADR-0031). Centralizes the
+ * base-URL resolution, viewer-JWT attachment, and JSON parsing for the engagement
+ * message handlers. Authenticated calls use ensureValidToken so an expired session is
+ * cleared and reported as 401 rather than silently failing. Returns the parsed body
+ * (or null) alongside ok/status so callers can surface the `reason` on a rejection.
+ */
+async function engagementFetch(
+  streamer: string,
+  path: string,
+  init: { method: 'GET' | 'POST'; auth: boolean; body?: unknown },
+): Promise<{ ok: boolean; status: number; data: unknown }> {
+  const apiUrl = await getApiGatewayUrl();
+  const headers: Record<string, string> = {};
+  if (init.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
+  if (init.auth) {
+    const token = await ensureValidToken();
+    if (!token) {
+      return { ok: false, status: 401, data: { error: 'NOT_AUTHENTICATED' } };
+    }
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const url = `${apiUrl}/api/v1/engagement/streamers/${encodeURIComponent(streamer)}${path}`;
+  const response = await fetch(url, {
+    method: init.method,
+    headers,
+    ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+  });
+  let data: unknown = null;
+  try {
+    data = await response.json();
+  } catch {
+    /* empty or non-JSON body */
+  }
+  return { ok: response.ok, status: response.status, data };
 }
 
 /**

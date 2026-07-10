@@ -25,6 +25,17 @@ Part of [All-Chat](https://allch.at) — the free, open-source multi-platform ch
 - **Never miss a message** — Auto-reconnects with a visual countdown if your connection drops
 - **Visual send feedback** — Confirmation appears directly in the input field when your message is sent
 - **Rate limiting with feedback** — 20 messages/min, 100/hour with clear visual indicators
+- **Polls, predictions & points** — The streamer's live All-Chat polls and predictions appear right above the chat. Vote or wager your points with one click and watch the tallies update in real time. Sign in to take part; works the same across every platform the streamer broadcasts to.
+
+### Polls, Predictions & Viewer Points
+
+When a streamer runs an All-Chat poll or prediction (the cross-platform kind — separate from Twitch's own Channel Points rounds), a compact panel appears above the chat feed:
+
+- **See it live** — Question/title, per-option tallies, percentages, and the live state (open, locked, final/winner) update in real time over the same connection that delivers chat.
+- **One-click participation** — Sign in with your platform account and click an option to vote, or enter an amount and pick an outcome to wager your points. Your current vote/wager and points balance are shown inline.
+- **Twitch-native rounds are read-only** — If the streamer runs a poll/prediction through Twitch's own UI, All-Chat mirrors the live tallies for display but voting/wagering happens on Twitch (it settles in Twitch Channel Points, never All-Chat points).
+
+The extension participates by streamer username and never handles a streamer's private overlay id.
 
 ### Twitch: Tab Bar and Native Widgets
 
@@ -96,8 +107,18 @@ npm run type-check   # TypeScript validation
 npm run lint         # ESLint
 npm run test         # Playwright E2E tests
 npm run test:agent   # Agent-tagged tests
+npm run test:unit    # Vitest unit/component tests (jsdom + Testing Library)
 npm run package      # Create distributable ZIP
 ```
+
+Two test layers:
+
+- **Playwright** (`tests/*.spec.ts`) — drives the packed extension in a real browser, plus
+  lightweight source-level regression guards for wiring that needs a running backend to
+  exercise live.
+- **Vitest** (`tests/unit/*.test.ts`) — fast jsdom unit/component tests for pure logic such as
+  the engagement hook and panel (optimistic rollback, request sequencing, native read-only
+  gating, `allow_change` locking). Kept out of the Playwright run via `testIgnore`.
 
 ### Project Structure
 
@@ -146,7 +167,9 @@ all-chat-extension/
 │   │   ├── popup.html
 │   │   └── popup.tsx
 │   └── config.ts
-├── tests/                      # Playwright E2E test suite
+├── tests/                      # Playwright E2E suite
+│   └── unit/                   # Vitest unit/component tests (jsdom)
+├── docs/adr/                   # Architecture Decision Records
 ├── assets/                     # Extension icons
 ├── manifest.json               # Manifest V3
 ├── webpack.config.js

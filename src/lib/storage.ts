@@ -154,6 +154,42 @@ export async function clearViewerAuth(): Promise<void> {
 }
 
 /**
+ * Record that the imminent viewer-token removal is a *deliberate* logout (the popup's or
+ * the overlay's "Sign out"), so the storage.onChanged recovery listener flips to logged-out
+ * silently instead of raising a misleading "Session expired" toast (item 2). Must be awaited
+ * before clearViewerAuth so the marker is in place when onChanged fires.
+ */
+export async function markIntentionalLogout(): Promise<void> {
+  await setLocalStorage({ viewer_logout_intent: Date.now() });
+}
+
+/**
+ * Non-destructive check: was the just-observed token removal a *deliberate* logout?
+ * A PEEK, not a consume — the single viewer_jwt_token removal fires storage.onChanged in
+ * EVERY extension context (the in-page iframe AND any pop-out window), each of which must
+ * read the marker and stay silent. A destructive read would let whichever context lost the
+ * race still raise the misleading "Session expired" toast.
+ *
+ * No time window: the marker is invalidated by the *next login* (clearLogoutIntent), not by
+ * elapsed time. A genuine expiry can only follow a login (a token must exist before it can
+ * expire), and login clears the marker, so a lingering marker can never mask a later
+ * session's expiry. Dropping the former TTL also removes a multi-context race where a
+ * >TTL-delayed onChanged would wrongly toast "Session expired" after a deliberate logout
+ * (item 8).
+ */
+export async function wasIntentionalLogout(): Promise<boolean> {
+  const storage = await getLocalStorage();
+  return storage.viewer_logout_intent != null;
+}
+
+/** Clear the logout-intent marker. Called on login so a marker can't outlive its logout. */
+export async function clearLogoutIntent(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    chrome.storage.local.remove('viewer_logout_intent', () => resolve());
+  });
+}
+
+/**
  * Get viewer name color
  */
 export async function getNameColor(): Promise<string | null> {

@@ -45,6 +45,7 @@ import {
   setNameGradient,
   DEFAULT_SETTINGS,
 } from '../lib/storage';
+import { computeBackoffDelay } from '../lib/backoff';
 
 // Registry of connected pop-out window ports
 const popoutPorts: Set<chrome.runtime.Port> = new Set();
@@ -52,9 +53,10 @@ const popoutPorts: Set<chrome.runtime.Port> = new Set();
 // WebSocket connection
 let wsConnection: WebSocket | null = null;
 let wsStreamerUsername: string | null = null;
+// Reconnect attempt counter driving the exponential backoff. There is no
+// maximum — like the web overlay, the extension retries indefinitely so a
+// redeployment longer than the old ~55s cap no longer leaves the socket dead.
 let wsReconnectAttempts = 0;
-const WS_MAX_RECONNECT_ATTEMPTS = 10;
-const WS_RECONNECT_DELAY_MS = 1000; // Base delay, will be multiplied by attempt number
 let reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
 
@@ -67,6 +69,18 @@ const KEEPALIVE_ALARM = 'allchat-ws-keepalive';
 // chrome.storage.session key for persisting the active streamer across
 // service worker restarts. Session storage is cleared when the browser closes.
 const SESSION_STREAMER_KEY = 'ws_active_streamer';
+
+// chrome.storage.session key persisting the reconnect attempt counter. Without
+// this, an MV3 worker evicted mid-outage restarts at attempt 0 on wake, so its
+// backoff resets to ~1s and every evicted worker hammers the server in lockstep
+// on recovery. Persisting it lets a restarted worker resume the existing
+// backoff. Session storage (not local) so it's cleared when the browser closes.
+const SESSION_RECONNECT_ATTEMPTS_KEY = 'ws_reconnect_attempts';
+
+/** Mirror the in-memory reconnect counter to session storage (best-effort). */
+function persistReconnectAttempts(): void {
+  chrome.storage.session.set({ [SESSION_RECONNECT_ATTEMPTS_KEY]: wsReconnectAttempts }).catch(() => {});
+}
 
 /**
  * Locate the content-script-owning tab for a pop-out native-send request.
@@ -145,9 +159,11 @@ chrome.runtime.onConnect.addListener((port) => {
 // Restore WebSocket connection if the service worker was restarted while a
 // session was active (e.g. due to MV3 30-second idle eviction).
 (async () => {
-  const result = await chrome.storage.session.get(SESSION_STREAMER_KEY);
+  const result = await chrome.storage.session.get([SESSION_STREAMER_KEY, SESSION_RECONNECT_ATTEMPTS_KEY]);
   const savedStreamer = result[SESSION_STREAMER_KEY] as string | undefined;
   if (savedStreamer) {
+    // Resume the existing backoff rather than restarting at attempt 0.
+    wsReconnectAttempts = (result[SESSION_RECONNECT_ATTEMPTS_KEY] as number | undefined) ?? 0;
     console.log('[AllChat] Service worker restarted — restoring connection for:', savedStreamer);
     connectWebSocket(savedStreamer);
   }
@@ -338,8 +354,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
             success: true,
             data: {
               state: currentConnectionState,
-              attempts: wsReconnectAttempts,
-              maxAttempts: WS_MAX_RECONNECT_ATTEMPTS
+              attempts: wsReconnectAttempts
             }
           });
           break;
@@ -508,6 +523,7 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
   wsConnection.onopen = async () => {
     console.log('[AllChat] WebSocket connected successfully!');
     wsReconnectAttempts = 0;
+    persistReconnectAttempts();
     startWebSocketHeartbeat();
 
     // Authenticate via first message instead of URL param
@@ -519,6 +535,7 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
     // Update extension badge
     chrome.action.setBadgeBackgroundColor({ color: '#00ff00' });
     chrome.action.setBadgeText({ text: '✓' });
+    chrome.action.setTitle({ title: 'AllChat' });
 
     // Broadcast connected state
     broadcastConnectionState('connected');
@@ -574,30 +591,31 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
       return;
     }
 
-    // Attempt reconnection
-    if (wsReconnectAttempts < WS_MAX_RECONNECT_ATTEMPTS) {
-      wsReconnectAttempts++;
-      const delay = WS_RECONNECT_DELAY_MS * wsReconnectAttempts;
-      console.log(`[AllChat] Reconnecting in ${delay}ms (attempt ${wsReconnectAttempts}/${WS_MAX_RECONNECT_ATTEMPTS})`);
+    // Attempt reconnection — no attempt cap (matches the web overlay, which
+    // retries indefinitely). Exponential backoff with jitter bounds the retry
+    // rate, so a redeploy longer than the old ~55s / 10-attempt cap no longer
+    // leaves the socket permanently dead.
+    wsReconnectAttempts++;
+    persistReconnectAttempts();
+    const delay = computeBackoffDelay(wsReconnectAttempts);
+    console.log(`[AllChat] Reconnecting in ${Math.round(delay)}ms (attempt ${wsReconnectAttempts})`);
 
-      // Broadcast reconnecting state with countdown
-      broadcastConnectionState('reconnecting', {
-        reconnectIn: delay,
-      });
+    // Reconnecting badge (orange) + tooltip — visible signal that the socket
+    // is down and retrying, rather than the ambiguous cleared badge.
+    chrome.action.setBadgeBackgroundColor({ color: '#ff9900' });
+    chrome.action.setBadgeText({ text: '↻' });
+    chrome.action.setTitle({ title: 'AllChat — reconnecting…' });
 
-      reconnectTimeoutId = setTimeout(() => {
-        if (wsStreamerUsername) {
-          connectWebSocket(wsStreamerUsername);
-        }
-      }, delay);
-    } else {
-      console.error('[AllChat] Max reconnection attempts reached');
-      chrome.action.setBadgeBackgroundColor({ color: '#ff0000' });
-      chrome.action.setBadgeText({ text: '✗' });
+    // Broadcast reconnecting state with countdown
+    broadcastConnectionState('reconnecting', {
+      reconnectIn: delay,
+    });
 
-      // Broadcast failed state
-      broadcastConnectionState('failed');
-    }
+    reconnectTimeoutId = setTimeout(() => {
+      if (wsStreamerUsername) {
+        connectWebSocket(wsStreamerUsername);
+      }
+    }, delay);
   };
 }
 
@@ -676,7 +694,6 @@ function broadcastConnectionState(state: ConnectionState, details?: any): void {
           data: {
             state,
             attempts: wsReconnectAttempts,
-            maxAttempts: WS_MAX_RECONNECT_ATTEMPTS,
             ...details,
           },
           streamer: wsStreamerUsername,
@@ -693,7 +710,6 @@ function broadcastConnectionState(state: ConnectionState, details?: any): void {
     data: {
       state,
       attempts: wsReconnectAttempts,
-      maxAttempts: WS_MAX_RECONNECT_ATTEMPTS,
       ...details,
     },
   });

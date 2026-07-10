@@ -64,6 +64,14 @@ export type ExtensionMessage =
   | { type: 'SET_CURRENT_PLATFORM'; platform: string }
   | { type: 'EXTENSION_STATE_CHANGED'; enabled: boolean }
   | { type: 'CLOSE_POPOUT_WINDOWS' }
+  // Engagement (polls/predictions/points, PR #524 / backend ADR-0031). The service worker is
+  // the API proxy: it holds the viewer JWT and calls the streamer-keyed engagement
+  // endpoints, so the overlay id is never exposed to page contexts.
+  | { type: 'ENGAGEMENT_ACTIVE'; streamerUsername: string }
+  | { type: 'ENGAGEMENT_ME'; streamerUsername: string }
+  | { type: 'ENGAGEMENT_VOTE'; streamerUsername: string; pollId: string; optionIdx: number }
+  | { type: 'ENGAGEMENT_WAGER'; streamerUsername: string; predictionId: string; outcomeIdx: number; amount: number }
+  | { type: 'ENGAGEMENT_HEARTBEAT'; streamerUsername: string }
   | {
       type: 'SEND_NATIVE_CHAT';
       platform: 'youtube' | 'twitch' | 'kick' | 'tiktok';
@@ -93,6 +101,9 @@ export interface LocalStorage {
   viewer_jwt_token?: string;
   viewer_info?: ViewerInfo;
   viewer_name_color?: string;
+  // Timestamp marker written just before a *deliberate* logout so the token-removal
+  // recovery listener stays silent instead of toasting "Session expired" (item 2).
+  viewer_logout_intent?: number;
   viewer_name_gradient?: string; // JSON-serialized NameGradient, e.g. '{"type":"linear","colors":["#9146ff","#00b5ad"],"angle":90}'
   ui_collapsed?: boolean;
   // Pop-out window dimension persistence (D-07)

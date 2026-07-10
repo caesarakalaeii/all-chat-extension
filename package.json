@@ -1,6 +1,6 @@
 {
   "name": "allchat-extension",
-  "version": "1.6.4",
+  "version": "1.7.0",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -13,7 +13,9 @@
     "lint": "eslint src --ext .ts,.tsx",
     "package": "npm run build && cd dist && zip -r ../allchat-extension.zip .",
     "test": "npx playwright test --grep-invert @agent",
-    "test:agent": "npx playwright test --grep @agent"
+    "test:agent": "npx playwright test --grep @agent",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest"
   },
   "dependencies": {
     "@fontsource/dm-mono": "^5.2.7",
@@ -27,6 +29,9 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/chrome": "^0.1.43",
     "@types/node": "^25.9.3",
     "@types/react": "^18.3.0",
@@ -38,12 +43,14 @@
     "css-loader": "^6.8.1",
     "eslint": "^9.39.4",
     "html-webpack-plugin": "^5.6.7",
+    "jsdom": "^29.1.1",
     "postcss": "^8.5.15",
     "postcss-loader": "^7.3.3",
     "style-loader": "^3.3.3",
     "tailwindcss": "^4.3.1",
     "ts-loader": "^9.6.2",
     "typescript": "^5.3.3",
+    "vitest": "^3.2.7",
     "webpack": "^5.107.2",
     "webpack-cli": "^5.1.4",
     "ws": "^8.21.0"

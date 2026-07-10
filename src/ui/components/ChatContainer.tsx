@@ -141,7 +141,6 @@ type ConnectionState = 'connected' | 'connecting' | 'reconnecting' | 'disconnect
 interface ConnectionStatus {
   state: ConnectionState;
   attempts?: number;
-  maxAttempts?: number;
   reconnectIn?: number;
   error?: string;
   message?: string;
@@ -928,7 +927,7 @@ export default function ChatContainer({ platform, streamer, displayName, twitchC
                           </div>
                         </>
                       ) : (
-                        <span className="text-sm text-red-200">Connection failed after {connectionStatus.maxAttempts} attempts</span>
+                        <span className="text-sm text-red-200">{connectionStatus.message || 'Connection failed'}</span>
                       )}
                     </div>
                     <button

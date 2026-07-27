@@ -20,7 +20,7 @@
   "dependencies": {
     "@fontsource/dm-mono": "^5.2.7",
     "@fontsource/inter": "^5.2.8",
-    "@playwright/test": "^1.61.1",
+    "@playwright/test": "^1.62.0",
     "@tailwindcss/postcss": "^4.3.3",
     "clsx": "^2.1.0",
     "mini-css-extract-plugin": "^2.10.2",
@@ -44,14 +44,14 @@
     "eslint": "^9.39.5",
     "html-webpack-plugin": "^5.6.8",
     "jsdom": "^29.1.1",
-    "postcss": "^8.5.20",
+    "postcss": "^8.5.23",
     "postcss-loader": "^7.3.3",
     "style-loader": "^3.3.3",
     "tailwindcss": "^4.3.3",
     "ts-loader": "^9.6.2",
     "typescript": "^5.3.3",
     "vitest": "^3.2.7",
-    "webpack": "^5.108.4",
+    "webpack": "^5.109.0",
     "webpack-cli": "^5.1.4",
     "ws": "^8.21.1"
   }

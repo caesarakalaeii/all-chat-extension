@@ -23,3 +23,8 @@ snapshot.md
 
 # Internal docs (not shipped)
 src/lib/COMPAT_EXPLAINED.md
+
+# Nix / direnv
+result
+result-*
+.direnv/

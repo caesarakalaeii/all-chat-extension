@@ -26,6 +26,20 @@ export interface StreamerInfo {
   username: string;
   display_name: string;
   platforms: PlatformInfo[];
+  /**
+   * Whether a viewer WebSocket connection to this streamer would be accepted,
+   * i.e. whether they have an active overlay marked public for viewers.
+   *
+   * This is the only reliable way to tell a policy rejection from a transport
+   * failure: the gateway rejects a non-public streamer before the WebSocket
+   * upgrade, so the browser sees close code 1006 with an empty reason either
+   * way. See src/lib/closeReason.ts.
+   *
+   * Optional because a gateway older than the field omits it entirely. Absent
+   * must never be read as `false` — see resolveStreamerProbe in the service
+   * worker.
+   */
+  viewer_public?: boolean;
 }
 
 export interface PlatformInfo {

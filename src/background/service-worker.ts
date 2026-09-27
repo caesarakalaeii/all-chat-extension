@@ -53,6 +53,12 @@ const popoutPorts: Set<chrome.runtime.Port> = new Set();
 // WebSocket connection
 let wsConnection: WebSocket | null = null;
 let wsStreamerUsername: string | null = null;
+// viewer_public from the most recent GET_STREAMER_INFO fetch for the streamer
+// the socket is connected to. The 1006 close handler needs it to tell "streamer
+// is not public" (explicit false) from "socket dropped on the very first
+// attempt" (transient — cold-start proxy, gateway rolling), which both look
+// like 1006+attempt 0. Null = no info fetched yet, the ambiguous case.
+let wsStreamerViewerPublic: boolean | null = null;
 // Reconnect attempt counter driving the exponential backoff. There is no
 // maximum — like the web overlay, the extension retries indefinitely so a
 // redeployment longer than the old ~55s cap no longer leaves the socket dead.
@@ -212,6 +218,7 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       switch (message.type) {
         case 'GET_STREAMER_INFO':
           const info = await fetchStreamerInfo(message.username);
+          wsStreamerViewerPublic = info.viewer_public;
           sendResponse({ success: true, data: info });
           break;
 
@@ -519,6 +526,7 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
 
   wsConnection = new WebSocket(url);
   wsStreamerUsername = streamerUsername;
+  wsStreamerViewerPublic = null;
 
   wsConnection.onopen = async () => {
     console.log('[AllChat] WebSocket connected successfully!');
@@ -574,12 +582,17 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
       reconnectTimeoutId = null;
     }
 
-    // Check if this is likely a "not public for viewers" error
-    // WebSocket closes immediately (code 1006) when streamer not found or not public
-    const isNotPublicError = event.code === 1006 && wsReconnectAttempts === 0;
+    // A 1006 on the very first attempt is ambiguous: it is what a "not public
+    // for viewers" rejection looks like, but also what a cold-start proxy or a
+    // gateway rolling mid-connect looks like. The viewer_public flag from the
+    // streamer-info fetch is the authoritative answer — an explicit false
+    // means the streamer really has no public overlay (show the hint and stop);
+    // anything else keeps retrying instead of mislabeling a transient blip.
+    const isNotPublicError =
+      event.code === 1006 && wsReconnectAttempts === 0 && wsStreamerViewerPublic === false;
 
     if (isNotPublicError) {
-      console.error('[AllChat] Overlay may not be public for viewers or streamer not found');
+      console.error('[AllChat] Streamer fetched as not public for viewers; giving up on first-attempt 1006');
       chrome.action.setBadgeBackgroundColor({ color: '#ff9900' });
       chrome.action.setBadgeText({ text: '!' });
 

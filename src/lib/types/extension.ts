@@ -26,6 +26,8 @@ export interface StreamerInfo {
   username: string;
   display_name: string;
   platforms: PlatformInfo[];
+  /** Whether the streamer has a public overlay (backend always sends it). */
+  viewer_public: boolean;
 }
 
 export interface PlatformInfo {

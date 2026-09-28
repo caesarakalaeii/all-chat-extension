@@ -46,6 +46,7 @@ import {
   DEFAULT_SETTINGS,
 } from '../lib/storage';
 import { computeBackoffDelay } from '../lib/backoff';
+import { isConfirmedNotPublic } from '../lib/closeDecision';
 
 // Registry of connected pop-out window ports
 const popoutPorts: Set<chrome.runtime.Port> = new Set();
@@ -53,6 +54,11 @@ const popoutPorts: Set<chrome.runtime.Port> = new Set();
 // WebSocket connection
 let wsConnection: WebSocket | null = null;
 let wsStreamerUsername: string | null = null;
+// viewer_public from the most recent GET_STREAMER_INFO fetch, and the streamer
+// it belongs to. Consumed by the socket close handler; full contract in
+// lib/closeDecision.
+let wsStreamerViewerPublic: boolean | null = null;
+let wsStreamerViewerPublicFor: string | null = null;
 // Reconnect attempt counter driving the exponential backoff. There is no
 // maximum — like the web overlay, the extension retries indefinitely so a
 // redeployment longer than the old ~55s cap no longer leaves the socket dead.
@@ -177,7 +183,6 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   const savedStreamer = result[SESSION_STREAMER_KEY] as string | undefined;
   if (savedStreamer && (!wsConnection || wsConnection.readyState !== WebSocket.OPEN)) {
     console.log('[AllChat] Keepalive alarm: reconnecting WebSocket for:', savedStreamer);
-    wsStreamerUsername = null; // Force connectWebSocket to open a new connection
     connectWebSocket(savedStreamer);
   }
 });
@@ -212,6 +217,8 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       switch (message.type) {
         case 'GET_STREAMER_INFO':
           const info = await fetchStreamerInfo(message.username);
+          wsStreamerViewerPublic = info.viewer_public ?? null;
+          wsStreamerViewerPublicFor = info.username;
           sendResponse({ success: true, data: info });
           break;
 
@@ -513,14 +520,41 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
 
   console.log('[AllChat] Connecting to viewer WebSocket:', url);
 
+  // A different KNOWN streamer starts a fresh connect flow: the previous
+  // streamer's accumulated backoff must not make this socket read as a later
+  // attempt (which would suppress the first-attempt OVERLAY_NOT_PUBLIC
+  // classification). wsStreamerUsername is null after an MV3 worker restart
+  // (where the restored counter belongs to the streamer being reconnected)
+  // or after a disconnect, which zeroes the counter itself.
+  if (wsStreamerUsername !== null && wsStreamerUsername !== streamerUsername) {
+    wsReconnectAttempts = 0;
+    persistReconnectAttempts();
+  }
+
   // Broadcast connecting state
   const state = wsReconnectAttempts > 0 ? 'reconnecting' : 'connecting';
   broadcastConnectionState(state);
 
-  wsConnection = new WebSocket(url);
+  // Snapshot the socket's identity at creation: a previous streamer's close
+  // event (fired asynchronously after close()) must be classified against the
+  // streamer and attempt count THIS socket was created with, not the live
+  // globals, which already point at the new connection. Full contract in
+  // lib/closeDecision.
+  const socket = new WebSocket(url);
+  const socketStreamer = streamerUsername;
+  const socketAttempts = wsReconnectAttempts;
+  wsConnection = socket;
+  // Retire a viewer_public recorded for a different streamer. Keyed on the
+  // flag's owner, not wsStreamerUsername, so a fresh-visit flag stays
+  // reachable; the close handler's owner === socketStreamer check is the
+  // actual guard.
+  if (wsStreamerViewerPublicFor !== null && wsStreamerViewerPublicFor !== streamerUsername) {
+    wsStreamerViewerPublic = null;
+    wsStreamerViewerPublicFor = null;
+  }
   wsStreamerUsername = streamerUsername;
 
-  wsConnection.onopen = async () => {
+  socket.onopen = async () => {
     console.log('[AllChat] WebSocket connected successfully!');
     wsReconnectAttempts = 0;
     persistReconnectAttempts();
@@ -528,8 +562,8 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
 
     // Authenticate via first message instead of URL param
     const token = await getViewerToken();
-    if (token && wsConnection) {
-      wsConnection.send(JSON.stringify({ type: 'auth', data: { token } }));
+    if (token && socket) {
+      socket.send(JSON.stringify({ type: 'auth', data: { token } }));
     }
 
     // Update extension badge
@@ -541,7 +575,7 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
     broadcastConnectionState('connected');
   };
 
-  wsConnection.onmessage = (event) => {
+  socket.onmessage = (event) => {
     try {
       const message = JSON.parse(event.data);
       if (!message || typeof message !== 'object' || typeof message.type !== 'string') {
@@ -554,16 +588,22 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
     }
   };
 
-  wsConnection.onerror = (error) => {
+  socket.onerror = (error) => {
     console.error('[AllChat] WebSocket error:', error);
     console.error('[AllChat] WebSocket URL was:', url);
-    console.error('[AllChat] WebSocket readyState:', wsConnection?.readyState);
+    console.error('[AllChat] WebSocket readyState:', socket.readyState);
+    if (wsConnection !== socket) return;
     chrome.action.setBadgeBackgroundColor({ color: '#ff0000' });
     chrome.action.setBadgeText({ text: '✗' });
   };
 
-  wsConnection.onclose = (event) => {
+
+  socket.onclose = async (event) => {
     console.log('[AllChat] WebSocket closed - Code:', event.code, 'Reason:', event.reason, 'Clean:', event.wasClean);
+    // Superseded: another connectWebSocket call already replaced this socket.
+    // Its close must not clear the new socket's timeout, badge, or state.
+    if (wsConnection !== socket) return;
+
     stopWebSocketHeartbeat();
     chrome.action.setBadgeBackgroundColor({ color: '#888888' });
     chrome.action.setBadgeText({ text: '' });
@@ -574,19 +614,34 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
       reconnectTimeoutId = null;
     }
 
-    // Check if this is likely a "not public for viewers" error
-    // WebSocket closes immediately (code 1006) when streamer not found or not public
-    const isNotPublicError = event.code === 1006 && wsReconnectAttempts === 0;
-
-    if (isNotPublicError) {
-      console.error('[AllChat] Overlay may not be public for viewers or streamer not found');
+    // First-attempt 1006 classification contract lives in lib/closeDecision;
+    // the socket snapshot makes it immune to globals already repointed at a
+    // newer connection.
+    if (isConfirmedNotPublic({
+      code: event.code,
+      attempts: socketAttempts,
+      viewerPublic: wsStreamerViewerPublic,
+      viewerPublicStreamer: wsStreamerViewerPublicFor,
+      streamer: socketStreamer,
+    })) {
+      console.error('[AllChat] Streamer fetched as not public for viewers; giving up on first-attempt 1006');
       chrome.action.setBadgeBackgroundColor({ color: '#ff9900' });
       chrome.action.setBadgeText({ text: '!' });
+
+      // Settle the session: the keepalive alarm must not wake up and silently
+      // resume reconnecting a streamer we just told the user is not public
+      // (the retry UI would overwrite this failed banner within a minute).
+      // The user can still reconnect explicitly via the Retry button, which
+      // reloads the page and re-runs the full fetch -> connect flow.
+      await chrome.storage.session.remove(SESSION_STREAMER_KEY);
+      chrome.alarms.clear(KEEPALIVE_ALARM);
+      wsReconnectAttempts = 0;
+      persistReconnectAttempts();
 
       // Broadcast failed state with specific error
       broadcastConnectionState('failed', {
         error: 'OVERLAY_NOT_PUBLIC',
-        message: `${wsStreamerUsername} has not enabled "Public for Viewers" on their overlay. They need to enable this setting at allch.at`
+        message: `${socketStreamer} has not enabled "Public for Viewers" on their overlay. They need to enable this setting at allch.at`
       });
       return;
     }
@@ -618,7 +673,6 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
     }, delay);
   };
 }
-
 /**
  * Disconnect from WebSocket
  */
@@ -629,6 +683,8 @@ function disconnectWebSocket(): void {
     wsConnection.close();
     wsConnection = null;
     wsStreamerUsername = null;
+    wsStreamerViewerPublic = null;
+    wsStreamerViewerPublicFor = null;
   }
   stopWebSocketHeartbeat();
 

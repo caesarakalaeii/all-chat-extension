@@ -17,14 +17,14 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { isNotPublicError } from '../../src/lib/closeDecision';
+import { isConfirmedNotPublic } from '../../src/lib/closeDecision';
 
 const firstAttempt = { code: 1006, attempts: 0 };
 
-describe('isNotPublicError', () => {
+describe('isConfirmedNotPublic', () => {
   it('classifies an explicit false for the same streamer as not-public', () => {
     expect(
-      isNotPublicError({
+      isConfirmedNotPublic({
         ...firstAttempt,
         viewerPublic: false,
         viewerPublicStreamer: 'caesar',
@@ -37,13 +37,13 @@ describe('isNotPublicError', () => {
     // Service-worker restart / keepalive reconnects fetch nothing: the close
     // must not be mislabeled as a permanent streamer-side setting.
     expect(
-      isNotPublicError({ ...firstAttempt, viewerPublic: null, viewerPublicStreamer: null, streamer: 'caesar' }),
+      isConfirmedNotPublic({ ...firstAttempt, viewerPublic: null, viewerPublicStreamer: null, streamer: 'caesar' }),
     ).toBe(false);
   });
 
   it('keeps a first-attempt 1006 with viewer_public true in the retry loop', () => {
     expect(
-      isNotPublicError({
+      isConfirmedNotPublic({
         ...firstAttempt,
         viewerPublic: true,
         viewerPublicStreamer: 'caesar',
@@ -56,7 +56,7 @@ describe('isNotPublicError', () => {
     // Tab A is connected to public streamer A; tab B fetches private streamer
     // B. The flag on record belongs to B and must not label A's 1006.
     expect(
-      isNotPublicError({
+      isConfirmedNotPublic({
         ...firstAttempt,
         viewerPublic: false,
         viewerPublicStreamer: 'private-streamer',
@@ -67,7 +67,7 @@ describe('isNotPublicError', () => {
 
   it('keeps every later attempt in the retry loop regardless of the flag', () => {
     expect(
-      isNotPublicError({
+      isConfirmedNotPublic({
         code: 1006,
         attempts: 1,
         viewerPublic: false,
@@ -79,13 +79,21 @@ describe('isNotPublicError', () => {
 
   it('ignores non-1006 close codes', () => {
     expect(
-      isNotPublicError({
+      isConfirmedNotPublic({
         code: 1000,
         attempts: 0,
         viewerPublic: false,
         viewerPublicStreamer: 'caesar',
         streamer: 'caesar',
       }),
+    ).toBe(false);
+  });
+
+  it('rejects a flag owner of null even when the flag is false', () => {
+    // The viewerPublicStreamer !== null clause: a false flag with no owner
+    // must never classify — it cannot be tied to the connected streamer.
+    expect(
+      isConfirmedNotPublic({ ...firstAttempt, viewerPublic: false, viewerPublicStreamer: null, streamer: 'caesar' }),
     ).toBe(false);
   });
 });

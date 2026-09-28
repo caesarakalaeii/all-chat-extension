@@ -47,7 +47,7 @@ export interface CloseAttempt {
   streamer: string | null;
 }
 
-export function isNotPublicError(attempt: CloseAttempt): boolean {
+export function isConfirmedNotPublic(attempt: CloseAttempt): boolean {
   return (
     attempt.code === 1006 &&
     attempt.attempts === 0 &&

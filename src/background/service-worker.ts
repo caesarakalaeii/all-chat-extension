@@ -523,9 +523,9 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
   // A different KNOWN streamer starts a fresh connect flow: the previous
   // streamer's accumulated backoff must not make this socket read as a later
   // attempt (which would suppress the first-attempt OVERLAY_NOT_PUBLIC
-  // classification). wsStreamerUsername is null only after an MV3 worker
-  // restart, where the restored counter belongs to the same persisted
-  // streamer and must keep its backoff.
+  // classification). wsStreamerUsername is null after an MV3 worker restart
+  // (where the restored counter belongs to the streamer being reconnected)
+  // or after a disconnect, which zeroes the counter itself.
   if (wsStreamerUsername !== null && wsStreamerUsername !== streamerUsername) {
     wsReconnectAttempts = 0;
     persistReconnectAttempts();

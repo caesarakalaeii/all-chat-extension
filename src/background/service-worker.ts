@@ -520,10 +520,13 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
 
   console.log('[AllChat] Connecting to viewer WebSocket:', url);
 
-  // A different streamer starts a fresh connect flow: the previous streamer's
-  // accumulated backoff must not make this socket read as a later attempt
-  // (which would suppress the first-attempt OVERLAY_NOT_PUBLIC classification).
-  if (wsStreamerUsername !== streamerUsername) {
+  // A different KNOWN streamer starts a fresh connect flow: the previous
+  // streamer's accumulated backoff must not make this socket read as a later
+  // attempt (which would suppress the first-attempt OVERLAY_NOT_PUBLIC
+  // classification). wsStreamerUsername is null only after an MV3 worker
+  // restart, where the restored counter belongs to the same persisted
+  // streamer and must keep its backoff.
+  if (wsStreamerUsername !== null && wsStreamerUsername !== streamerUsername) {
     wsReconnectAttempts = 0;
     persistReconnectAttempts();
   }
@@ -589,6 +592,7 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
     console.error('[AllChat] WebSocket error:', error);
     console.error('[AllChat] WebSocket URL was:', url);
     console.error('[AllChat] WebSocket readyState:', socket.readyState);
+    if (wsConnection !== socket) return;
     chrome.action.setBadgeBackgroundColor({ color: '#ff0000' });
     chrome.action.setBadgeText({ text: '✗' });
   };

@@ -36,7 +36,7 @@
     "@types/node": "^25.9.5",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
-    "@types/ws": "^8.18.1",
+    "@types/ws": "^8.18.2",
     "@typescript-eslint/eslint-plugin": "^8.63.0",
     "@typescript-eslint/parser": "^8.62.1",
     "copy-webpack-plugin": "^14.0.0",
@@ -53,6 +53,6 @@
     "vitest": "^3.2.7",
     "webpack": "^5.108.4",
     "webpack-cli": "^5.1.4",
-    "ws": "^8.21.3"
+    "ws": "^8.22.0"
   }
 }

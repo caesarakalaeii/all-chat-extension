@@ -47,6 +47,14 @@ import {
 } from '../lib/storage';
 import { computeBackoffDelay } from '../lib/backoff';
 import { isConfirmedNotPublic } from '../lib/closeDecision';
+import {
+  advancesWatermark,
+  buildViewerSocketUrl,
+  coerceWatermark,
+  extractMessageTimestamp,
+  lastSeenKey,
+  nextWatermark,
+} from '../lib/lastSeen';
 
 // Registry of connected pop-out window ports
 const popoutPorts: Set<chrome.runtime.Port> = new Set();
@@ -86,6 +94,46 @@ const SESSION_RECONNECT_ATTEMPTS_KEY = 'ws_reconnect_attempts';
 /** Mirror the in-memory reconnect counter to session storage (best-effort). */
 function persistReconnectAttempts(): void {
   chrome.storage.session.set({ [SESSION_RECONNECT_ATTEMPTS_KEY]: wsReconnectAttempts }).catch(() => {});
+}
+
+// In-memory mirror of the persisted `ws_last_seen` watermark for the active
+// streamer, so the hot message path does not await storage on every frame. The
+// key layout and the decisions around it live in ../lib/lastSeen.
+let wsLastSeenMs = 0;
+
+/**
+ * Read the persisted watermark for a streamer. Returns 0 when there is none,
+ * which is the first-ever-connect case: no `?since=` is sent, preserving the
+ * gateway's deliberate "no history flood for a first-time viewer" policy.
+ */
+async function loadLastSeen(streamerUsername: string): Promise<number> {
+  try {
+    const key = lastSeenKey(streamerUsername);
+    const stored = await chrome.storage.local.get(key);
+    return coerceWatermark(stored[key]);
+  } catch {
+    // Storage unavailable: fall back to no watermark. Losing the replay is bad;
+    // failing to connect at all is worse.
+    return 0;
+  }
+}
+
+/** Advance the watermark if this message is newer, and persist it. */
+function advanceLastSeen(streamerUsername: string, timestampMs: number): void {
+  const next = nextWatermark(wsLastSeenMs, timestampMs);
+  if (next === wsLastSeenMs) return;
+  wsLastSeenMs = next;
+  chrome.storage.local.set({ [lastSeenKey(streamerUsername)]: next }).catch(() => {});
+}
+
+/**
+ * Drop a streamer's watermark. Called when the active streamer changes:
+ * replaying overlay A's window into overlay B's chat is worse than the gap it
+ * would have filled.
+ */
+function clearLastSeen(streamerUsername: string): void {
+  wsLastSeenMs = 0;
+  chrome.storage.local.remove(lastSeenKey(streamerUsername)).catch(() => {});
 }
 
 /**
@@ -501,6 +549,13 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
     return;
   }
 
+  // Switching streamers: drop the outgoing one's watermark before we lose the
+  // handle on it. Replaying overlay A's window into overlay B's chat is worse
+  // than the gap it would have filled.
+  if (wsStreamerUsername && wsStreamerUsername !== streamerUsername) {
+    clearLastSeen(wsStreamerUsername);
+  }
+
   // Disconnect from previous connection if any
   if (wsConnection) {
     wsConnection.close();
@@ -514,9 +569,22 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
   const apiUrl = await getApiGatewayUrl();
   const wsUrl = apiUrl.replace(/^http/, 'ws');
 
+  // Recover the gap. The viewer endpoint requires an explicit ?since= to replay
+  // anything at all — unlike the owner endpoint, a missing value means "send
+  // nothing", not "send everything", so that a first-time viewer is not dropped
+  // into five minutes of chat they never saw. That policy is right, but until
+  // now the extension sent no ?since= ever, which made it the one client
+  // reconnecting most often and recovering nothing: not after a redeploy, not
+  // after an MV3 eviction, not after a laptop woke up. Batch A made it reconnect
+  // forever; without this it reconnected forever into a hole.
+  //
+  // A watermark of 0 means we have never seen a message from this streamer, so
+  // we send no ?since= and inherit the first-time-viewer policy deliberately.
+  wsLastSeenMs = await loadLastSeen(streamerUsername);
+
   // Use viewer-specific endpoint (does NOT trigger polling or expose overlay ID)
   // Auth is sent as first WebSocket message instead of URL query parameter
-  const url = `${wsUrl}/ws/chat/${streamerUsername}`;
+  const url = buildViewerSocketUrl(wsUrl, streamerUsername, wsLastSeenMs);
 
   console.log('[AllChat] Connecting to viewer WebSocket:', url);
 
@@ -582,6 +650,14 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
         console.warn('[AllChat] Ignoring WebSocket message with invalid structure');
         return;
       }
+
+      // Advance the `ws_last_seen` watermark on anything carrying a message
+      // timestamp, so the next reconnect asks for the gap starting here.
+      // Replayed frames count too: they are messages we have now seen.
+      if (wsConnection === socket && advancesWatermark(message.type)) {
+        advanceLastSeen(streamerUsername, extractMessageTimestamp(message));
+      }
+
       handleWebSocketMessage(message);
     } catch (error) {
       console.error('[AllChat] Failed to parse WebSocket message:', error);
@@ -596,7 +672,6 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
     chrome.action.setBadgeBackgroundColor({ color: '#ff0000' });
     chrome.action.setBadgeText({ text: '✗' });
   };
-
 
   socket.onclose = async (event) => {
     console.log('[AllChat] WebSocket closed - Code:', event.code, 'Reason:', event.reason, 'Clean:', event.wasClean);

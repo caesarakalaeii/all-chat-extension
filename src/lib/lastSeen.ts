@@ -29,7 +29,7 @@
  *
  * Storage lives in the service worker (chrome.storage.local, keyed per
  * streamer). The decisions live here, as pure functions, so they can be tested
- * — the same split as `backoff.ts` and `closeReason.ts`.
+ * — the same split as `backoff.ts` and `closeDecision.ts`.
  */
 
 /**

@@ -46,11 +46,7 @@ import {
   DEFAULT_SETTINGS,
 } from '../lib/storage';
 import { computeBackoffDelay } from '../lib/backoff';
-import {
-  decideCloseAction,
-  isApplicationCloseCode,
-  type StreamerProbeResult,
-} from '../lib/closeReason';
+import { isConfirmedNotPublic } from '../lib/closeDecision';
 import {
   advancesWatermark,
   buildViewerSocketUrl,
@@ -66,6 +62,11 @@ const popoutPorts: Set<chrome.runtime.Port> = new Set();
 // WebSocket connection
 let wsConnection: WebSocket | null = null;
 let wsStreamerUsername: string | null = null;
+// viewer_public from the most recent GET_STREAMER_INFO fetch, and the streamer
+// it belongs to. Consumed by the socket close handler; full contract in
+// lib/closeDecision.
+let wsStreamerViewerPublic: boolean | null = null;
+let wsStreamerViewerPublicFor: string | null = null;
 // Reconnect attempt counter driving the exponential backoff. There is no
 // maximum — like the web overlay, the extension retries indefinitely so a
 // redeployment longer than the old ~55s cap no longer leaves the socket dead.
@@ -230,7 +231,6 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   const savedStreamer = result[SESSION_STREAMER_KEY] as string | undefined;
   if (savedStreamer && (!wsConnection || wsConnection.readyState !== WebSocket.OPEN)) {
     console.log('[AllChat] Keepalive alarm: reconnecting WebSocket for:', savedStreamer);
-    wsStreamerUsername = null; // Force connectWebSocket to open a new connection
     connectWebSocket(savedStreamer);
   }
 });
@@ -265,6 +265,8 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendRes
       switch (message.type) {
         case 'GET_STREAMER_INFO':
           const info = await fetchStreamerInfo(message.username);
+          wsStreamerViewerPublic = info.viewer_public ?? null;
+          wsStreamerViewerPublicFor = info.username;
           sendResponse({ success: true, data: info });
           break;
 
@@ -534,35 +536,6 @@ async function fetchStreamerInfo(username: string): Promise<StreamerInfo> {
 }
 
 /**
- * Ask over HTTP whether a viewer connection to this streamer would be accepted.
- *
- * This is the deterministic answer that close code 1006 cannot give — see
- * src/lib/closeReason.ts for why. The mapping is deliberately conservative:
- * only an explicit denial produces 'not-public'.
- *
- * - 200 with `viewer_public: false`  -> 'not-public' (the streamer has not
- *   enabled the setting; retrying will never help)
- * - 404 (STREAMER_NOT_FOUND)         -> 'not-public' (same, from the other end)
- * - 200 with `viewer_public: true`   -> 'reachable'
- * - 200 with the field absent        -> 'reachable', NOT 'not-public'. A
- *   gateway older than the field omits it, and reading that silence as a
- *   denial would resurrect the exact bug this replaces.
- * - anything else (5xx, network error, timeout, unparseable body)
- *                                    -> 'unreachable', which retries.
- */
-async function probeStreamerAccess(username: string): Promise<StreamerProbeResult> {
-  try {
-    const info = await fetchStreamerInfo(username);
-    return info.viewer_public === false ? 'not-public' : 'reachable';
-  } catch (error: any) {
-    if (error?.message === 'STREAMER_NOT_FOUND') return 'not-public';
-    // FETCH_FAILED, a thrown TypeError from fetch, a JSON parse failure — all
-    // transport-level. They say nothing about whether the overlay is public.
-    return 'unreachable';
-  }
-}
-
-/**
  * Connect to viewer WebSocket for real-time messages
  * Uses /ws/chat/{streamer} endpoint which does NOT trigger YouTube polling
  * and does not expose the secret overlay ID
@@ -615,14 +588,41 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
 
   console.log('[AllChat] Connecting to viewer WebSocket:', url);
 
+  // A different KNOWN streamer starts a fresh connect flow: the previous
+  // streamer's accumulated backoff must not make this socket read as a later
+  // attempt (which would suppress the first-attempt OVERLAY_NOT_PUBLIC
+  // classification). wsStreamerUsername is null after an MV3 worker restart
+  // (where the restored counter belongs to the streamer being reconnected)
+  // or after a disconnect, which zeroes the counter itself.
+  if (wsStreamerUsername !== null && wsStreamerUsername !== streamerUsername) {
+    wsReconnectAttempts = 0;
+    persistReconnectAttempts();
+  }
+
   // Broadcast connecting state
   const state = wsReconnectAttempts > 0 ? 'reconnecting' : 'connecting';
   broadcastConnectionState(state);
 
-  wsConnection = new WebSocket(url);
+  // Snapshot the socket's identity at creation: a previous streamer's close
+  // event (fired asynchronously after close()) must be classified against the
+  // streamer and attempt count THIS socket was created with, not the live
+  // globals, which already point at the new connection. Full contract in
+  // lib/closeDecision.
+  const socket = new WebSocket(url);
+  const socketStreamer = streamerUsername;
+  const socketAttempts = wsReconnectAttempts;
+  wsConnection = socket;
+  // Retire a viewer_public recorded for a different streamer. Keyed on the
+  // flag's owner, not wsStreamerUsername, so a fresh-visit flag stays
+  // reachable; the close handler's owner === socketStreamer check is the
+  // actual guard.
+  if (wsStreamerViewerPublicFor !== null && wsStreamerViewerPublicFor !== streamerUsername) {
+    wsStreamerViewerPublic = null;
+    wsStreamerViewerPublicFor = null;
+  }
   wsStreamerUsername = streamerUsername;
 
-  wsConnection.onopen = async () => {
+  socket.onopen = async () => {
     console.log('[AllChat] WebSocket connected successfully!');
     wsReconnectAttempts = 0;
     persistReconnectAttempts();
@@ -630,8 +630,8 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
 
     // Authenticate via first message instead of URL param
     const token = await getViewerToken();
-    if (token && wsConnection) {
-      wsConnection.send(JSON.stringify({ type: 'auth', data: { token } }));
+    if (token && socket) {
+      socket.send(JSON.stringify({ type: 'auth', data: { token } }));
     }
 
     // Update extension badge
@@ -643,7 +643,7 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
     broadcastConnectionState('connected');
   };
 
-  wsConnection.onmessage = (event) => {
+  socket.onmessage = (event) => {
     try {
       const message = JSON.parse(event.data);
       if (!message || typeof message !== 'object' || typeof message.type !== 'string') {
@@ -654,7 +654,7 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
       // Advance the `ws_last_seen` watermark on anything carrying a message
       // timestamp, so the next reconnect asks for the gap starting here.
       // Replayed frames count too: they are messages we have now seen.
-      if (advancesWatermark(message.type)) {
+      if (wsConnection === socket && advancesWatermark(message.type)) {
         advanceLastSeen(streamerUsername, extractMessageTimestamp(message));
       }
 
@@ -664,16 +664,21 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
     }
   };
 
-  wsConnection.onerror = (error) => {
+  socket.onerror = (error) => {
     console.error('[AllChat] WebSocket error:', error);
     console.error('[AllChat] WebSocket URL was:', url);
-    console.error('[AllChat] WebSocket readyState:', wsConnection?.readyState);
+    console.error('[AllChat] WebSocket readyState:', socket.readyState);
+    if (wsConnection !== socket) return;
     chrome.action.setBadgeBackgroundColor({ color: '#ff0000' });
     chrome.action.setBadgeText({ text: '✗' });
   };
 
-  wsConnection.onclose = async (event) => {
+  socket.onclose = async (event) => {
     console.log('[AllChat] WebSocket closed - Code:', event.code, 'Reason:', event.reason, 'Clean:', event.wasClean);
+    // Superseded: another connectWebSocket call already replaced this socket.
+    // Its close must not clear the new socket's timeout, badge, or state.
+    if (wsConnection !== socket) return;
+
     stopWebSocketHeartbeat();
     chrome.action.setBadgeBackgroundColor({ color: '#888888' });
     chrome.action.setBadgeText({ text: '' });
@@ -684,56 +689,35 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
       reconnectTimeoutId = null;
     }
 
-    // An explicit disconnectWebSocket() nulls wsStreamerUsername, and switching
-    // streamers overwrites it. Either way this socket is no longer the one the
-    // extension cares about, so bail before spending an HTTP probe on it.
-    if (wsStreamerUsername !== streamerUsername) {
-      console.log('[AllChat] Ignoring close for stale connection:', streamerUsername);
-      return;
-    }
-
-    // Why not just read the close code: the gateway rejects a streamer with no
-    // public overlay *before* the WebSocket upgrade, with an HTTP 404 that JS
-    // never sees. The browser reports 1006 with an empty reason — the same thing
-    // it reports for DNS failure, TLS trouble, a cold-start proxy, and a gateway
-    // rolling mid-connect. The old test (`1006 && attempts === 0`) could not tell
-    // these apart, and matching meant never retrying, so any first-attempt blip
-    // silenced the extension until someone reset it by hand.
-    //
-    // So we ask over HTTP instead. Only an explicit viewer_public: false from a
-    // healthy 200 stops the loop; a 5xx, a timeout or an unparseable body is a
-    // transport failure and falls through to reconnect. Application close codes
-    // (4000-4999) are the gateway speaking deliberately and need no probe.
-    const probeResult = isApplicationCloseCode(event.code)
-      ? undefined
-      : await probeStreamerAccess(streamerUsername);
-
-    if (decideCloseAction(event.code, probeResult) === 'stop') {
-      console.error('[AllChat] Not reconnecting — close code', event.code, 'probe', probeResult);
+    // First-attempt 1006 classification contract lives in lib/closeDecision;
+    // the socket snapshot makes it immune to globals already repointed at a
+    // newer connection.
+    if (isConfirmedNotPublic({
+      code: event.code,
+      attempts: socketAttempts,
+      viewerPublic: wsStreamerViewerPublic,
+      viewerPublicStreamer: wsStreamerViewerPublicFor,
+      streamer: socketStreamer,
+    })) {
+      console.error('[AllChat] Streamer fetched as not public for viewers; giving up on first-attempt 1006');
       chrome.action.setBadgeBackgroundColor({ color: '#ff9900' });
       chrome.action.setBadgeText({ text: '!' });
 
-      // Two ways to reach a stop, and they are not the same fact. Only say the
-      // overlay is not public when the probe actually established that; an
-      // application close code says the gateway refused this connection
-      // deliberately, without telling us why.
-      broadcastConnectionState('failed', probeResult === 'not-public'
-        ? {
-            error: 'OVERLAY_NOT_PUBLIC',
-            message: `${streamerUsername} has not enabled "Public for Viewers" on their overlay. They need to enable this setting at allch.at`,
-          }
-        : {
-            error: 'CONNECTION_REFUSED',
-            message: `The server closed the connection to ${streamerUsername}'s chat and asked us not to retry (code ${event.code}).`,
-          });
-      return;
-    }
+      // Settle the session: the keepalive alarm must not wake up and silently
+      // resume reconnecting a streamer we just told the user is not public
+      // (the retry UI would overwrite this failed banner within a minute).
+      // The user can still reconnect explicitly via the Retry button, which
+      // reloads the page and re-runs the full fetch -> connect flow.
+      await chrome.storage.session.remove(SESSION_STREAMER_KEY);
+      chrome.alarms.clear(KEEPALIVE_ALARM);
+      wsReconnectAttempts = 0;
+      persistReconnectAttempts();
 
-    // Re-check: the probe above is an await, and a disconnect or a streamer
-    // switch can land while it is in flight. Scheduling a retry now would
-    // resurrect a connection the user closed.
-    if (wsStreamerUsername !== streamerUsername) {
-      console.log('[AllChat] Stale close handler for', streamerUsername, '— a newer connection took over');
+      // Broadcast failed state with specific error
+      broadcastConnectionState('failed', {
+        error: 'OVERLAY_NOT_PUBLIC',
+        message: `${socketStreamer} has not enabled "Public for Viewers" on their overlay. They need to enable this setting at allch.at`
+      });
       return;
     }
 
@@ -764,7 +748,6 @@ async function connectWebSocket(streamerUsername: string): Promise<void> {
     }, delay);
   };
 }
-
 /**
  * Disconnect from WebSocket
  */
@@ -775,6 +758,8 @@ function disconnectWebSocket(): void {
     wsConnection.close();
     wsConnection = null;
     wsStreamerUsername = null;
+    wsStreamerViewerPublic = null;
+    wsStreamerViewerPublicFor = null;
   }
   stopWebSocketHeartbeat();
 

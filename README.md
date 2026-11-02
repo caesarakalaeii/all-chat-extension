@@ -1,6 +1,8 @@
 # All-Chat Browser Extension
 
-**One chat for every stream.** This extension replaces native Twitch, YouTube, and Kick chat with [All-Chat](https://allch.at) — so you see messages from every platform the streamer broadcasts to.
+**Just watching? See every chat yourself.** This extension replaces native Twitch, YouTube, and Kick chat with [All-Chat](https://allch.at), so you see messages from every platform the streamer broadcasts to. It takes over chat only on channels whose streamer uses All-Chat. Everywhere else, native chat stays as it is.
+
+**[Get it at allch.at/browser-extension](https://allch.at/browser-extension)**, or straight from the [Chrome Web Store](https://chromewebstore.google.com/detail/all-chat-extension/ioneembbnocfljgbhgfknbbnpfeadacm) or [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/all-chat-extension/).
 
 Part of [All-Chat](https://allch.at) — the free, open-source multi-platform chat overlay for streamers.
 
@@ -8,10 +10,6 @@ Part of [All-Chat](https://allch.at) — the free, open-source multi-platform ch
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Chrome Web Store](https://img.shields.io/chrome-web-store/v/ioneembbnocfljgbhgfknbbnpfeadacm)](https://chromewebstore.google.com/detail/all-chat-extension/ioneembbnocfljgbhgfknbbnpfeadacm)
 [![Firefox Add-on](https://img.shields.io/amo/v/all-chat-extension)](https://addons.mozilla.org/en-US/firefox/addon/all-chat-extension/)
-
-<p align="center">
-  <img src="assets/screenshot-twitch.png" alt="All-Chat extension replacing native Twitch chat" width="600" />
-</p>
 
 ## Features
 
@@ -74,7 +72,7 @@ npm run build
 Then load the `dist/` folder as an unpacked extension:
 - Chrome: `chrome://extensions/` → Enable Developer mode → Load unpacked
 - Edge: `edge://extensions/` → Enable Developer mode → Load unpacked
-- Firefox: See [Firefox Installation Guide](FIREFOX_INSTALLATION.md)
+- Firefox: See [Firefox Installation Guide](docs/INSTALLATION_FIREFOX.md)
 
 ## Usage
 
@@ -205,12 +203,11 @@ See `twitch.ts` for a complete example.
 
 ## Documentation
 
-- [Autocomplete User Guide](AUTOCOMPLETE_USER_GUIDE.md)
-- [Firefox Installation Guide](FIREFOX_INSTALLATION.md)
-- [Firefox Compatibility](FIREFOX_COMPATIBILITY.md)
-- [API Configuration](API_CONFIGURATION.md)
-- [Testing Quick Start](TESTING_QUICK_START.md)
-- [Testing](TESTING.md)
+- [Emote Autocomplete Guide](docs/EMOTE_AUTOCOMPLETE_GUIDE.md)
+- [Firefox Installation Guide](docs/INSTALLATION_FIREFOX.md)
+- [Browser Compatibility](docs/BROWSER_COMPATIBILITY.md)
+- [Build Configuration](docs/BUILD_CONFIGURATION.md)
+- [Testing Quick Start](docs/TESTING_QUICKSTART.md)
 
 ## License
 
